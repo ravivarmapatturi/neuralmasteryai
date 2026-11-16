@@ -34,7 +34,9 @@ We partition every request into four distinct, mathematically bounded zones:
 3. **The Ephemeral Working Zone ($B_{\text{work}}$)**: Multi-turn tool invocation calls, raw stdout/stderr execution outputs, intermediate scratchpads, and conversational turns. This zone grows dynamically and is the primary target for compaction.
 4. **The Reserved Generation Zone ($B_{\text{gen}}$)**: The token headroom strictly set aside for the model's completion response (specified via `max_tokens` or `max_completion_tokens`).
 
-$$\text{Budget}_{\text{total}} = B_{\text{prefix}} + B_{\text{anchor}} + B_{\text{work}} + B_{\text{gen}}$$
+$$
+\text{Budget}_{\text{total}} = B_{\text{prefix}} + B_{\text{anchor}} + B_{\text{work}} + B_{\text{gen}}
+$$
 
 ```
 +-------------------------------------------------------------------------+
@@ -51,7 +53,9 @@ $$\text{Budget}_{\text{total}} = B_{\text{prefix}} + B_{\text{anchor}} + B_{\tex
 
 When an agent loops through 20 turns of code editing, file reading, and test execution, $B_{\text{work}}$ expands monotonically. If an engineer sets `max_tokens = 4096` on a 32,768-token model, the total usable input budget is exactly:
 
-$$\text{Budget}_{\text{usable}} = 32{,}768 - 4{,}096 = 28{,}672 \text{ tokens}$$
+$$
+\text{Budget}_{\text{usable}} = 32{,}768 - 4{,}096 = 28{,}672 \text{ tokens}
+$$
 
 If the system prompt and tool schemas consume 4,000 tokens, the dynamic working memory has an absolute ceiling of $28{,}672 - 4{,}000 = 24{,}672$ tokens before the model fails or drops critical instructions.
 
@@ -84,7 +88,9 @@ Why not simply expand the context window to 1,000,000 tokens and avoid compactio
 
 In standard multi-head self-attention, each query token attends to all previous key tokens via the softmax distribution:
 
-$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
+$$
+\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+$$
 
 As the sequence length $N$ grows, the denominator of the softmax function $\sum_{j=1}^{N} \exp(q_i k_j^T / \sqrt{d_k})$ aggregates probability mass across thousands of unrelated tokens. Softmax distributes fractional probability across noisy background context, creating an attention noise floor:
 

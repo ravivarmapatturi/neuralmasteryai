@@ -9,7 +9,9 @@ import RunnableCode from '../../../components/content/RunnableCode';
 
 **Difficulty: Medium** · Concept: [Foundation Model Internals — The MLP Block: SwiGLU](/docs/llms-genai/foundation-model-internals#the-mlp-block-swiglu)
 
-$$\text{SwiGLU}(x) = \big(\text{SiLU}(xW_1) \odot (xW_3)\big)W_2, \quad \text{SiLU}(z) = z \cdot \sigma(z)$$
+$$
+\text{SwiGLU}(x) = \big(\text{SiLU}(xW_1) \odot (xW_3)\big)W_2, \quad \text{SiLU}(z) = z \cdot \sigma(z)
+$$
 
 The original Transformer's feedforward block was two linear layers with a ReLU in between. Modern LLMs (LLaMA, Mistral, Gemma) instead use SwiGLU: a *gated* MLP where one linear projection (`xW1`, passed through SiLU) elementwise-gates a second, separate linear projection (`xW3`) before a final output projection (`W2`) — three weight matrices instead of two, but consistently better quality at matched parameter count, which is why it's now the default choice.
 

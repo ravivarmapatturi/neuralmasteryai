@@ -16,7 +16,9 @@ Every modern AI deployment faces an inescapable hardware constraint: physical me
 
 **Quantization** is the mathematical discipline of mapping continuous high-precision real numbers into compact, discrete, low-bit representations (FP8, INT8, INT4):
 
-$$\text{FP32 (4 bytes)} \longrightarrow \text{FP16 (2 bytes)} \longrightarrow \text{INT8 (1 byte)} \longrightarrow \text{INT4 (0.5 bytes)}$$
+$$
+\text{FP32 (4 bytes)} \longrightarrow \text{FP16 (2 bytes)} \longrightarrow \text{INT8 (1 byte)} \longrightarrow \text{INT4 (0.5 bytes)}
+$$
 
 This chapter details the mathematical formulas, hardware execution mechanics, outlier channel protection strategies, and production compression workflows behind modern quantization.
 
@@ -62,7 +64,9 @@ The objective of uniform quantization is to map continuous real floating-point v
 
 ### The Quantization Formula
 
-$$q = \text{clamp}\left(\left\lfloor \frac{x}{S} \right\rceil + Z, q_{\min}, q_{\max}\right)$$
+$$
+q = \text{clamp}\left(\left\lfloor \frac{x}{S} \right\rceil + Z, q_{\min}, q_{\max}\right)
+$$
 
 Where:
 - $\lfloor \cdot \rceil$ represents rounding to the nearest integer.
@@ -71,22 +75,32 @@ Where:
 
 The scale factor and zero-point are derived from the dynamic range $[\alpha, \beta]$:
 
-$$S = \frac{\beta - \alpha}{q_{\max} - q_{\min}}$$
+$$
+S = \frac{\beta - \alpha}{q_{\max} - q_{\min}}
+$$
 
-$$Z = \text{round}\left(\frac{-\alpha}{S}\right) + q_{\min}$$
+$$
+Z = \text{round}\left(\frac{-\alpha}{S}\right) + q_{\min}
+$$
 
 ### Symmetric vs Asymmetric Mapping
 
 - **Symmetric Quantization ($Z = 0$)**: The real dynamic range is symmetric around zero: $[-\max(|x|), \max(|x|)]$. For signed INT8 where $q \in [-127, 127]$:
-  $$S = \frac{\max(|x|)}{127}$$
-  $$q = \text{clamp}\left(\left\lfloor \frac{x}{S} \right\rceil, -127, 127\right)$$
+  $$
+  S = \frac{\max(|x|)}{127}
+  $$
+  $$
+  q = \text{clamp}\left(\left\lfloor \frac{x}{S} \right\rceil, -127, 127\right)
+  $$
 - **Asymmetric Quantization ($Z \neq 0$)**: Uses independent minimum $\alpha = \min(x)$ and maximum $\beta = \max(x)$. Useful for non-negative activation distributions (e.g. post-ReLU or post-Sigmoid), but requires cross-term runtime corrections during matrix multiplication.
 
 ### De-quantization
 
 To compute subsequent layers or emit probabilities, discrete integers are projected back into floating-point coordinates:
 
-$$\hat{x} = S \times (q - Z)$$
+$$
+\hat{x} = S \times (q - Z)
+$$
 
 ## Post-Training Quantization (PTQ) vs Quantization-Aware Training (QAT)
 
@@ -128,14 +142,18 @@ Instead of evaluating weight magnitudes in isolation, **AWQ** recognizes that we
 1. Runs a small calibration set (e.g. 128 Wikipedia paragraphs) through the model to measure per-channel activation scales $s_X$.
 2. Identifies the top 1% salient weight channels that interact with high-magnitude activation channels.
 3. Protects salient weights from quantization noise by applying an per-channel scaling transformation:
-   $$W' = W \cdot \text{diag}(s), \quad X' = X \cdot \text{diag}(s)^{-1}$$
+   $$
+   W' = W \cdot \text{diag}(s), \quad X' = X \cdot \text{diag}(s)^{-1}
+   $$
 4. Quantizes $W'$ to 4 bits with near-zero perplexity loss compared to FP16.
 
 ### 2. GPTQ: Generalized Post-Training Quantization (Frantar et al.)
 
 **GPTQ** applies second-order Taylor expansions based on the inverse Hessian matrix ($H = 2 X X^T$). As each weight column is quantized to 4 bits, GPTQ updates all remaining unquantized weights to compensate for the introduced rounding error:
 
-$$w_{\text{remaining}} \leftarrow w_{\text{remaining}} - \frac{w_i - \hat{w}_i}{[H^{-1}]_{ii}} \cdot H^{-1}_{:, i}$$
+$$
+w_{\text{remaining}} \leftarrow w_{\text{remaining}} - \frac{w_i - \hat{w}_i}{[H^{-1}]_{ii}} \cdot H^{-1}_{:, i}
+$$
 
 ### Production Quantization Command
 
@@ -164,9 +182,13 @@ Consider an activation slice containing 6 float32 values:
 `sample_activations = [-3.25, -1.80, -0.05, 0.42, 1.95, 4.88]`.
 
 1. **Calculate Maximum Absolute Bound**:
-   $$\max(|x|) = \max(|-3.25|, |-1.80|, |-0.05|, |0.42|, |1.95|, |4.88|) = 4.88$$
+   $$
+   \max(|x|) = \max(|-3.25|, |-1.80|, |-0.05|, |0.42|, |1.95|, |4.88|) = 4.88
+   $$
 2. **Compute Scale Factor $S$**:
-   $$S = \frac{4.88}{127} \approx 0.038425$$
+   $$
+   S = \frac{4.88}{127} \approx 0.038425
+   $$
 3. **Quantize to Discrete Signed Integers**:
    - $q_0 = \text{round}(-3.25 / 0.038425) = \text{round}(-84.58) = -85$
    - $q_1 = \text{round}(-1.80 / 0.038425) = \text{round}(-46.84) = -47$
@@ -174,9 +196,13 @@ Consider an activation slice containing 6 float32 values:
    - $q_3 = \text{round}(0.42 / 0.038425) = \text{round}(10.93) = 11$
    - $q_4 = \text{round}(1.95 / 0.038425) = \text{round}(50.75) = 51$
    - $q_5 = \text{round}(4.88 / 0.038425) = \text{round}(127.00) = 127$
-   $$q = [-85, -47, -1, 11, 51, 127]$$
+   $$
+   q = [-85, -47, -1, 11, 51, 127]
+   $$
 4. **Dequantize to Project Back**:
-   $$\hat{x} = q \times 0.038425 = [-3.266, -1.806, -0.038, 0.423, 1.960, 4.880]$$
+   $$
+   \hat{x} = q \times 0.038425 = [-3.266, -1.806, -0.038, 0.423, 1.960, 4.880]
+   $$
 5. **Evaluate Error**:
    - Max absolute error: $|-3.25 - (-3.266)| = 0.01614$ (less than $S/2$).
    - Memory footprint: 24 bytes (Float32) $\rightarrow$ 6 bytes (INT8), exactly **4× memory compression**.

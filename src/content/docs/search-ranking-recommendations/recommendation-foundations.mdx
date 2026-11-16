@@ -457,7 +457,7 @@ $$
 
 | Failure Mode | Root Cause | System Manifestation | Production Fix |
 | :--- | :--- | :--- | :--- |
-| **Popularity Cannibalization** | Blockbuster items co-occur with almost every item in interaction logs. | Blockbusters appear in every user's candidate set, crowding out niche recommendations. | Normalize item-item co-occurrence by product of marginal frequencies: $\frac{C_{ij}}{\sqrt{C_i C_j}}$ or apply inverse document frequency discounts. |
+| **Popularity Cannibalization** | Blockbuster items co-occur with almost every item in interaction logs. | Blockbusters appear in every user's candidate set, crowding out niche recommendations. | Normalize item-item co-occurrence by product of marginal frequencies: $C_{ij} / \sqrt{C_i C_j}$ or apply inverse document frequency discounts. |
 | **Sparsity Horizon** | High dimensional catalogs with long-tail items have 0 mutual raters ($\vert I_{uv} \vert = 0$). | Similarity evaluates to zero or defaults to global mean; long-tail items are never retrieved. | Transition from discrete neighborhood overlap to dense latent factor models (Matrix Factorization) or two-tower embeddings. |
 | **Hubness Problem** | High-dimensional geometry causes certain items to become nearest neighbors to almost all queries. | Unrelated generic items appear as top recommendations across diverse users. | Apply local scaling or mutual proximity corrections to distance matrices (Radovanović et al., 2010). |
 | **Feedback Loop Amplification** | Items placed at top positions receive more clicks, artificially boosting future similarity scores. | Catalogs freeze into self-reinforcing echo chambers with declining catalog coverage over time. | Inject randomized exploration traffic or apply position-bias propensity weighting. |
@@ -482,8 +482,8 @@ $$
 | **Explicit Feedback** | $R_{ui} \in [1, 5]$ | High signal-to-noise ratio, but represents $<1\%$ of production consumer interactions. |
 | **Implicit Feedback** | $p_{ui} \in \{0, 1\}, c_{ui} = 1 + \alpha r_{ui}$ | Pervasive interaction signal; unobserved entries represent lack of exposure rather than dislike. |
 | **User Mean Centering** | $r_{ui} - \bar{r}_u$ | Normalizes for user rating leniency; converts raw positive cosine into true Pearson correlation. |
-| **Item-Item CF** | $\text{sim}(i, j) = \frac{i \cdot j}{\|i\| \|j\|}$ | Preferred production architecture: item tastes are more stable and can be precomputed offline. |
-| **Baseline Predictor** | $\hat{r}_{ui} = \bar{r}_u + \frac{\sum s \cdot (r_v - \bar{r}_v)}{\sum \vert s \vert}$ | Interpolates neighborhood residuals on top of individual user rating baselines. |
+| **Item-Item CF** | $\text{sim}(i, j) = (i \cdot j) / (\|i\| \|j\|)$ | Preferred production architecture: item tastes are more stable and can be precomputed offline. |
+| **Baseline Predictor** | $\hat{r}_{ui} = \bar{r}_u + \sum s \cdot (r_v - \bar{r}_v) / \sum \vert s \vert$ | Interpolates neighborhood residuals on top of individual user rating baselines. |
 | **Cold Start** | Content + Bandits | Unseen users/items cannot be retrieved via interaction overlap alone. |
 
 Next: [Matrix Factorization & Latent Embeddings](/docs/search-ranking-recommendations/matrix-factorization-embeddings) — derive how low-rank factor matrices compress sparse interaction tables into dense geometric embeddings using Alternating Least Squares.

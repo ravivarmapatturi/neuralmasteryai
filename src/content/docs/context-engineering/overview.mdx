@@ -92,13 +92,17 @@ A production autonomous agent context window contains five distinct structural l
 
 In scaled dot-product attention, the attention weights are computed as:
 
-$$\alpha_i = \frac{e^{(q \cdot k_i) / \sqrt{d_k}}}{\sum_{j=1}^N e^{(q \cdot k_j) / \sqrt{d_k}}}$$
+$$
+\alpha_i = \frac{e^{(q \cdot k_i) / \sqrt{d_k}}}{\sum_{j=1}^N e^{(q \cdot k_j) / \sqrt{d_k}}}
+$$
 
 Let $k^*$ be the key vector corresponding to the single critical constraint in the system prompt, and let $S^* = (q \cdot k^*) / \sqrt{d_k}$ be its dot-product score.
 
 If the prompt contains $N$ total tokens, where $N - 1$ tokens are irrelevant noise with an average dot-product score $\bar{S}_{\text{noise}}$, the denominator expands:
 
-$$\sum_{j=1}^N e^{S_j} = e^{S^*} + (N - 1) \cdot e^{\bar{S}_{\text{noise}}}$$
+$$
+\sum_{j=1}^N e^{S_j} = e^{S^*} + (N - 1) \cdot e^{\bar{S}_{\text{noise}}}
+$$
 
 As sequence length $N$ scales from 1,000 to 100,000 tokens with noisy files and compiler logs, the noise sum $(N - 1) \cdot e^{\bar{S}_{\text{noise}}}$ grows by orders of magnitude. The relative attention weight $\alpha^*$ assigned to the critical instruction decays towards zero, mathematically guaranteeing constraint violation.
 

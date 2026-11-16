@@ -47,7 +47,9 @@ Two widely-used refinements specifically for continuous action spaces (robotics,
 
 This is a real instance of **Jensen's inequality**, not just an intuitive story. $\max(\cdot, \cdot)$ is a convex function, and Jensen's inequality says that for any convex $f$, $E[f(X)] \ge f(E[X])$ — applying $f = \max$ to two noisy estimates $\hat Q_1, \hat Q_2$ of the same true value $q$ (so $E[\hat Q_1] = E[\hat Q_2] = q$):
 
-$$E\big[\max(\hat Q_1, \hat Q_2)\big] \;\ge\; \max\big(E[\hat Q_1], E[\hat Q_2]\big) = q$$
+$$
+E\big[\max(\hat Q_1, \hat Q_2)\big] \;\ge\; \max\big(E[\hat Q_1], E[\hat Q_2]\big) = q
+$$
 
 with the inequality strict whenever the estimates actually have any variance — which they always do, once a neural network is doing the estimating. This is exactly why the bias is *unavoidable* by better training alone: it isn't a bug in how the network is fit, it's a property of the $\max$ operator itself applied to any noisy inputs, regardless of whether the noise is unbiased. TD3's twin-critic minimum doesn't reduce the noise — it applies the identical inequality in the opposite direction ($\min$ is concave, so $E[\min(\hat Q_1,\hat Q_2)] \le q$), trading a systematic overestimate for a systematic (and empirically smaller, since both critics are trained to be individually accurate) underestimate — a deliberate bias in the safer direction, not a removal of bias.
 

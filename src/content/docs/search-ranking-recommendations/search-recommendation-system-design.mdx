@@ -112,7 +112,9 @@ The surviving $\approx 400$ filtered candidates enter the heavy ranking stage:
 - **Model Architecture**: LightGBM / XGBoost ensembles (hundreds of decision trees) or deep feature interaction networks (such as DLRM or Wide & Deep, covered in [Deep Recommenders](/docs/search-ranking-recommendations/deep-recommenders)).
 - **Serving Engine**: Optimized C++ serving runtimes (Triton Inference Server or ONNX Runtime) with multithreaded batch inference.
 - **Scoring Output**: Calibrated engagement probabilities:
-  $$\text{Score} = P(\text{click}) \times P(\text{conversion} \mid \text{click})^\beta$$
+  $$
+  \text{Score} = P(\text{click}) \times P(\text{conversion} \mid \text{click})^\beta
+  $$
 
 The top 50 scored candidates advance to **Re-Ranking & Business Logic**:
 - **Deduplication**: Suppress consecutive items sharing the exact same merchant or brand.
@@ -123,7 +125,9 @@ The top 50 scored candidates advance to **Re-Ranking & Business Logic**:
 
 To calculate the hardware footprint required to serve 5,000 peak QPS within an 85 ms typical p99 latency envelope, we apply **Little's Law**:
 
-$$L = \lambda \cdot W$$
+$$
+L = \lambda \cdot W
+$$
 
 where:
 - $\lambda = 5,000\text{ requests/second}$ (arrival rate).
@@ -132,13 +136,19 @@ where:
 
 To prevent CPU queue saturation and tail latency spikes, production clusters target a maximum average CPU utilization of $U = 65\%$:
 
-$$\text{Required Compute Cores} = \frac{L}{U} = \frac{425}{0.65} \approx 654\text{ vCPU cores}$$
+$$
+\text{Required Compute Cores} = \frac{L}{U} = \frac{425}{0.65} \approx 654\text{ vCPU cores}
+$$
 
 Provisioning standard 16-vCPU compute instances:
-$$\text{Recommended Serving Nodes} = \left\lceil \frac{654}{16} \right\rceil = 41\text{ nodes}$$
+$$
+\text{Recommended Serving Nodes} = \left\lceil \frac{654}{16} \right\rceil = 41\text{ nodes}
+$$
 
 For catalog vector memory: storing 50 million items with 256-dimensional `float32` embeddings requires:
-$$50{,}000{,}000 \times 256 \times 4\text{ bytes} \approx 51.2\text{ GB RAM}$$
+$$
+50{,}000{,}000 \times 256 \times 4\text{ bytes} \approx 51.2\text{ GB RAM}
+$$
 With HNSW graph overhead and inverted index postings, the candidate cluster requires $\approx 76.8\text{ GB RAM}$, easily partitioned across 4–8 cluster shards.
 
 </GoDeeper>

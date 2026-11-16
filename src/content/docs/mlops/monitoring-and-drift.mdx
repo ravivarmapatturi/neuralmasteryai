@@ -44,7 +44,9 @@ A system can be fully healthy on the first two layers while the model underneath
 
 A supervised model learns the joint distribution of inputs $x$ and labels $y$. Factor it as
 
-$$P(x, y) = P(y \mid x)\, P(x) = P(x \mid y)\, P(y)$$
+$$
+P(x, y) = P(y \mid x)\, P(x) = P(x \mid y)\, P(y)
+$$
 
 Each factor can move independently, and each kind of movement has a name and a different consequence.
 
@@ -70,7 +72,9 @@ Drift detection compares a **reference** sample (usually training or validation 
 
 **Population Stability Index (PSI)** comes from credit scoring. Divide the feature into bins, usually deciles of the reference distribution, and compare the share of each sample in each bin:
 
-$$\text{PSI} = \sum_{i=1}^{B} (c_i - r_i)\,\ln\frac{c_i}{r_i}$$
+$$
+\text{PSI} = \sum_{i=1}^{B} (c_i - r_i)\,\ln\frac{c_i}{r_i}
+$$
 
 where $r_i$ and $c_i$ are the reference and current shares in bin $i$. Each term is non-negative, because $(c_i - r_i)$ and $\ln(c_i / r_i)$ always have the same sign. PSI is in fact the symmetric KL divergence between the binned distributions, $\text{KL}(c \,\|\, r) + \text{KL}(r \,\|\, c)$. The industry rule of thumb is below 0.1 stable, 0.1 to 0.25 moderate shift, above 0.25 significant.
 
@@ -78,13 +82,17 @@ where $r_i$ and $c_i$ are the reference and current shares in bin $i$. Each term
 
 **KL and Jensen-Shannon divergence.** The Kullback-Leibler divergence $\text{KL}(P \,\|\, Q) = \sum_i p_i \ln(p_i / q_i)$ measures how surprised you'd be using $Q$ when the truth is $P$. It's asymmetric and becomes infinite when $Q$ has a zero where $P$ doesn't. The **Jensen-Shannon divergence** fixes both by comparing each distribution with their average $M = \tfrac12(P + Q)$:
 
-$$\text{JS}(P, Q) = \tfrac12 \text{KL}(P \,\|\, M) + \tfrac12 \text{KL}(Q \,\|\, M)$$
+$$
+\text{JS}(P, Q) = \tfrac12 \text{KL}(P \,\|\, M) + \tfrac12 \text{KL}(Q \,\|\, M)
+$$
 
 It's symmetric and bounded by $\ln 2$, and its square root (the JS *distance*) is a true metric. It works naturally for categorical features.
 
 **The Kolmogorov-Smirnov (KS) test** compares two samples' empirical cumulative distribution functions $F_r$ and $F_c$, using the largest vertical gap between them:
 
-$$D = \sup_x \,\lvert F_c(x) - F_r(x) \rvert$$
+$$
+D = \sup_x \,\lvert F_c(x) - F_r(x) \rvert
+$$
 
 <KsTestDiagram />
 
@@ -234,7 +242,9 @@ The approach is valuable because it turns data drift into a performance estimate
 
 A model with 29 features, each tested at a 5% false-alarm rate, gives a probability of at least one false alarm in a window of
 
-$$1 - 0.95^{29} \approx 0.77$$
+$$
+1 - 0.95^{29} \approx 0.77
+$$
 
 So an alert on "any feature drifted" fires on most windows even when nothing has happened. Within a week the team stops reading it. Better alert design:
 

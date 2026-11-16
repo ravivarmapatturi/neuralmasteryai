@@ -67,13 +67,17 @@ Newton's method's update, $\theta \leftarrow \theta - H^{-1}\nabla f$, isn't a s
 
 Take the gradient of the quadratic approximation with respect to $\theta$ (treating $\theta_0$, $\nabla f(\theta_0)$, and $H$ as fixed constants at this step):
 
-$$\nabla_\theta\left[f(\theta_0) + \nabla f(\theta_0)^T(\theta-\theta_0) + \frac{1}{2}(\theta-\theta_0)^TH(\theta-\theta_0)\right] = \nabla f(\theta_0) + H(\theta - \theta_0)$$
+$$
+\nabla_\theta\left[f(\theta_0) + \nabla f(\theta_0)^T(\theta-\theta_0) + \frac{1}{2}(\theta-\theta_0)^TH(\theta-\theta_0)\right] = \nabla f(\theta_0) + H(\theta - \theta_0)
+$$
 
 using two standard matrix-calculus identities (see [Linear Algebra](/docs/mathematics-for-ai/linear-algebra)): $\nabla_\theta\left[a^T(\theta-\theta_0)\right] = a$ for a constant vector $a$, and $\nabla_\theta\left[\frac{1}{2}(\theta-\theta_0)^TH(\theta-\theta_0)\right] = H(\theta-\theta_0)$ for symmetric $H$.
 
 Set that gradient to zero — the condition for a minimum of the quadratic approximation — and solve for $\theta$:
 
-$$\nabla f(\theta_0) + H(\theta-\theta_0) = 0 \;\;\Rightarrow\;\; H(\theta - \theta_0) = -\nabla f(\theta_0) \;\;\Rightarrow\;\; \theta = \theta_0 - H^{-1}\nabla f(\theta_0)$$
+$$
+\nabla f(\theta_0) + H(\theta-\theta_0) = 0 \;\;\Rightarrow\;\; H(\theta - \theta_0) = -\nabla f(\theta_0) \;\;\Rightarrow\;\; \theta = \theta_0 - H^{-1}\nabla f(\theta_0)
+$$
 
 That last line *is* the Newton's-method update rule stated above — not a separately motivated formula, but exactly "jump to the minimum of the local quadratic model." It's also precisely why Newton's method converges so fast near a true minimum (the quadratic approximation becomes very accurate there) and can behave badly far from one (where the real function looks nothing like a quadratic, so jumping to that quadratic's minimum can overshoot badly or even step toward a maximum if $H$ isn't positive definite).
 
@@ -116,25 +120,35 @@ Plain SGD treats every parameter the same. Modern optimizers adapt the step size
 
 Adam maintains two exponential moving averages of the gradient $g_t$ at each step $t$, starting from $m_0 = 0$, $v_0 = 0$:
 
-$$m_t = \beta_1 m_{t-1} + (1-\beta_1)g_t \qquad\qquad v_t = \beta_2 v_{t-1} + (1-\beta_2)g_t^2$$
+$$
+m_t = \beta_1 m_{t-1} + (1-\beta_1)g_t \qquad\qquad v_t = \beta_2 v_{t-1} + (1-\beta_2)g_t^2
+$$
 
 ($\beta_1 \approx 0.9$, $\beta_2 \approx 0.999$ by default) — $m_t$ is the running-average gradient direction (momentum), $v_t$ the running-average *squared* gradient (RMSProp-style, tracking how large recent gradients have been per parameter, regardless of sign).
 
 **Why bias correction is needed** — the part almost always asserted, rarely shown. Unroll the recursion for $m_t$ starting from $m_0=0$:
 
-$$m_t = (1-\beta_1)\sum_{i=1}^{t}\beta_1^{\,t-i}\,g_i$$
+$$
+m_t = (1-\beta_1)\sum_{i=1}^{t}\beta_1^{\,t-i}\,g_i
+$$
 
 Assume the true gradient is roughly stationary over these few steps, $E[g_i] \approx E[g_t]$ for each $i$ in the sum (the same simplifying assumption the original Adam paper makes). Then:
 
-$$E[m_t] \approx E[g_t]\cdot(1-\beta_1)\sum_{i=1}^{t}\beta_1^{\,t-i} = E[g_t]\cdot(1-\beta_1)\cdot\frac{1-\beta_1^{\,t}}{1-\beta_1} = (1-\beta_1^{\,t})\,E[g_t]$$
+$$
+E[m_t] \approx E[g_t]\cdot(1-\beta_1)\sum_{i=1}^{t}\beta_1^{\,t-i} = E[g_t]\cdot(1-\beta_1)\cdot\frac{1-\beta_1^{\,t}}{1-\beta_1} = (1-\beta_1^{\,t})\,E[g_t]
+$$
 
 using the finite geometric series $\sum_{i=1}^{t}\beta_1^{\,t-i} = \sum_{k=0}^{t-1}\beta_1^{\,k} = \frac{1-\beta_1^{\,t}}{1-\beta_1}$. So $m_t$ systematically *underestimates* the true gradient moment by exactly the factor $(1-\beta_1^{\,t})$ — severe at small $t$ (at $t=1$ with $\beta_1=0.9$: $m_1$ carries only $1-0.9=10\%$ of the true magnitude, since it started from a zero initialization with nothing yet averaged in) and fading to negligible as $t\to\infty$. Dividing by exactly that factor removes the bias completely:
 
-$$\hat{m}_t = \frac{m_t}{1-\beta_1^{\,t}} \qquad\qquad \hat{v}_t = \frac{v_t}{1-\beta_2^{\,t}}$$
+$$
+\hat{m}_t = \frac{m_t}{1-\beta_1^{\,t}} \qquad\qquad \hat{v}_t = \frac{v_t}{1-\beta_2^{\,t}}
+$$
 
 so that $E[\hat{m}_t] \approx E[g_t]$, with the identical argument applying to $v_t$ and $\beta_2$. The final parameter update uses these corrected estimates:
 
-$$\theta_t = \theta_{t-1} - \eta\,\frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}$$
+$$
+\theta_t = \theta_{t-1} - \eta\,\frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+$$
 
 $\sqrt{\hat v_t}$ in the denominator is exactly the "adaptive scaling" named above: parameters with a history of large gradients get a smaller effective step, parameters with small/rare gradients get a relatively larger one; $\epsilon$ (typically $10^{-8}$) exists purely to prevent division by zero when $\hat v_t$ is tiny.
 

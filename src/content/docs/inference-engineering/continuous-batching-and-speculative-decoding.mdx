@@ -117,21 +117,29 @@ For each candidate token $x_i$ proposed by the draft model:
 2. If $r \le \min\left(1, \frac{p(x_i)}{q(x_i)}\right)$, **ACCEPT** $x_i$.
 3. If $r > \min\left(1, \frac{p(x_i)}{q(x_i)}\right)$, **REJECT** $x_i$ and halt verification.
 4. Resample the replacement token from the normalized positive residual distribution:
-   $$p'(x) = \frac{\max(0, p(x) - q(x))}{\sum_y \max(0, p(y) - q(y))}$$
+   $$
+   p'(x) = \frac{\max(0, p(x) - q(x))}{\sum_y \max(0, p(y) - q(y))}
+   $$
 
 <GoDeeper title="Go deeper: Mathematical proof that marginal distribution equals p(x)">
 
 Let $P(x)$ be the net probability that token $x$ is emitted by the combined draft-verify system:
 
-$$P(x) = q(x) \min\left(1, \frac{p(x)}{q(x)}\right) + \left(1 - \sum_y q(y) \min\left(1, \frac{p(y)}{q(y)}\right)\right) p'(x)$$
+$$
+P(x) = q(x) \min\left(1, \frac{p(x)}{q(x)}\right) + \left(1 - \sum_y q(y) \min\left(1, \frac{p(y)}{q(y)}\right)\right) p'(x)
+$$
 
 Note that $q(x) \min\left(1, \frac{p(x)}{q(x)}\right) = \min(q(x), p(x))$.
 
 The probability of rejection is:
-$$1 - \sum_y \min(q(y), p(y)) = \sum_y (p(y) - \min(q(y), p(y))) = \sum_y \max(0, p(y) - q(y))$$
+$$
+1 - \sum_y \min(q(y), p(y)) = \sum_y (p(y) - \min(q(y), p(y))) = \sum_y \max(0, p(y) - q(y))
+$$
 
 Multiplying by $p'(x)$ cancels the denominator:
-$$P(x) = \min(q(x), p(x)) + \max(0, p(x) - q(x)) = p(x)$$
+$$
+P(x) = \min(q(x), p(x)) + \max(0, p(x) - q(x)) = p(x)
+$$
 
 **Conclusion**: The output distribution $P(x)$ is identically equal to $p(x)$! Speculative decoding is an **exact lossless acceleration**.
 
@@ -152,16 +160,24 @@ Consider serving LLaMA-3-70B (target model, 30 ms per forward pass) paired with 
 - Empirical acceptance rate: $\alpha = 0.75$.
 
 The expected number of accepted tokens $\mathbb{E}[N]$ is the geometric sum:
-$$\mathbb{E}[N] = \sum_{i=0}^K \alpha^i = 1 + 0.75 + 0.75^2 + 0.75^3 + 0.75^4 = 1 + 0.75 + 0.5625 + 0.4219 + 0.3164 = 3.05 \text{ tokens}$$
+$$
+\mathbb{E}[N] = \sum_{i=0}^K \alpha^i = 1 + 0.75 + 0.75^2 + 0.75^3 + 0.75^4 = 1 + 0.75 + 0.5625 + 0.4219 + 0.3164 = 3.05 \text{ tokens}
+$$
 
 Total step latency:
-$$\text{Latency}_{\text{step}} = \text{Latency}_{\text{target}} + (K \times \text{Latency}_{\text{draft}}) = 30 + (4 \times 3) = 42.0 \text{ ms}$$
+$$
+\text{Latency}_{\text{step}} = \text{Latency}_{\text{target}} + (K \times \text{Latency}_{\text{draft}}) = 30 + (4 \times 3) = 42.0 \text{ ms}
+$$
 
 Baseline autoregressive execution time for 3.05 tokens:
-$$\text{Latency}_{\text{baseline}} = 3.05 \times 30.0 = 91.5 \text{ ms}$$
+$$
+\text{Latency}_{\text{baseline}} = 3.05 \times 30.0 = 91.5 \text{ ms}
+$$
 
 Wall-clock speedup:
-$$\text{Speedup} = \frac{91.5}{42.0} = 2.18\times$$
+$$
+\text{Speedup} = \frac{91.5}{42.0} = 2.18\times
+$$
 
 The serving system generates over **2.18× more tokens per second** with mathematical equivalence to the 70B model.
 

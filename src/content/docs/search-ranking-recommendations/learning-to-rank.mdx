@@ -51,7 +51,9 @@ LTR algorithms are categorized into three paradigms based on their loss function
 ### 1. The Pointwise Approach
 The pointwise paradigm reduces ranking to standard regression or ordinal classification. Each document feature vector $\mathbf{x}_{q, d}$ is mapped to its relevance grade $y_{q, d} \in \{0, 1, \dots, K\}$ in isolation:
 
-$$\mathcal{L}_{\text{pointwise}}(\boldsymbol{\theta}) = \sum_{q \in Q} \sum_{d \in D_q} \left( f_{\boldsymbol{\theta}}(\mathbf{x}_{q, d}) - y_{q, d} \right)^2$$
+$$
+\mathcal{L}_{\text{pointwise}}(\boldsymbol{\theta}) = \sum_{q \in Q} \sum_{d \in D_q} \left( f_{\boldsymbol{\theta}}(\mathbf{x}_{q, d}) - y_{q, d} \right)^2
+$$
 
 **The Structural Flaws of Pointwise LTR**:
 1. **Candidate Group Imbalance**: In an unweighted per-document formulation ($\mathcal{L}_{\text{pointwise}} = \sum_{q} \sum_{d \in D_q} (f(x) - y)^2$), candidate documents across different queries are treated as independent regression instances. Consequently, queries with larger candidate pools exert proportionally greater influence on parameter gradients. For instance, in a hypothetical scenario where query $Q_A$ has 50 judged documents and query $Q_B$ has only 3, unweighted per-document MSE weights $Q_A$ roughly 16× more than $Q_B$, unless explicit per-query group normalization ($\frac{1}{|D_q|}$) is applied.
@@ -64,31 +66,45 @@ For a query $q$ and two documents $d_i, d_j$ where true relevance satisfies $y_i
 
 Burges et al. (ICML 2005) introduced **RankNet**, modeling the posterior probability that document $i$ is more relevant than document $j$ using the logistic sigmoid function:
 
-$$P_{ij} = P(d_i \succ d_j) = \sigma(s_i - s_j) = \frac{1}{1 + e^{-(s_i - s_j)}}$$
+$$
+P_{ij} = P(d_i \succ d_j) = \sigma(s_i - s_j) = \frac{1}{1 + e^{-(s_i - s_j)}}
+$$
 
 The cross-entropy cost for this pair is:
 
-$$C_{ij} = -\bar{P}_{ij} \log P_{ij} - (1 - \bar{P}_{ij}) \log(1 - P_{ij})$$
+$$
+C_{ij} = -\bar{P}_{ij} \log P_{ij} - (1 - \bar{P}_{ij}) \log(1 - P_{ij})
+$$
 
 Since the ground truth preference is deterministic ($\bar{P}_{ij} = 1$ when $y_i > y_j$), the loss simplifies to:
 
-$$C_{ij} = -\log P_{ij} = \log\left(1 + e^{-(s_i - s_j)}\right)$$
+$$
+C_{ij} = -\log P_{ij} = \log\left(1 + e^{-(s_i - s_j)}\right)
+$$
 
 <GoDeeper title="Go deeper: Deriving RankNet lambda gradients">
 Differentiating the pairwise cross-entropy loss $C_{ij}$ with respect to score $s_i$:
 
-$$\frac{\partial C_{ij}}{\partial s_i} = \frac{\partial}{\partial s_i} \left[ \log\left(1 + e^{-(s_i - s_j)}\right) \right] = \frac{-e^{-(s_i - s_j)}}{1 + e^{-(s_i - s_j)}} = \frac{-1}{1 + e^{s_i - s_j}} = -(1 - P_{ij})$$
+$$
+\frac{\partial C_{ij}}{\partial s_i} = \frac{\partial}{\partial s_i} \left[ \log\left(1 + e^{-(s_i - s_j)}\right) \right] = \frac{-e^{-(s_i - s_j)}}{1 + e^{-(s_i - s_j)}} = \frac{-1}{1 + e^{s_i - s_j}} = -(1 - P_{ij})
+$$
 
 By anti-symmetry, $\frac{\partial C_{ij}}{\partial s_j} = -\frac{\partial C_{ij}}{\partial s_i} = 1 - P_{ij}$.
 
 We define the virtual gradient force as $\lambda_{ij}$:
-$$\lambda_{ij} = \frac{\partial C_{ij}}{\partial s_i} = -(1 - P_{ij}) = \frac{-1}{1 + e^{s_i - s_j}}$$
+$$
+\lambda_{ij} = \frac{\partial C_{ij}}{\partial s_i} = -(1 - P_{ij}) = \frac{-1}{1 + e^{s_i - s_j}}
+$$
 
 To update the parameters $\mathbf{w}$ of the scoring model, we aggregate the forces exerted on document $i$ across all relevant pairs:
-$$\lambda_i = \sum_{j: y_i > y_j} \lambda_{ij} - \sum_{k: y_k > y_i} \lambda_{ki}$$
+$$
+\lambda_i = \sum_{j: y_i > y_j} \lambda_{ij} - \sum_{k: y_k > y_i} \lambda_{ki}
+$$
 
 The gradient of the global loss with respect to model weights $\mathbf{w}$ is computed via the chain rule:
-$$\frac{\partial \mathcal{L}}{\partial \mathbf{w}} = \sum_{i} \frac{\partial \mathcal{L}}{\partial s_i} \frac{\partial s_i}{\partial \mathbf{w}} = \sum_{i} \lambda_i \frac{\partial s_i}{\partial \mathbf{w}}$$
+$$
+\frac{\partial \mathcal{L}}{\partial \mathbf{w}} = \sum_{i} \frac{\partial \mathcal{L}}{\partial s_i} \frac{\partial s_i}{\partial \mathbf{w}} = \sum_{i} \lambda_i \frac{\partial s_i}{\partial \mathbf{w}}
+$$
 
 Each $\lambda_i$ acts as a directional force pushing document $i$ up or down the ranked list.
 </GoDeeper>
@@ -111,7 +127,9 @@ Production search engines are evaluated using non-smooth, rank-aware metrics suc
 
 ### The Non-Differentiability Bottleneck
 To compute NDCG, we must sort documents by their predicted scores:
-$$\text{rank}(d_i) = 1 + \sum_{j \ne i} \mathbb{I}(s_j > s_i)$$
+$$
+\text{rank}(d_i) = 1 + \sum_{j \ne i} \mathbb{I}(s_j > s_i)
+$$
 
 The indicator function $\mathbb{I}(\cdot)$ is a piecewise-constant step function. Its derivative with respect to score $s_i$ is zero almost everywhere and undefined at step transitions. Consequently, standard backpropagation cannot directly optimize NDCG.
 
@@ -120,11 +138,15 @@ Burges et al. (NeurIPS 2006) proposed **LambdaRank** based on a foundational ins
 
 LambdaRank constructs the virtual gradient by scaling RankNet's pairwise logistic gradient directly by the change in target metric ($\Delta\text{NDCG}$) that would result from swapping the two documents in the current ranked list:
 
-$$\lambda_{ij}^{\text{LambdaRank}} = \lambda_{ij}^{\text{RankNet}} \times |\Delta\text{NDCG}_{ij}| = \frac{-1}{1 + e^{s_i - s_j}} \cdot |\Delta\text{NDCG}_{ij}|$$
+$$
+\lambda_{ij}^{\text{LambdaRank}} = \lambda_{ij}^{\text{RankNet}} \times |\Delta\text{NDCG}_{ij}| = \frac{-1}{1 + e^{s_i - s_j}} \cdot |\Delta\text{NDCG}_{ij}|
+$$
 
 Where $|\Delta\text{NDCG}_{ij}|$ is the absolute change in NDCG observed if document $i$ and document $j$ swap positions in the current ranking:
 
-$$|\Delta\text{NDCG}_{ij}| = \left| \frac{2^{y_i} - 2^{y_j}}{\text{IDCG}} \cdot \left( \frac{1}{\log_2(1 + \text{rank}_i)} - \frac{1}{\log_2(1 + \text{rank}_j)} \right) \right|$$
+$$
+|\Delta\text{NDCG}_{ij}| = \left| \frac{2^{y_i} - 2^{y_j}}{\text{IDCG}} \cdot \left( \frac{1}{\log_2(1 + \text{rank}_i)} - \frac{1}{\log_2(1 + \text{rank}_j)} \right) \right|
+$$
 
 **Why LambdaRank Works**:
 - If an inversion occurs between **rank 1 and rank 2**, the difference in discounts $(\frac{1}{\log_2(2)} - \frac{1}{\log_2(3)}) = (1.0 - 0.6309) = 0.3691$ is massive, producing an aggressive correction gradient.
@@ -173,7 +195,9 @@ Wu et al. (2010) unified LambdaRank gradients with **Multiple Additive Regressio
    - Train a regression tree to partition feature space $\mathbf{x}_i$ into disjoint leaf regions $R_{km}$.
    - For each terminal leaf $k$, compute the leaf step size:
      - In full production implementations (e.g. LightGBM), leaf values use second-order Newton-Raphson steps scaled by Hessian weights:
-       $$\gamma_{km} = \frac{\sum_{i \in R_{km}} \lambda_i}{\sum_{i \in R_{km}} w_i}$$
+       $$
+       \gamma_{km} = \frac{\sum_{i \in R_{km}} \lambda_i}{\sum_{i \in R_{km}} w_i}
+       $$
      - In pedagogical reference implementations, leaf values use a first-order approximation: predicting the mean pseudo-residual $\bar{\lambda}_{km} = \frac{1}{|R_{km}|} \sum_{i \in R_{km}} \lambda_i$.
    - Update model predictions: $s_i^{(m)} = s_i^{(m-1)} + \eta \cdot \gamma_{km}$, where $\eta \in (0, 1]$ is the learning rate.
 
@@ -211,25 +235,39 @@ Evaluating errors independently:
 The only inverted pair is $(D_1, D_2)$ where $y_1 > y_2$ but $s_1 < s_2$:
 - Score delta: $s_1 - s_2 = 1.2 - 2.1 = -0.90$.
 - Sigmoid probability:
-  $$P_{12} = \sigma(-0.90) = \frac{1}{1 + e^{0.90}} \approx \frac{1}{1 + 2.4596} \approx \mathbf{0.2891}$$
+  $$
+  P_{12} = \sigma(-0.90) = \frac{1}{1 + e^{0.90}} \approx \frac{1}{1 + 2.4596} \approx \mathbf{0.2891}
+  $$
 - RankNet gradient force on $D_1$:
-  $$\lambda_{12}^{\text{RankNet}} = -(1 - P_{12}) = -(1 - 0.2891) = \mathbf{-0.7109}$$
+  $$
+  \lambda_{12}^{\text{RankNet}} = -(1 - P_{12}) = -(1 - 0.2891) = \mathbf{-0.7109}
+  $$
 
 ### 3. Metric Calculation & LambdaRank Gradient
 Now we compute the metric gain of swapping $(D_1, D_2)$:
 - **Ideal Ranking** ($[D_1, D_2, D_3]$ with grades $[3, 2, 0]$):
-  $$\text{IDCG} = \frac{2^3 - 1}{\log_2(2)} + \frac{2^2 - 1}{\log_2(3)} + \frac{2^0 - 1}{\log_2(4)} = \frac{7}{1} + \frac{3}{1.58496} + 0 = 7.0 + 1.8928 = \mathbf{8.8928}$$
+  $$
+  \text{IDCG} = \frac{2^3 - 1}{\log_2(2)} + \frac{2^2 - 1}{\log_2(3)} + \frac{2^0 - 1}{\log_2(4)} = \frac{7}{1} + \frac{3}{1.58496} + 0 = 7.0 + 1.8928 = \mathbf{8.8928}
+  $$
 
 - **Current Ranking** ($[D_2, D_1, D_3]$ with grades $[2, 3, 0]$):
-  $$\text{DCG}_{\text{current}} = \frac{2^2 - 1}{\log_2(2)} + \frac{2^3 - 1}{\log_2(3)} + 0 = \frac{3}{1} + \frac{7}{1.58496} = 3.0 + 4.4165 = \mathbf{7.4165}$$
-  $$\text{NDCG}_{\text{current}} = \frac{7.4165}{8.8928} \approx \mathbf{0.8340}$$
+  $$
+  \text{DCG}_{\text{current}} = \frac{2^2 - 1}{\log_2(2)} + \frac{2^3 - 1}{\log_2(3)} + 0 = \frac{3}{1} + \frac{7}{1.58496} = 3.0 + 4.4165 = \mathbf{7.4165}
+  $$
+  $$
+  \text{NDCG}_{\text{current}} = \frac{7.4165}{8.8928} \approx \mathbf{0.8340}
+  $$
 
 - **NDCG Delta of Swapping $(D_1, D_2)$**:
   Swapping restores the ideal ranking, changing DCG from $7.4165$ to $8.8928$:
-  $$|\Delta\text{NDCG}_{12}| = \frac{|8.8928 - 7.4165|}{8.8928} = \frac{1.4763}{8.8928} \approx \mathbf{0.1660}$$
+  $$
+  |\Delta\text{NDCG}_{12}| = \frac{|8.8928 - 7.4165|}{8.8928} = \frac{1.4763}{8.8928} \approx \mathbf{0.1660}
+  $$
 
 - **LambdaRank Gradient on $D_1$**:
-  $$\lambda_{12}^{\text{LambdaRank}} = \lambda_{12}^{\text{RankNet}} \times |\Delta\text{NDCG}_{12}| = -0.7109 \times 0.1660 \approx \mathbf{-0.1180}$$
+  $$
+  \lambda_{12}^{\text{LambdaRank}} = \lambda_{12}^{\text{RankNet}} \times |\Delta\text{NDCG}_{12}| = -0.7109 \times 0.1660 \approx \mathbf{-0.1180}
+  $$
 
 The negative gradient exerts an upward force on $D_1$ (and by anti-symmetry, a positive force $+0.1180$ pushing $D_2$ downward), driving the model to flip their order.
 
@@ -376,7 +414,7 @@ For deep-dive formulations of NDCG, MRR, and MAP across evaluation splits, consu
 | **LambdaRank** | $\lambda_{ij} = \lambda^{\text{RankNet}} \cdot \vert\Delta\text{NDCG}\vert$ | Metric-sensitive gradients, heavily weights top ranks | Heuristic gradient without an analytical global loss. |
 | **LambdaMART** | MART trees fit to pseudo-gradients $\lambda_i$ | Highly effective on tabular features, handles non-linearities | High memory during tree expansion; latency scales with ensemble depth. |
 | **Listwise LTR** | Loss over entire permutation $\pi$ | Direct theoretical alignment with slate metrics | Computationally expensive; sensitive to candidate list length. |
-| **Leaf Update (First-Order vs Newton)** | Mean $\frac{1}{\vert R \vert}\sum \lambda_i$ vs Newton $\frac{\sum \lambda_i}{\sum w_i}$ | First-order is simple mean residual; Newton-Raphson scales by Hessian curvature | Newton step requires strictly positive Hessian weights. |
+| **Leaf Update (First-Order vs Newton)** | Mean $(1/\vert R \vert)\sum \lambda_i$ vs Newton $(\sum \lambda_i)/(\sum w_i)$ | First-order is simple mean residual; Newton-Raphson scales by Hessian curvature | Newton step requires strictly positive Hessian weights. |
 
 Next: [Ranking Evaluation Metrics](/docs/search-ranking-recommendations/ranking-evaluation-metrics) — master offline metrics (Precision@k, Recall@k, MRR, MAP, NDCG) and online experiment designs.
 

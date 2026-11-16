@@ -42,15 +42,21 @@ For a full formal derivation of multi-armed bandit regret bounds (including UCB1
 
 In large catalogs, arms share underlying contextual features (user category affinity, time of day, device type). The canonical production algorithm is **LinUCB** (Li et al., 2010), which assumes the expected reward of arm $a$ is linear in the context vector $x$:
 
-$$\mathbb{E}[r_t \mid x_t, a] = x_t^\top \theta_a^*$$
+$$
+\mathbb{E}[r_t \mid x_t, a] = x_t^\top \theta_a^*
+$$
 
 Because the true parameter vector $\theta_a^*$ is unknown, we maintain an online ridge regression estimate $\hat{\theta}_a$ and an inverse covariance matrix $A_a^{-1} \in \mathbb{R}^{d \times d}$:
 
-$$A_a = I_d + \sum_{\tau=1}^{t-1} x_\tau x_\tau^\top, \quad b_a = \sum_{\tau=1}^{t-1} r_\tau x_\tau, \quad \hat{\theta}_a = A_a^{-1} b_a$$
+$$
+A_a = I_d + \sum_{\tau=1}^{t-1} x_\tau x_\tau^\top, \quad b_a = \sum_{\tau=1}^{t-1} r_\tau x_\tau, \quad \hat{\theta}_a = A_a^{-1} b_a
+$$
 
 At each request, LinUCB selects the arm that maximizes the **Upper Confidence Bound**:
 
-$$a_t = \arg\max_{a \in \mathcal{A}} \left[ x_t^\top \hat{\theta}_a + \alpha \sqrt{x_t^\top A_a^{-1} x_t} \right]$$
+$$
+a_t = \arg\max_{a \in \mathcal{A}} \left[ x_t^\top \hat{\theta}_a + \alpha \sqrt{x_t^\top A_a^{-1} x_t} \right]
+$$
 
 Here, $\alpha > 0$ controls the exploration aggressiveness:
 - The first term $x_t^\top \hat{\theta}_a$ represents **exploitation** (predicted click probability).
@@ -83,7 +89,9 @@ To verify the mathematical mechanics across prose, diagram, and code, consider a
 Let exploration hyperparameter $\alpha = 1.0$.
 
 First, compute the squared Euclidean norm of context vector $x$:
-$$\|x\|^2 = 0.8^2 + 0.4^2 = 0.64 + 0.16 = 0.80$$
+$$
+\|x\|^2 = 0.8^2 + 0.4^2 = 0.64 + 0.16 = 0.80
+$$
 
 Now compute the exact score decomposition for each arm:
 
@@ -113,7 +121,9 @@ Contextual bandits address item-level uncertainty, but production slate recommen
 ### 1. Freshness and Temporal Decay
 User preferences shift rapidly, and newly indexed content must compete with established items that accumulated months of engagement logs. Systems introduce temporal decay into the interaction sums:
 
-$$A_{a, t} = \gamma A_{a, t-1} + x_t x_t^\top, \quad b_{a, t} = \gamma b_{a, t-1} + r_t x_t$$
+$$
+A_{a, t} = \gamma A_{a, t-1} + x_t x_t^\top, \quad b_{a, t} = \gamma b_{a, t-1} + r_t x_t
+$$
 
 where $\gamma \in (0.95, 0.999)$ is a decay discount factor. Observations older than a few weeks exponentially lose weight, preventing historical blockbusters from permanently dominating static priors.
 
@@ -122,7 +132,9 @@ Presenting five noise-cancelling headphones in the top five slots creates high r
 
 **Maximal Marginal Relevance (MMR)** (Carbonell & Goldstein, 1998) greedy-selects the next item $d_i$ by balancing item relevance against similarity to already selected items in slate $\mathcal{S}$:
 
-$$\text{MMR}(d_i) = \lambda \cdot \text{Score}(d_i, q) - (1 - \lambda) \max_{d_j \in \mathcal{S}} \text{Sim}(d_i, d_j)$$
+$$
+\text{MMR}(d_i) = \lambda \cdot \text{Score}(d_i, q) - (1 - \lambda) \max_{d_j \in \mathcal{S}} \text{Sim}(d_i, d_j)
+$$
 
 Advanced engines employ **Determinantal Point Processes (DPP)** (Kulesza & Taskar, 2012) to sample slates according to the determinant of a kernel matrix, ensuring mathematical diversity in $O(k^2)$ runtime per slate.
 
@@ -146,13 +158,19 @@ Let $x$ denote user context, $a$ denote the chosen item, and $r(x, a)$ denote th
 Historical data was logged by policy $\pi_{\text{log}}(a \mid x) = P(a \text{ was displayed} \mid x)$. The logging policy recorded tuples $(x_i, a_i, r_i, p_i)$ where $p_i = \pi_{\text{log}}(a_i \mid x_i) > 0$.
 
 We want to estimate the expected reward of a target policy $\pi_{\text{new}}$:
-$$V(\pi_{\text{new}}) = \mathbb{E}_{x \sim \mathcal{D}, a \sim \pi_{\text{new}}}[r(x, a)]$$
+$$
+V(\pi_{\text{new}}) = \mathbb{E}_{x \sim \mathcal{D}, a \sim \pi_{\text{new}}}[r(x, a)]
+$$
 
 Using importance sampling, we take the expectation over the logging distribution:
 
-$$\mathbb{E}_{a \sim \pi_{\text{log}}}\left[ \frac{\pi_{\text{new}}(a \mid x)}{\pi_{\text{log}}(a \mid x)} r(x, a) \right] = \sum_{a \in \mathcal{A}} \pi_{\text{log}}(a \mid x) \left( \frac{\pi_{\text{new}}(a \mid x)}{\pi_{\text{log}}(a \mid x)} r(x, a) \right)$$
+$$
+\mathbb{E}_{a \sim \pi_{\text{log}}}\left[ \frac{\pi_{\text{new}}(a \mid x)}{\pi_{\text{log}}(a \mid x)} r(x, a) \right] = \sum_{a \in \mathcal{A}} \pi_{\text{log}}(a \mid x) \left( \frac{\pi_{\text{new}}(a \mid x)}{\pi_{\text{log}}(a \mid x)} r(x, a) \right)
+$$
 
-$$= \sum_{a \in \mathcal{A}} \pi_{\text{new}}(a \mid x) r(x, a) = \mathbb{E}_{a \sim \pi_{\text{new}}}[r(x, a)] = V(\pi_{\text{new}})$$
+$$
+= \sum_{a \in \mathcal{A}} \pi_{\text{new}}(a \mid x) r(x, a) = \mathbb{E}_{a \sim \pi_{\text{new}}}[r(x, a)] = V(\pi_{\text{new}})
+$$
 
 Thus, reweighting each observed reward by the **propensity ratio** $w_i = \frac{\pi_{\text{new}}(a_i \mid x_i)}{\pi_{\text{log}}(a_i \mid x_i)}$ yields an unbiased offline estimator of the target policy's live performance.
 
@@ -161,15 +179,21 @@ Thus, reweighting each observed reward by the **propensity ratio** $w_i = \frac{
 ### The Three Counterfactual Estimators
 
 1. **Standard Inverse Propensity Scoring (IPS)**:
-   $$\hat{V}_{\text{IPS}}(\pi_{\text{new}}) = \frac{1}{N} \sum_{i=1}^N \frac{\pi_{\text{new}}(a_i \mid x_i)}{\pi_{\text{log}}(a_i \mid x_i)} r_i$$
+   $$
+   \hat{V}_{\text{IPS}}(\pi_{\text{new}}) = \frac{1}{N} \sum_{i=1}^N \frac{\pi_{\text{new}}(a_i \mid x_i)}{\pi_{\text{log}}(a_i \mid x_i)} r_i
+   $$
    *Property*: Strictly unbiased, but suffers from high variance if logging propensity $\pi_{\text{log}}(a_i \mid x_i)$ is very small (producing gigantic weights).
 
 2. **Clipped IPS**:
-   $$w_i^{\text{clip}} = \min\left( \frac{\pi_{\text{new}}(a_i \mid x_i)}{\pi_{\text{log}}(a_i \mid x_i)}, M \right), \quad \hat{V}_{\text{cIPS}}(\pi_{\text{new}}) = \frac{1}{N} \sum_{i=1}^N w_i^{\text{clip}} r_i$$
+   $$
+   w_i^{\text{clip}} = \min\left( \frac{\pi_{\text{new}}(a_i \mid x_i)}{\pi_{\text{log}}(a_i \mid x_i)}, M \right), \quad \hat{V}_{\text{cIPS}}(\pi_{\text{new}}) = \frac{1}{N} \sum_{i=1}^N w_i^{\text{clip}} r_i
+   $$
    *Property*: Clips weights at threshold $M$ (typically 5 to 20). Introduces slight negative bias but eliminates extreme variance spikes.
 
 3. **Self-Normalized IPS (SNIPS)**:
-   $$\hat{V}_{\text{SNIPS}}(\pi_{\text{new}}) = \frac{\sum_{i=1}^N w_i r_i}{\sum_{i=1}^N w_i}$$
+   $$
+   \hat{V}_{\text{SNIPS}}(\pi_{\text{new}}) = \frac{\sum_{i=1}^N w_i r_i}{\sum_{i=1}^N w_i}
+   $$
    *Property*: Normalizes importance weights by their empirical sum. Bounded between 0 and 1; significantly more stable on real telemetry.
 
 <NotebookCallout color="cobalt" title="The Logging Propensity Invariant">
@@ -294,7 +318,7 @@ print(f"Rounds displaying Arm 2: {int(np.sum(logged_actions == 1))} of {len(logg
 | :--- | :--- | :--- |
 | **Exposure Feedback Loop** | $\text{Retrained Model} \leftarrow \text{Biased Logs} \leftarrow \text{Past Model}$ | Degenerative rich-get-richer dynamics that cause catalog collapse. |
 | **LinUCB Scoring** | $a^* = \arg\max_a [x^\top \hat{\theta}_a + \alpha \sqrt{x^\top A_a^{-1} x}]$ | Contextual bandit balancing predicted reward against parameter uncertainty. |
-| **Unbiased IPS** | $\hat{V}_{\text{IPS}} = \frac{1}{N} \sum_{i=1}^N \frac{\pi_{\text{new}}(a_i \mid x_i)}{\pi_{\text{log}}(a_i \mid x_i)} r_i$ | Off-policy evaluation reweighting historical rewards by propensity ratios. |
+| **Unbiased IPS** | $\hat{V}_{\text{IPS}} = (1/N) \sum_{i=1}^N (\pi_{\text{new}}(a_i \mid x_i) / \pi_{\text{log}}(a_i \mid x_i)) \cdot r_i$ | Off-policy evaluation reweighting historical rewards by propensity ratios. |
 | **Clipped IPS** | $w^{\text{clip}} = \min(w, M)$ | Variance reduction technique trading slight bias for bounded estimation variance. |
 | **Logging Propensity** | $p_i = \pi_{\text{log}}(a_i \mid x_i)$ | Mandatory logging invariant required for any offline policy evaluation. |
 

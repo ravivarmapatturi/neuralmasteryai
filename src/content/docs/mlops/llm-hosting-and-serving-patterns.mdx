@@ -67,9 +67,13 @@ The trade-off is the usual one: the more the platform manages, the faster you st
 
 A model doesn't just need room for its weights. Every active request also holds a **KV cache**: the attention keys and values for every token processed so far, kept so that each new token doesn't recompute them ([LLM Inference Optimization](/docs/mlops/llm-inference-optimization#kv-cache) explains why). Both are easy to compute:
 
-$$\text{weights} = N_{\text{params}} \times \text{bytes per parameter}$$
+$$
+\text{weights} = N_{\text{params}} \times \text{bytes per parameter}
+$$
 
-$$\text{KV cache per token} = 2 \times n_{\text{layers}} \times n_{\text{kv heads}} \times d_{\text{head}} \times \text{bytes per value}$$
+$$
+\text{KV cache per token} = 2 \times n_{\text{layers}} \times n_{\text{kv heads}} \times d_{\text{head}} \times \text{bytes per value}
+$$
 
 The 2 is for keys and values. For Llama 3.1 8B (32 layers, 8 key-value heads thanks to grouped-query attention, head dimension 128):
 
@@ -123,7 +127,9 @@ The weights fit easily on a 24 GB GPU; the problem is concurrency. Thirty-two si
 
 The cost of a self-hosted model is dominated by one ratio: how much of the GPU-time you pay for is spent generating tokens.
 
-$$\text{cost per token} = \frac{\text{GPU price per hour}}{\text{tokens per hour}} = \frac{\text{GPU price per hour}}{\text{peak tokens/s} \times 3600 \times \text{utilization}}$$
+$$
+\text{cost per token} = \frac{\text{GPU price per hour}}{\text{tokens per hour}} = \frac{\text{GPU price per hour}}{\text{peak tokens/s} \times 3600 \times \text{utilization}}
+$$
 
 With illustrative numbers, a GPU at \$2.50 an hour serving an 8B model at an aggregate 2,500 output tokens a second when fully batched:
 

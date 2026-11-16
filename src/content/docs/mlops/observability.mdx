@@ -208,7 +208,9 @@ A server can't keep every latency value to compute exact percentiles, and percen
 
 Prometheus's `histogram_quantile` does the estimate. For the $q$-th quantile of $N$ observations, it finds the first bucket whose cumulative count reaches $qN$, then interpolates linearly inside that bucket:
 
-$$\hat{x}_q = \ell + (u - \ell)\,\frac{qN - c_\ell}{c_u - c_\ell}$$
+$$
+\hat{x}_q = \ell + (u - \ell)\,\frac{qN - c_\ell}{c_u - c_\ell}
+$$
 
 where $\ell$ and $u$ are the bucket's lower and upper bounds and $c_\ell$, $c_u$ are the cumulative counts at those bounds. Linear interpolation assumes observations are spread evenly inside the bucket, which is rarely true, so **the estimate can only be as precise as the buckets around the percentile you care about**.
 

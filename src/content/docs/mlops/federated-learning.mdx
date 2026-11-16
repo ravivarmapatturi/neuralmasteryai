@@ -63,7 +63,9 @@ The paper names the properties that make federated optimization a genuinely diff
 
 Write the true objective as if all $n = \sum_k n_k$ examples across every client really were centralized in one place: $f(w) = \frac{1}{n}\sum_{i=1}^n f_i(w)$, ordinary empirical risk minimization. Partition that sum by which client holds each example, and define $F_k(w) = \frac{1}{n_k}\sum_{i \in \mathcal{P}_k} f_i(w)$ (client $k$'s own local average loss). Regrouping the terms:
 
-$$f(w) = \frac{1}{n}\sum_{i=1}^n f_i(w) = \sum_{k=1}^K \frac{n_k}{n} F_k(w)$$
+$$
+f(w) = \frac{1}{n}\sum_{i=1}^n f_i(w) = \sum_{k=1}^K \frac{n_k}{n} F_k(w)
+$$
 
 That's not an approximation — it's an exact algebraic identity, true for any partition of the data. It says the *only* way to combine each client's local average loss into the same objective centralized training would optimize is to weight each client's contribution by its share of the total data, $n_k/n$. Weight every client equally instead (ignoring $n_k$), and FedAvg would be optimizing a *different* objective — implicitly treating a 10-example client's average loss as equally important as a 10,000-example client's, which is provably not the same function as training on the pooled data. The $n_k$-weighting in the server's aggregation step isn't compensating for imbalance after the fact; it's the specific weighting required for federated and centralized training to be optimizing the same $f(w)$ in the first place.
 

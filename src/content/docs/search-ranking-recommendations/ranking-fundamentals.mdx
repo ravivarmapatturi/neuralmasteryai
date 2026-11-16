@@ -20,7 +20,9 @@ Imagine a university admissions office reviewing hundreds of applicants. The com
 
 In multi-stage search and recommendation architectures, candidate generation (retrieval) filters a massive catalog down to a bounded pool of viable candidates (e.g. an illustrative retrieval pool of several hundred documents). The ranking stage then evaluates this bounded candidate pool with an expressive scoring function:
 
-$$s(q, d, u, c) = f_{\boldsymbol{\theta}}\left(\mathbf{x}(q, d, u, c)\right)$$
+$$
+s(q, d, u, c) = f_{\boldsymbol{\theta}}\left(\mathbf{x}(q, d, u, c)\right)
+$$
 
 Where:
 - $q$ is the user's explicit query (or empty in unprompted feed recommendations).
@@ -120,7 +122,9 @@ However, implicit feedback suffers from severe **position bias**.
 ### The Examination Hypothesis
 Formally, let $C_i \in \{0, 1\}$ denote a click on position $i$, and $E_i \in \{0, 1\}$ denote whether the user visually examines position $i$:
 
-$$P(C_i = 1 \mid d, i) = P(E_i = 1 \mid i) \cdot P(R = 1 \mid d)$$
+$$
+P(C_i = 1 \mid d, i) = P(E_i = 1 \mid i) \cdot P(R = 1 \mid d)
+$$
 
 Where:
 - $p_i = P(E_i = 1 \mid i)$ is the **examination propensity** at rank $i$.
@@ -131,7 +135,9 @@ If we train a machine learning model directly on raw click logs without position
 ### Counterfactual Risk Minimization via Inverse Propensity Scoring (IPS)
 Joachims, Swaminathan, and Schnabel (2017) demonstrated that we can form an unbiased empirical risk estimator using **Inverse Propensity Scoring (IPS)**. By weighting each logged click inversely by the examination propensity of the slot where the item appeared:
 
-$$\hat{R}_{\text{IPS}}(f) = \sum_{(q, d, i) \in \mathcal{D}} \frac{c_{q, d, i}}{p_i} \cdot \ell\left(f(q, d), y_{q, d}\right)$$
+$$
+\hat{R}_{\text{IPS}}(f) = \sum_{(q, d, i) \in \mathcal{D}} \frac{c_{q, d, i}}{p_i} \cdot \ell\left(f(q, d), y_{q, d}\right)
+$$
 
 Where $c_{q, d, i} \in \{0, 1\}$ is the observed click and $p_i$ is the examination propensity at position $i$.
 
@@ -148,7 +154,9 @@ Imagine a web surfer browsing the internet. With probability $d$ (the **damping 
 
 The PageRank of a page $u$ is the stationary probability that the random surfer is visiting page $u$ at any given moment:
 
-$$PR(u) = \frac{1 - d}{N} + d \sum_{v \in \text{In}(u)} \frac{PR(v)}{L(v)}$$
+$$
+PR(u) = \frac{1 - d}{N} + d \sum_{v \in \text{In}(u)} \frac{PR(v)}{L(v)}
+$$
 
 Where:
 - $N = |V|$ is the total number of pages in the corpus.
@@ -167,7 +175,9 @@ Two structural graph patterns break naive link propagation:
 Let $\mathbf{P} \in \mathbb{R}^{N \times N}$ denote the row-stochastic hyperlink transition matrix, where $P_{v, u} = 1/L(v)$ if edge $v \to u$ exists, and $P_{v, u} = 1/N$ if $L(v) = 0$.
 
 With damping factor $d$, the modified Google transition matrix $\mathbf{G}$ is:
-$$\mathbf{G} = d \mathbf{P} + \frac{1 - d}{N} \mathbf{E}$$
+$$
+\mathbf{G} = d \mathbf{P} + \frac{1 - d}{N} \mathbf{E}
+$$
 Where $\mathbf{E} = \mathbf{1}_{N \times N}$ is the all-ones matrix.
 
 Because $0 < d < 1$, every entry in $\mathbf{G}$ is strictly positive: $G_{v, u} \ge \frac{1 - d}{N} > 0$. By the **Perron-Frobenius Theorem**:
@@ -175,11 +185,15 @@ Because $0 < d < 1$, every entry in $\mathbf{G}$ is strictly positive: $G_{v, u}
 2. The largest eigenvalue is unique and equals $\lambda_1 = 1$.
 3. There exists a unique stationary probability distribution vector $\boldsymbol{\pi} \in \mathbb{R}^N$ satisfying $\boldsymbol{\pi} \mathbf{G} = \boldsymbol{\pi}$ with $\sum_i \pi_i = 1$.
 4. Power iteration $\mathbf{p}^{(t+1)} = \mathbf{p}^{(t)} \mathbf{G}$ converges from any initial probability vector $\mathbf{p}^{(0)}$ at a geometric rate governed by the second eigenvalue:
-$$\|\mathbf{p}^{(t)} - \boldsymbol{\pi}\|_1 \le \|\mathbf{p}^{(0)} - \boldsymbol{\pi}\|_1 \cdot |\lambda_2|^t \le 2 \cdot d^t$$
+$$
+\|\mathbf{p}^{(t)} - \boldsymbol{\pi}\|_1 \le \|\mathbf{p}^{(0)} - \boldsymbol{\pi}\|_1 \cdot |\lambda_2|^t \le 2 \cdot d^t
+$$
 (since the $L_1$ distance between any two probability distribution vectors is bounded by $2$).
 
 Under this uniform teleportation model, the iteration error contracts by a factor bounded by $d$ at each power iteration step. For an illustrative error tolerance of $\epsilon = 10^{-3}$, setting $2 \cdot d^t \le 10^{-3}$ with $d = 0.85$ yields:
-$$t \ge \frac{\ln(10^{-3} / 2)}{\ln(0.85)} = \frac{\ln(0.0005)}{\ln(0.85)} \approx 46.8 \implies \lceil 47 \rceil \text{ iterations}$$
+$$
+t \ge \frac{\ln(10^{-3} / 2)}{\ln(0.85)} = \frac{\ln(0.0005)}{\ln(0.85)} \approx 46.8 \implies \lceil 47 \rceil \text{ iterations}
+$$
 This theoretical upper bound on iteration count is determined by damping factor $d$ and target precision $\epsilon$, independent of graph size $N$. In practice, the observed convergence rate depends on the graph's specific spectral gap and the chosen stopping criterion.
 </GoDeeper>
 
@@ -218,19 +232,31 @@ Let us trace PageRank power iteration on a concrete 4-node directed graph $\{A, 
 
 ### Step 0: Uniform Initialization
 Every node begins with equal probability mass:
-$$p_0(A) = 0.2500, \quad p_0(B) = 0.2500, \quad p_0(C) = 0.2500, \quad p_0(D) = 0.2500$$
+$$
+p_0(A) = 0.2500, \quad p_0(B) = 0.2500, \quad p_0(C) = 0.2500, \quad p_0(D) = 0.2500
+$$
 
 ### Step 1: First Power Iteration
 - **Node A**:
-  $$p_1(A) = 0.0375 + 0.85 \times \left(\frac{p_0(C)}{L(C)}\right) = 0.0375 + 0.85 \times \frac{0.25}{1} = 0.0375 + 0.2125 = \mathbf{0.2500}$$
+  $$
+  p_1(A) = 0.0375 + 0.85 \times \left(\frac{p_0(C)}{L(C)}\right) = 0.0375 + 0.85 \times \frac{0.25}{1} = 0.0375 + 0.2125 = \mathbf{0.2500}
+  $$
 - **Node B**:
-  $$p_1(B) = 0.0375 + 0.85 \times \left(\frac{p_0(A)}{L(A)}\right) = 0.0375 + 0.85 \times \frac{0.25}{2} = 0.0375 + 0.10625 = \mathbf{0.1438}$$
+  $$
+  p_1(B) = 0.0375 + 0.85 \times \left(\frac{p_0(A)}{L(A)}\right) = 0.0375 + 0.85 \times \frac{0.25}{2} = 0.0375 + 0.10625 = \mathbf{0.1438}
+  $$
 - **Node C**:
-  $$p_1(C) = 0.0375 + 0.85 \times \left(\frac{p_0(A)}{2} + \frac{p_0(B)}{1} + \frac{p_0(D)}{1}\right)$$
-  $$p_1(C) = 0.0375 + 0.85 \times (0.125 + 0.25 + 0.25) = 0.0375 + 0.85 \times 0.625 = 0.0375 + 0.53125 = \mathbf{0.5688}$$
+  $$
+  p_1(C) = 0.0375 + 0.85 \times \left(\frac{p_0(A)}{2} + \frac{p_0(B)}{1} + \frac{p_0(D)}{1}\right)
+  $$
+  $$
+  p_1(C) = 0.0375 + 0.85 \times (0.125 + 0.25 + 0.25) = 0.0375 + 0.85 \times 0.625 = 0.0375 + 0.53125 = \mathbf{0.5688}
+  $$
 - **Node D**:
   Since $\text{In}(D) = \emptyset$, node $D$ receives zero link mass:
-  $$p_1(D) = 0.0375 + 0.85 \times 0 = \mathbf{0.0375}$$
+  $$
+  p_1(D) = 0.0375 + 0.85 \times 0 = \mathbf{0.0375}
+  $$
 
 Total mass sum at Step 1: $0.2500 + 0.14375 + 0.56875 + 0.0375 = \mathbf{1.0000}$.
 
@@ -385,9 +411,9 @@ While PageRank serves as an effective global quality prior in hyperlinked corpor
 | :--- | :--- | :--- | :--- |
 | **Pointwise Ranker** | $s = f(\mathbf{x}_{q, d, u, c})$ | Evaluates arbitrary multi-modal feature combinations | Fails to model document competition within a slate. |
 | **Position Bias** | $P(\text{click}) = P(\text{exam} \mid k) \cdot P(\text{rel})$ | Identifies why top slots receive disproportionate clicks | Uncorrected clicks severely distort model training. |
-| **IPS Unbiasing** | $\hat{R} = \sum \frac{c_i}{p_i} \ell(f(x), y)$ | Provides mathematically unbiased offline risk estimates | High variance when examination propensities $p_i$ are tiny. |
+| **IPS Unbiasing** | $\hat{R} = \sum (c_i / p_i) \cdot \ell(f(x), y)$ | Provides mathematically unbiased offline risk estimates | High variance when examination propensities $p_i$ are tiny. |
 | **Point-in-Time Join** | Features locked to $t_{\text{request}}$ | Prevents catastrophic offline data leakage | Requires immutable feature logging infrastructure. |
-| **PageRank** | $PR(u) = \frac{1-d}{N} + d \sum \frac{PR(v)}{L(v)}$ | Query-independent measure of structural authority | Ineffective in non-hyperlinked corpora (e-commerce). |
+| **PageRank** | $PR(u) = (1-d)/N + d \sum (PR(v) / L(v))$ | Query-independent measure of structural authority | Ineffective in non-hyperlinked corpora (e-commerce). |
 | **Dangling Nodes** | Out-degree $L(v) = 0$ | Fixed by uniform virtual link redistribution | Without fix, total graph probability decays to 0. |
 
 Next: [Learning to Rank](/docs/search-ranking-recommendations/learning-to-rank) — explore how pointwise, pairwise, and listwise objective functions optimize ranked orderings directly, and derive LambdaRank gradients for LambdaMART tree ensembles.

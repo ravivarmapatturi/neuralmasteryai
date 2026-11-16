@@ -10,7 +10,9 @@ import { Solution } from '../../../components/content/ExpandableDepth';
 
 **Difficulty: Medium** · Concept: [Foundation Model Internals — Positional Encoding](/docs/llms-genai/foundation-model-internals#positional-encoding)
 
-$$\text{bias}_{h,i,j} = -m_h \cdot (i - j), \quad m_h = 2^{-8h/H} \ \text{for } j \le i$$
+$$
+\text{bias}_{h,i,j} = -m_h \cdot (i - j), \quad m_h = 2^{-8h/H} \ \text{for } j \le i
+$$
 
 Unlike [RoPE](/practice/rotary-positional-embedding-rope), which rotates the Q/K vectors themselves, ALiBi doesn't touch Q/K at all — it adds a fixed, non-learned penalty directly to the raw attention scores, proportional to the distance between the two token positions (before the softmax). Each attention head gets its own fixed "slope" $m_h$ (a geometric sequence across heads, so different heads penalize distance at different rates), which is simpler than RoPE and was specifically designed for strong length extrapolation — performing well at sequence lengths longer than anything seen in training.
 

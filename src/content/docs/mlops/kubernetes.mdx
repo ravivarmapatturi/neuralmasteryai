@@ -214,7 +214,9 @@ Kubernetes scales at two levels: more **pods** for a workload, and more **nodes*
 
 The **Horizontal Pod Autoscaler** (HPA) adjusts a Deployment's replica count from a metric. Its rule is a proportion:
 
-$$\text{desired} = \left\lceil \text{current} \times \frac{\text{current metric}}{\text{target metric}} \right\rceil$$
+$$
+\text{desired} = \left\lceil \text{current} \times \frac{\text{current metric}}{\text{target metric}} \right\rceil
+$$
 
 clamped between a minimum and a maximum, and skipped when the ratio is within a tolerance of 1 (10% by default) so it doesn't flap. Scaling *up* happens promptly; scaling *down* uses a **stabilization window** (5 minutes by default): the HPA scales down only to the highest recommendation of the last 5 minutes, so a brief dip doesn't remove pods that a returning burst will need.
 

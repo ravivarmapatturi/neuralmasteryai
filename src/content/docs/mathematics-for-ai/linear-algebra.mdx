@@ -82,15 +82,21 @@ For a square matrix $A$, an eigenvector $\mathbf{v}$ is a vector whose direction
 
 The diagram shows it happening; here's why it *must* happen. Assume $A$ has a unique dominant eigenvalue $\lambda_1$ (largest in magnitude) with eigenvectors $u_1,\ldots,u_n$ forming a basis — true for almost any real matrix worth running this on. Any starting vector $v_0$ can be written as a combination of those eigenvectors:
 
-$$v_0 = c_1 u_1 + c_2 u_2 + \cdots + c_n u_n$$
+$$
+v_0 = c_1 u_1 + c_2 u_2 + \cdots + c_n u_n
+$$
 
 Applying $A$ once multiplies each term by its own eigenvalue ($Au_i = \lambda_i u_i$), so applying $A$ $k$ times multiplies each term by $\lambda_i^k$:
 
-$$A^k v_0 = c_1 \lambda_1^k u_1 + c_2 \lambda_2^k u_2 + \cdots + c_n \lambda_n^k u_n$$
+$$
+A^k v_0 = c_1 \lambda_1^k u_1 + c_2 \lambda_2^k u_2 + \cdots + c_n \lambda_n^k u_n
+$$
 
 Factor out $\lambda_1^k$ from every term:
 
-$$A^k v_0 = \lambda_1^k \left[c_1 u_1 + c_2\left(\frac{\lambda_2}{\lambda_1}\right)^{\!k} u_2 + \cdots + c_n\left(\frac{\lambda_n}{\lambda_1}\right)^{\!k} u_n\right]$$
+$$
+A^k v_0 = \lambda_1^k \left[c_1 u_1 + c_2\left(\frac{\lambda_2}{\lambda_1}\right)^{\!k} u_2 + \cdots + c_n\left(\frac{\lambda_n}{\lambda_1}\right)^{\!k} u_n\right]
+$$
 
 Since $\lambda_1$ is strictly the largest in magnitude, every ratio $|\lambda_i/\lambda_1| < 1$ for $i \neq 1$ — and anything less than 1 raised to an ever-larger power $k$ shrinks toward exactly 0. So as $k \to \infty$, every term except the first vanishes, and the bracketed expression converges to just $c_1 u_1$: pure dominant-eigenvector direction, nothing else left. The $\lambda_1^k$ factor out front is exactly why the algorithm renormalizes every single step — without it, that factor would overflow or underflow long before the direction finished converging. As a bonus, this derivation also explains *when* power iteration converges slowly: the rate is governed by $|\lambda_2/\lambda_1|$ — the closer the top two eigenvalues are to each other, the closer that ratio is to 1, and the more steps it takes for the second term to actually die out.
 
@@ -108,13 +114,17 @@ If you understand SVD, you understand why "compressing" a matrix by keeping only
 
 "Loses the least information possible" is a precise, provable claim, not just a reassuring phrase — worth stating exactly. Sort the singular values descending, $\sigma_1 \geq \sigma_2 \geq \cdots \geq \sigma_r > 0$, and build the rank-$k$ truncation by keeping only the top $k$ terms of the decomposition:
 
-$$A_k = \sum_{i=1}^{k} \sigma_i\, u_i v_i^T$$
+$$
+A_k = \sum_{i=1}^{k} \sigma_i\, u_i v_i^T
+$$
 
 **Eckart-Young theorem**: among *every* possible rank-$k$ matrix $B$ (not just ones built from $A$'s own singular vectors), $A_k$ is the one that minimizes the reconstruction error $\|A - B\|_F$ (Frobenius norm — the square root of the sum of every squared entry in the difference). No other rank-$k$ matrix, however cleverly constructed, gets closer to $A$ than $A_k$ does.
 
 Even more useful: the *exact* error $A_k$ achieves is computable directly from the singular values you threw away, with nothing else needed:
 
-$$\|A - A_k\|_F = \sqrt{\sigma_{k+1}^2 + \sigma_{k+2}^2 + \cdots + \sigma_r^2}$$
+$$
+\|A - A_k\|_F = \sqrt{\sigma_{k+1}^2 + \sigma_{k+2}^2 + \cdots + \sigma_r^2}
+$$
 
 This is precisely why keeping the *largest* singular values and discarding the *smallest* ones is the right compression strategy, not an arbitrary convention: the reconstruction error is a direct, computable function of exactly which singular values got dropped, and since they're sorted descending, dropping the smallest ones minimizes that sum by construction. Truncating any other subset of $k$ singular values — keeping some small ones and dropping some large ones — would strictly increase this same formula's value.
 

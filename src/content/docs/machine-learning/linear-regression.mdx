@@ -37,7 +37,9 @@ Take a familiar example: predicting a student's **exam score** from how many **h
 
 You already know the equation for a line from algebra: $y = mx + b$, where $m$ is the slope and $b$ is where the line crosses the y-axis. Linear regression uses the exact same equation, just with different letters and one important addition — a *hat*:
 
-$$\hat{y} = w \cdot x + b$$
+$$
+\hat{y} = w \cdot x + b
+$$
 
 The hat on $\hat{y}$ (read "y-hat") matters: it means *predicted* value, not the actual observed value $y$. Real data is noisy — two students who both studied 5 hours won't score identically — so the line can't pass through every point exactly. $\hat{y}$ is the line's best estimate for a given $x$; the gap between $\hat{y}$ and the real $y$ for any point is called the <Key>residual</Key>, and it's exactly what the rest of this page is about minimizing.
 
@@ -69,11 +71,15 @@ Everything above is the intuition. Everything below is the actual math that make
 
 Linear regression assumes the target is a linear function of the input, plus noise:
 
-$$\hat{y} = w \cdot x + b$$
+$$
+\hat{y} = w \cdot x + b
+$$
 
 For multiple features, $x$ becomes a vector $\mathbf{x} \in \mathbb{R}^d$ and $w$ a weight vector $\mathbf{w} \in \mathbb{R}^d$ (see [Linear Algebra](/docs/mathematics-for-ai/linear-algebra)):
 
-$$\hat{y} = \mathbf{w}^T \mathbf{x} + b$$
+$$
+\hat{y} = \mathbf{w}^T \mathbf{x} + b
+$$
 
 $w$ (the weights) and $b$ (the bias/intercept) are the parameters we need to *learn* — the entire rest of this page is about finding the $w, b$ that make $\hat{y}$ match the real data $y$ as closely as possible.
 
@@ -83,7 +89,9 @@ $w$ (the weights) and $b$ (the bias/intercept) are the parameters we need to *le
 
 We need a number that measures "how wrong" a given $(w, b)$ is across the whole dataset of $n$ examples:
 
-$$J(w, b) = \frac{1}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)} - y^{(i)} \right)^2 = \frac{1}{n} \sum_{i=1}^{n} \left( w x^{(i)} + b - y^{(i)} \right)^2$$
+$$
+J(w, b) = \frac{1}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)} - y^{(i)} \right)^2 = \frac{1}{n} \sum_{i=1}^{n} \left( w x^{(i)} + b - y^{(i)} \right)^2
+$$
 
 **Why squared error, specifically?** Three reasons that all matter:
 - It's differentiable everywhere (unlike absolute error, which has a sharp corner at zero — its derivative is undefined right where the error is smallest, which complicates gradient-based optimization).
@@ -94,11 +102,15 @@ $$J(w, b) = \frac{1}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)} - y^{(i)} \right)^2 
 
 The claim above is precise enough to actually prove. Assume each observation is the true line plus Gaussian noise: $y^{(i)} = w x^{(i)} + b + \epsilon^{(i)}$, with $\epsilon^{(i)} \sim \mathcal{N}(0, \sigma^2)$ i.i.d. Equivalently, $y^{(i)} \mid x^{(i)} \sim \mathcal{N}(\hat{y}^{(i)}, \sigma^2)$, so the probability density of observing $y^{(i)}$ given $x^{(i)}$ and the parameters is:
 
-$$p\left(y^{(i)} \mid x^{(i)}; w, b\right) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left(-\frac{\left(y^{(i)} - \hat{y}^{(i)}\right)^2}{2\sigma^2}\right)$$
+$$
+p\left(y^{(i)} \mid x^{(i)}; w, b\right) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left(-\frac{\left(y^{(i)} - \hat{y}^{(i)}\right)^2}{2\sigma^2}\right)
+$$
 
 Since the $n$ observations are independent, the likelihood of the whole dataset is the product of each one's density, and maximum likelihood estimation picks the $(w, b)$ that maximizes it. Products of exponentials are unpleasant to differentiate, so take the log instead — $\log$ is monotonic increasing, so whatever maximizes the likelihood also maximizes the log-likelihood:
 
-$$\log L(w, b) = \sum_{i=1}^{n} \left[ -\frac{1}{2}\log(2\pi\sigma^2) - \frac{\left(y^{(i)} - \hat{y}^{(i)}\right)^2}{2\sigma^2} \right] = -\frac{n}{2}\log(2\pi\sigma^2) - \frac{1}{2\sigma^2}\sum_{i=1}^{n}\left(y^{(i)} - \hat{y}^{(i)}\right)^2$$
+$$
+\log L(w, b) = \sum_{i=1}^{n} \left[ -\frac{1}{2}\log(2\pi\sigma^2) - \frac{\left(y^{(i)} - \hat{y}^{(i)}\right)^2}{2\sigma^2} \right] = -\frac{n}{2}\log(2\pi\sigma^2) - \frac{1}{2\sigma^2}\sum_{i=1}^{n}\left(y^{(i)} - \hat{y}^{(i)}\right)^2
+$$
 
 Now look at what actually depends on $(w, b)$: the first term, $-\frac{n}{2}\log(2\pi\sigma^2)$, doesn't involve $w$ or $b$ at all — it's a fixed constant with respect to the parameters we're optimizing. The *only* piece that moves as $(w, b)$ change is $-\frac{1}{2\sigma^2}\sum_i\left(y^{(i)} - \hat{y}^{(i)}\right)^2$, and since $\sigma^2 > 0$, that's a positive constant times the *negative* sum of squared errors. Maximizing a negative quantity means minimizing the quantity itself — so maximizing $\log L(w,b)$ over $(w, b)$ is *exactly* the same optimization problem as minimizing $\sum_i\left(y^{(i)} - \hat{y}^{(i)}\right)^2$, which is $J(w,b)$ up to the constant factor $\frac{1}{n}$ that doesn't change where the minimum sits. Gaussian-noise assumption in, squared-error loss out — not a convenient approximation, a mathematical identity.
 
@@ -114,17 +126,23 @@ To minimize $J$, we need $\dfrac{\partial J}{\partial w}$ and $\dfrac{\partial J
 
 Start with a single example, error $e^{(i)} = \hat{y}^{(i)} - y^{(i)} = (w x^{(i)} + b) - y^{(i)}$, and its squared contribution to the cost, $\left(e^{(i)}\right)^2$. Apply the chain rule:
 
-$$\frac{\partial}{\partial w}\left(e^{(i)}\right)^2 = 2 e^{(i)} \cdot \frac{\partial e^{(i)}}{\partial w} = 2 e^{(i)} \cdot x^{(i)}$$
+$$
+\frac{\partial}{\partial w}\left(e^{(i)}\right)^2 = 2 e^{(i)} \cdot \frac{\partial e^{(i)}}{\partial w} = 2 e^{(i)} \cdot x^{(i)}
+$$
 
 because $\dfrac{\partial e^{(i)}}{\partial w} = \dfrac{\partial}{\partial w}\left(w x^{(i)} + b - y^{(i)}\right) = x^{(i)}$ — everything else in $e^{(i)}$ is constant with respect to $w$.
 
 Similarly, $\dfrac{\partial e^{(i)}}{\partial b} = 1$, so:
 
-$$\frac{\partial}{\partial b}\left(e^{(i)}\right)^2 = 2 e^{(i)}$$
+$$
+\frac{\partial}{\partial b}\left(e^{(i)}\right)^2 = 2 e^{(i)}
+$$
 
 Now sum across all $n$ examples and divide by $n$ (matching the $\frac{1}{n}$ in $J$):
 
-$$\frac{\partial J}{\partial w} = \frac{2}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)} - y^{(i)} \right) x^{(i)} \qquad\qquad \frac{\partial J}{\partial b} = \frac{2}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)} - y^{(i)} \right)$$
+$$
+\frac{\partial J}{\partial w} = \frac{2}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)} - y^{(i)} \right) x^{(i)} \qquad\qquad \frac{\partial J}{\partial b} = \frac{2}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)} - y^{(i)} \right)
+$$
 
 **Reading the intuition directly off the formula:** if a prediction is too high ($\hat{y}^{(i)} > y^{(i)}$), the gradient is positive, so the update step (below) *decreases* $w$ — pulling the prediction back down. If the estimate is already close to correct, the error term is small, so the gradient is small and the update barely moves $w$ at all. The gradient is literally <Mark>"error times input"</Mark> — the size of the correction is proportional to both how wrong you are and how much that particular input contributed to the prediction.
 
@@ -132,11 +150,15 @@ $$\frac{\partial J}{\partial w} = \frac{2}{n} \sum_{i=1}^{n} \left( \hat{y}^{(i)
 
 Looping over $n$ examples in Python is slow. Stack all examples into a matrix $X \in \mathbb{R}^{n \times d}$ (one row per example) and all targets into $\mathbf{y} \in \mathbb{R}^n$. The predictions for the whole dataset at once:
 
-$$\hat{\mathbf{y}} = X\mathbf{w} + b$$
+$$
+\hat{\mathbf{y}} = X\mathbf{w} + b
+$$
 
 And the gradient across the entire dataset, as a single matrix expression:
 
-$$\nabla_w J = \frac{2}{n} X^T (\hat{\mathbf{y}} - \mathbf{y})$$
+$$
+\nabla_w J = \frac{2}{n} X^T (\hat{\mathbf{y}} - \mathbf{y})
+$$
 
 This is the exact same formula as Section 3 — $X^T$ (transpose, see [Linear Algebra](/docs/mathematics-for-ai/linear-algebra)) is what turns "multiply each error by its matching input and sum" into one matrix multiplication. This is why frameworks are fast: a GPU does this single matrix multiply in parallel instead of looping example by example.
 
@@ -144,9 +166,13 @@ This is the exact same formula as Section 3 — $X^T$ (transpose, see [Linear Al
 
 Because $J$ is convex, we can skip iterating entirely and solve for the exact minimum directly: set the gradient to zero and solve.
 
-$$\nabla_w J = 0 \;\;\Rightarrow\;\; X^T(X\mathbf{w} - \mathbf{y}) = 0 \;\;\Rightarrow\;\; X^TX\mathbf{w} = X^T\mathbf{y}$$
+$$
+\nabla_w J = 0 \;\;\Rightarrow\;\; X^T(X\mathbf{w} - \mathbf{y}) = 0 \;\;\Rightarrow\;\; X^TX\mathbf{w} = X^T\mathbf{y}
+$$
 
-$$\mathbf{w} = (X^TX)^{-1}X^T\mathbf{y}$$
+$$
+\mathbf{w} = (X^TX)^{-1}X^T\mathbf{y}
+$$
 
 This is the <Key>normal equation</Key> — it <Mark>gives the exact optimal weights in one shot</Mark>, no learning rate, no iterations. So why doesn't everyone just use this?
 
@@ -156,7 +182,9 @@ This is the <Key>normal equation</Key> — it <Mark>gives the exact optimal weig
 
 Instead of solving in one step, take small repeated steps in the direction that reduces the cost:
 
-$$w \leftarrow w - \alpha \frac{\partial J}{\partial w} \qquad\qquad b \leftarrow b - \alpha \frac{\partial J}{\partial b}$$
+$$
+w \leftarrow w - \alpha \frac{\partial J}{\partial w} \qquad\qquad b \leftarrow b - \alpha \frac{\partial J}{\partial b}
+$$
 
 where $\alpha$ is the learning rate (see [Calculus & Optimization](/docs/mathematics-for-ai/calculus-optimization#gradient-descent-and-its-variants)). The full loop:
 
@@ -240,7 +268,9 @@ Here's the fact that makes forming $X^TX$ dangerous: **the singular values of $X
 
 That means:
 
-$$\kappa(X^TX) = \frac{\sigma_{\max}(X)^2}{\sigma_{\min}(X)^2} = \kappa(X)^2$$
+$$
+\kappa(X^TX) = \frac{\sigma_{\max}(X)^2}{\sigma_{\min}(X)^2} = \kappa(X)^2
+$$
 
 Forming $X^TX$ <Mark>squares the condition number</Mark>. If $X$ itself is only mildly ill-conditioned — say $\kappa(X) = 10^8$, plausible with correlated real-world features — then $\kappa(X^TX) = 10^{16}$. Double-precision floats carry roughly 15–16 significant decimal digits of precision, so a condition number at $10^{16}$ means the normal equation's matrix inverse can lose *all* of it — the computed $\mathbf{w}$ becomes numerically meaningless, even though the underlying least-squares problem (solved via SVD or QR directly on $X$, never forming $X^TX$) was perfectly well-posed. This is precisely why real solvers work from $X$'s own decomposition instead of squaring their way into a much worse-conditioned problem first.
 

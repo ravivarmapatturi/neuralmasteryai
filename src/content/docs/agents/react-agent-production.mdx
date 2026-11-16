@@ -137,11 +137,15 @@ At each step $k$ of a ReAct loop, the host appends the latest Thought, Action, a
 
 Every iteration re-submits all previous steps. If $C_0$ is the initial system and user prompt token count, and each iteration adds an average of $\bar{S}$ tokens of model output and $\bar{O}$ tokens of tool observation:
 
-$$\text{Tokens Processed at Step } k = C_0 + (k - 1)(\bar{S} + \bar{O})$$
+$$
+\text{Tokens Processed at Step } k = C_0 + (k - 1)(\bar{S} + \bar{O})
+$$
 
 Across a run of $K$ iterations, the cumulative input tokens billed and processed scale quadratically:
 
-$$\text{Total Input Tokens}(K) = \sum_{k=1}^K \left[ C_0 + (k - 1)(\bar{S} + \bar{O}) \right] = K \cdot C_0 + \frac{K(K - 1)}{2}(\bar{S} + \bar{O})$$
+$$
+\text{Total Input Tokens}(K) = \sum_{k=1}^K \left[ C_0 + (k - 1)(\bar{S} + \bar{O}) \right] = K \cdot C_0 + \frac{K(K - 1)}{2}(\bar{S} + \bar{O})
+$$
 
 For an agent running 10 iterations with a 2,000-token system prompt and 500 tokens per step, the total token consumption is not $2,000 + 10 \times 500 = 7,000$ tokens — applying the formula above ($K \cdot C_0 + \frac{K(K-1)}{2}(\bar{S}+\bar{O}) = 10 \times 2{,}000 + \frac{10 \times 9}{2} \times 500$) it is **42,500 tokens**. Cost and time-to-first-token (TTFT) both scale with this quadratic curve.
 

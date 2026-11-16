@@ -51,7 +51,9 @@ The Roofline Model visualizes attainable performance as a function of **Arithmet
 
 For any neural network operation, the **Arithmetic Intensity** ($I$) is defined as:
 
-$$I = \frac{\text{Floating Point Operations (FLOPs)}}{\text{Memory Transfers (Bytes)}}$$
+$$
+I = \frac{\text{Floating Point Operations (FLOPs)}}{\text{Memory Transfers (Bytes)}}
+$$
 
 Consider multiplying an activation matrix $X \in \mathbb{R}^{B \times d}$ by a weight matrix $W \in \mathbb{R}^{d \times d_{\text{out}}}$:
 - Total FLOPs: $2 \times B \times d \times d_{\text{out}}$ (one multiply and one add per matrix element).
@@ -59,14 +61,20 @@ Consider multiplying an activation matrix $X \in \mathbb{R}^{B \times d}$ by a w
 
 Dividing total FLOPs by total bytes transferred yields:
 
-$$I = \frac{2 \times B \times d \times d_{\text{out}}}{d \times d_{\text{out}} \times \text{bytes\_per\_elem}} = \frac{2 \times B}{\text{bytes\_per\_elem}}$$
+$$
+I = \frac{2 \times B \times d \times d_{\text{out}}}{d \times d_{\text{out}} \times \text{bytes\_per\_elem}} = \frac{2 \times B}{\text{bytes\_per\_elem}}
+$$
 
 Notice that the model dimensions $d$ and $d_{\text{out}}$ cancel out completely. Arithmetic intensity depends almost exclusively on **Batch Size ($B$)** and numerical precision:
 - **At Batch Size $B=1$ (Single-user token decoding in FP16)**:
-  $$I = \frac{2 \times 1}{2} = 1.0 \text{ FLOP/byte}$$
+  $$
+  I = \frac{2 \times 1}{2} = 1.0 \text{ FLOP/byte}
+  $$
   An arithmetic intensity of $1.0$ sits deep on the left side of the roofline curve: purely memory-bandwidth bound.
 - **At Batch Size $B=64$ (Batched serving in FP16)**:
-  $$I = \frac{2 \times 64}{2} = 64 \text{ FLOPs/byte}$$
+  $$
+  I = \frac{2 \times 64}{2} = 64 \text{ FLOPs/byte}
+  $$
   The operation moves up the sloped roofline, extracting substantially higher computational throughput from the chip.
 
 <PredictFirst
@@ -101,7 +109,9 @@ During autoregressive generation at step $t$, the self-attention layer must comp
 
 The exact memory footprint for a request of sequence length $L$ tokens is:
 
-$$\text{Memory}_{\text{KV}} = 2 \times n_{\text{layers}} \times n_{\text{kv\_heads}} \times d_{\text{head}} \times L \times \text{bytes\_per\_elem}$$
+$$
+\text{Memory}_{\text{KV}} = 2 \times n_{\text{layers}} \times n_{\text{kv\_heads}} \times d_{\text{head}} \times L \times \text{bytes\_per\_elem}
+$$
 
 Where:
 - The factor of $2$ accounts for storing both **Key** and **Value** tensors.
@@ -161,13 +171,19 @@ vllm serve meta-llama/Meta-Llama-3-8B-Instruct \
 Consider serving Meta LLaMA-3-8B in FP16 precision ($2$ bytes per element):
 - Architecture: $n_{\text{layers}} = 32$, $n_{\text{kv\_heads}} = 8$ (GQA), $d_{\text{head}} = 128$.
 - Bytes per token:
-  $$\text{Bytes per token} = 2 \times 32 \times 8 \times 128 \times 2 = 131,072 \text{ bytes} = 128 \text{ KB per token}$$
+  $$
+  \text{Bytes per token} = 2 \times 32 \times 8 \times 128 \times 2 = 131,072 \text{ bytes} = 128 \text{ KB per token}
+  $$
 
 For a concurrent serving batch of $B = 32$ requests:
 - At sequence length $L = 4,096$ tokens:
-  $$\text{Total Memory} = 131,072 \times 4,096 \times 32 = 17,179,869,184 \text{ bytes} = 16.0 \text{ GB}$$
+  $$
+  \text{Total Memory} = 131,072 \times 4,096 \times 32 = 17,179,869,184 \text{ bytes} = 16.0 \text{ GB}
+  $$
 - At sequence length $L = 16,384$ tokens:
-  $$\text{Total Memory} = 131,072 \times 16,384 \times 32 = 68,719,476,736 \text{ bytes} = 64.0 \text{ GB}$$
+  $$
+  \text{Total Memory} = 131,072 \times 16,384 \times 32 = 68,719,476,736 \text{ bytes} = 64.0 \text{ GB}
+  $$
 
 On an 80 GB GPU where model weights consume 16 GB, running 32 concurrent requests at 16k tokens completely saturates physical VRAM, requiring KV cache quantization or disaggregation.
 

@@ -11,7 +11,9 @@ import RunnableCode from '../../../components/content/RunnableCode';
 
 **Difficulty: Medium** · Concept: [LLM Inference Optimization — Quantization](/docs/mlops/llm-inference-optimization#quantization)
 
-$$\text{scale} = \frac{\max(|W|)}{127}, \quad q = \text{round}\left(\frac{W}{\text{scale}}\right), \quad \hat{W} = q \cdot \text{scale}$$
+$$
+\text{scale} = \frac{\max(|W|)}{127}, \quad q = \text{round}\left(\frac{W}{\text{scale}}\right), \quad \hat{W} = q \cdot \text{scale}
+$$
 
 Model weights are normally stored as 32- or 16-bit floats. Quantization stores them as 8-bit integers instead — a 4x (or 2x, from fp16) reduction in memory and bandwidth, which is often the real bottleneck for serving large models — at the cost of some precision loss. Symmetric per-tensor INT8 quantization is the simplest real version: find one `scale` factor that maps the weight matrix's largest-magnitude value to the INT8 range's edge (`±127`), round every other value to the nearest representable integer under that same scale, and reconstruct an approximation by multiplying back.
 

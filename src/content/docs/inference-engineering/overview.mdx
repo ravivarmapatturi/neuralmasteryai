@@ -49,15 +49,21 @@ Every piece of compute hardware—from an 80GB NVIDIA H100 GPU down to a $2 ESP3
 
 The peak attainable throughput of a model on a given hardware accelerator is bounded by:
 
-$$\text{Attainable Performance (TFLOPs/s)} = \min\left(\text{Peak Compute}, \text{Operational Intensity} \times \text{Memory Bandwidth}\right)$$
+$$
+\text{Attainable Performance (TFLOPs/s)} = \min\left(\text{Peak Compute}, \text{Operational Intensity} \times \text{Memory Bandwidth}\right)
+$$
 
 Where **Operational Intensity** ($I$) is defined as:
 
-$$I = \frac{\text{Total Floating Point Operations (FLOPs)}}{\text{Total Bytes Transferred from Memory (Bytes)}}$$
+$$
+I = \frac{\text{Total Floating Point Operations (FLOPs)}}{\text{Total Bytes Transferred from Memory (Bytes)}}
+$$
 
 The **Knee of the Roofline** occurs at:
 
-$$I_{\text{knee}} = \frac{\text{Peak Compute Capacity (FLOPs/s)}}{\text{Peak Memory Bandwidth (Bytes/s)}}$$
+$$
+I_{\text{knee}} = \frac{\text{Peak Compute Capacity (FLOPs/s)}}{\text{Peak Memory Bandwidth (Bytes/s)}}
+$$
 
 - **Compute-Bound Regime ($I > I_{\text{knee}}$)**: The arithmetic intensity is high enough that the execution units (ALUs / Tensor Cores) are saturated. Performance is limited by compute FLOPs.
 - **Memory-Bandwidth-Bound Regime ($I < I_{\text{knee}}$)**: The execution units sit idle waiting for weights and activations to arrive across the memory bus. Performance is limited by memory bandwidth.
@@ -82,7 +88,9 @@ In modern transformer models, recomputing past keys and values at every token ge
 
 However, the memory footprint of the KV Cache grows rapidly with sequence length:
 
-$$\text{KV Cache Size per Request (Bytes)} = 2 \times 2 \times n_{\text{layers}} \times n_{\text{heads}} \times d_{\text{head}} \times L \times \text{Precision Bytes}$$
+$$
+\text{KV Cache Size per Request (Bytes)} = 2 \times 2 \times n_{\text{layers}} \times n_{\text{heads}} \times d_{\text{head}} \times L \times \text{Precision Bytes}
+$$
 
 ### PagedAttention vs Contiguous Allocation
 
@@ -101,10 +109,14 @@ Consider serving LLaMA-3-70B:
 - Precision: 16-bit float (2 bytes)
 
 For a single token:
-$$\text{Bytes per token} = 2 (\text{K and V}) \times 80 \times 8 \times 128 \times 2 = 327,680 \text{ bytes} \approx 320 \text{ KB / token}$$
+$$
+\text{Bytes per token} = 2 (\text{K and V}) \times 80 \times 8 \times 128 \times 2 = 327,680 \text{ bytes} \approx 320 \text{ KB / token}
+$$
 
 For a sequence length of 8,192 tokens:
-$$\text{KV Cache for 1 Request} = 8,192 \times 320 \text{ KB} \approx 2.62 \text{ GB VRAM}$$
+$$
+\text{KV Cache for 1 Request} = 8,192 \times 320 \text{ KB} \approx 2.62 \text{ GB VRAM}
+$$
 
 If serving 100 concurrent requests at 8k context length, the KV Cache alone consumes **262 GB of VRAM**—exceeding three 80GB GPUs just for memory storage! PagedAttention ensures every physical memory page is filled to capacity, eliminating fragmentation waste.
 
@@ -128,9 +140,13 @@ Autoregressive token generation requires sequential execution. **Speculative Dec
 
 1. **Parallel Verification**: The target model evaluates all $K$ draft tokens in a single parallel forward pass ($O(1)$ verification).
 2. **Exact Distributional Fidelity**: Using modified rejection sampling, tokens are accepted with probability:
-   $$\alpha_i = \min\left(1, \frac{P_{\text{target}}(x_i)}{P_{\text{draft}}(x_i)}\right)$$
+   $$
+   \alpha_i = \min\left(1, \frac{P_{\text{target}}(x_i)}{P_{\text{draft}}(x_i)}\right)
+   $$
    If a token is rejected, the target model resamples a replacement token from the normalized residual distribution:
-   $$P_{\text{resample}}(x) = \text{relu}\left(P_{\text{target}}(x) - P_{\text{draft}}(x)\right)$$
+   $$
+   P_{\text{resample}}(x) = \text{relu}\left(P_{\text{target}}(x) - P_{\text{draft}}(x)\right)
+   $$
    This guarantees that the final output distribution is **mathematically identical** to sampling directly from the large target model!
 
 ---
@@ -145,17 +161,25 @@ Quantization maps continuous 32-bit or 16-bit floating point numbers into discre
 
 The fundamental quantization mapping from real float $x \in [\alpha, \beta]$ to an 8-bit integer $q \in [-128, 127]$ is:
 
-$$q = \text{clamp}\left(\left\lfloor \frac{x}{S} \right\rceil + Z, -128, 127\right)$$
+$$
+q = \text{clamp}\left(\left\lfloor \frac{x}{S} \right\rceil + Z, -128, 127\right)
+$$
 
 Where the **Scale factor** ($S$) and **Zero-point** ($Z$) are defined as:
 
-$$S = \frac{\beta - \alpha}{q_{\max} - q_{\min}} = \frac{\beta - \alpha}{255}$$
+$$
+S = \frac{\beta - \alpha}{q_{\max} - q_{\min}} = \frac{\beta - \alpha}{255}
+$$
 
-$$Z = \text{round}\left(\frac{-\alpha}{S}\right) + q_{\min}$$
+$$
+Z = \text{round}\left(\frac{-\alpha}{S}\right) + q_{\min}
+$$
 
 De-quantization reconstructs the approximate floating-point value:
 
-$$\hat{x} = S \times (q - Z)$$
+$$
+\hat{x} = S \times (q - Z)
+$$
 
 In **Symmetric Quantization** (used for zero-centered weights), $Z = 0$ and $S = \frac{\max(|x|)}{127}$, eliminating integer offset additions during matrix multiplications.
 

@@ -29,7 +29,9 @@ If an autonomous chauffeur misses the express exit and drives in circles on the 
 
 In modern frontier APIs (Anthropic Claude 3.7 Sonnet, OpenAI GPT-4o, Google Gemini 1.5 Pro), token pricing is divided into four distinct billing categories:
 
-$$\text{Cost}_{\text{turn}} = (T_{\text{in\_raw}} \times P_{\text{in}}) + (T_{\text{cache\_read}} \times P_{\text{read}}) + (T_{\text{cache\_write}} \times P_{\text{write}}) + (T_{\text{out}} \times P_{\text{out}})$$
+$$
+\text{Cost}_{\text{turn}} = (T_{\text{in\_raw}} \times P_{\text{in}}) + (T_{\text{cache\_read}} \times P_{\text{read}}) + (T_{\text{cache\_write}} \times P_{\text{write}}) + (T_{\text{out}} \times P_{\text{out}})
+$$
 
 Where:
 - $T_{\text{in\_raw}}$: Uncached input tokens that must be processed through full attention prefill.
@@ -63,21 +65,35 @@ Consider an autonomous agent executing a 10-turn software refactoring task:
 
 Let us calculate the exact cost:
 
-$$C_{\text{in\_raw}} = 20{,}000 \times \frac{\$3.00}{10^6} = \$0.0600$$
+$$
+C_{\text{in\_raw}} = 20{,}000 \times \frac{\$3.00}{10^6} = \$0.0600
+$$
 
-$$C_{\text{cache\_read}} = 96{,}000 \times \frac{\$0.30}{10^6} = \$0.0288$$
+$$
+C_{\text{cache\_read}} = 96{,}000 \times \frac{\$0.30}{10^6} = \$0.0288
+$$
 
-$$C_{\text{cache\_write}} = 4{,}000 \times \frac{\$3.75}{10^6} = \$0.0150$$
+$$
+C_{\text{cache\_write}} = 4{,}000 \times \frac{\$3.75}{10^6} = \$0.0150
+$$
 
-$$C_{\text{out}} = 2{,}500 \times \frac{\$15.00}{10^6} = \$0.0375$$
+$$
+C_{\text{out}} = 2{,}500 \times \frac{\$15.00}{10^6} = \$0.0375
+$$
 
-$$\text{Total Session Cost} = \$0.0600 + \$0.0288 + \$0.0150 + \$0.0375 = \mathbf{\$0.1413}$$
+$$
+\text{Total Session Cost} = \$0.0600 + \$0.0288 + \$0.0150 + \$0.0375 = \mathbf{\$0.1413}
+$$
 
 Without prompt caching, all 120,000 input tokens would be billed at the standard rate of $3.00/1M:
 
-$$C_{\text{uncached\_baseline}} = \left(120{,}000 \times \frac{\$3.00}{10^6}\right) + \left(2{,}500 \times \frac{\$15.00}{10^6}\right) = \$0.3600 + \$0.0375 = \mathbf{\$0.3975}$$
+$$
+C_{\text{uncached\_baseline}} = \left(120{,}000 \times \frac{\$3.00}{10^6}\right) + \left(2{,}500 \times \frac{\$15.00}{10^6}\right) = \$0.3600 + \$0.0375 = \mathbf{\$0.3975}
+$$
 
-$$\text{Net Financial Savings} = \frac{\$0.3975 - \$0.1413}{\$0.3975} = \mathbf{64.45\%}$$
+$$
+\text{Net Financial Savings} = \frac{\$0.3975 - \$0.1413}{\$0.3975} = \mathbf{64.45\%}
+$$
 
 Observability dashboards must track these distinct buckets: if cache hit ratios drop from 80% to 10%, operational costs will nearly triple with zero change in user traffic.
 
@@ -100,11 +116,15 @@ Observability dashboards must track these distinct buckets: if cache hit ratios 
 
 We define the token burn velocity $V_t$ at turn $t$ as:
 
-$$V_t = \frac{\Delta \text{Tokens}_t}{\Delta t_{\text{seconds}}} = \frac{\text{Tokens}_t - \text{Tokens}_{t-1}}{t_{\text{end}} - t_{\text{start}}}$$
+$$
+V_t = \frac{\Delta \text{Tokens}_t}{\Delta t_{\text{seconds}}} = \frac{\text{Tokens}_t - \text{Tokens}_{t-1}}{t_{\text{end}} - t_{\text{start}}}
+$$
 
 And the financial velocity $F_t$ ($/minute) as:
 
-$$F_t = V_t \times \bar{P}_{\text{effective}} \times 60$$
+$$
+F_t = V_t \times \bar{P}_{\text{effective}} \times 60
+$$
 
 If $F_t > \text{Ceiling}_{\text{rate}}$ (for example, exceeding $2.00/minute), the harness trips a circuit breaker, halts the agent before the next turn, and marks the trace with `status.error = "BURN_VELOCITY_EXCEEDED"`.
 
@@ -146,7 +166,9 @@ By tracking cache hit ratios by team, platform engineers immediately discover th
 
 Latency monitoring in autonomous agents must not treat inference as an opaque block of time. Total inference duration is the sum of four discrete components:
 
-$$t_{\text{total}} = t_{\text{queue}} + t_{\text{prefill}} + t_{\text{decode}} + t_{\text{network}}$$
+$$
+t_{\text{total}} = t_{\text{queue}} + t_{\text{prefill}} + t_{\text{decode}} + t_{\text{network}}
+$$
 
 ```
 +--------------------------------------------------------------------------+

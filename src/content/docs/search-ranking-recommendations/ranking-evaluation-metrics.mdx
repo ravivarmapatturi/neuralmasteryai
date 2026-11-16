@@ -35,21 +35,27 @@ Let binary relevance $r_i \in \{0, 1\}$ indicate whether the item at position $i
 
 ### Precision@k
 The fraction of retrieved items in the top-$k$ that are relevant:
-$$\text{Precision@}k = \frac{1}{k} \sum_{i=1}^{k} r_i$$
+$$
+\text{Precision@}k = \frac{1}{k} \sum_{i=1}^{k} r_i
+$$
 
 - **Denominator**: Exactly $k$. If the system returns fewer than $k$ items, the denominator remains $k$ to penalize incomplete slates.
 - **Limitation**: Precision ignores document order within the top-$k$. A list with relevant items at ranks 1 and 2 has the exact same Precision@3 as a list with relevant items at ranks 2 and 3.
 
 ### Recall@k
 The fraction of all known relevant items in the corpus ($R_{\text{total}}$) retrieved in the top-$k$:
-$$\text{Recall@}k = \frac{1}{R_{\text{total}}} \sum_{i=1}^{k} r_i$$
+$$
+\text{Recall@}k = \frac{1}{R_{\text{total}}} \sum_{i=1}^{k} r_i
+$$
 
 - **Denominator**: $R_{\text{total}}$—the total count of known relevant documents in the evaluation collection for that query.
 - **Trade-off**: In an illustrative large-scale retrieval scenario with $R_{\text{total}} = 10,000$ relevant pages across the web, Recall@10 is mathematically bounded at $10 / 10,000 = 0.001$. In candidate generation systems (such as [Semantic & Hybrid Search](/docs/search-ranking-recommendations/semantic-and-hybrid-search)), Recall@$k$ (with $k \in \{100, 1000\}$) evaluates whether dense and sparse retrieval stages surface relevant items into the candidate pool for downstream ranking models.
 
 ### Hit Rate@k
 A binary indicator showing whether at least one relevant item appeared in the top-$k$:
-$$\text{HitRate@}k = \begin{cases} 1 & \text{if } \sum_{i=1}^k r_i > 0 \\ 0 & \text{otherwise} \end{cases}$$
+$$
+\text{HitRate@}k = \begin{cases} 1 & \text{if } \sum_{i=1}^k r_i > 0 \\ 0 & \text{otherwise} \end{cases}
+$$
 
 Hit Rate@$k$ (also known as Success@$k$) is commonly used in navigational search, question answering, and task-oriented conversational agents where finding at least one acceptable result fulfills the user's intent.
 
@@ -59,12 +65,16 @@ To penalize systems that bury relevant items beneath irrelevant clutter, rank-aw
 
 ### Mean Reciprocal Rank (MRR)
 Reciprocal Rank (RR) evaluates the position of the **very first relevant result**:
-$$\text{RR} = \frac{1}{\text{rank}_1}$$
+$$
+\text{RR} = \frac{1}{\text{rank}_1}
+$$
 
 Where $\text{rank}_1$ is the 1-indexed rank of the first relevant document. If no relevant document appears in the list, $\text{RR} = 0$.
 
 Averaged across a benchmark set of $Q$ queries, this becomes **Mean Reciprocal Rank (MRR)**:
-$$\text{MRR} = \frac{1}{|Q|} \sum_{q=1}^{|Q|} \frac{1}{\text{rank}_1(q)}$$
+$$
+\text{MRR} = \frac{1}{|Q|} \sum_{q=1}^{|Q|} \frac{1}{\text{rank}_1(q)}
+$$
 
 - If the first relevant item appears at rank 1, $\text{RR} = 1.0$.
 - If it is delayed to rank 2, $\text{RR} = 0.5$.
@@ -75,7 +85,9 @@ MRR is especially well-suited for navigational queries (such as looking up a spe
 ### Mean Average Precision (MAP)
 For queries with multiple relevant answers, Average Precision ($\text{AP}$) computes the average of Precision@$i$ evaluated at every position where a relevant document occurs, normalized by the total number of known relevant items in the corpus:
 
-$$\text{AP@}k = \frac{1}{R_{\text{total}}} \sum_{i=1}^{k} \text{Precision@}i \times r_i$$
+$$
+\text{AP@}k = \frac{1}{R_{\text{total}}} \sum_{i=1}^{k} \text{Precision@}i \times r_i
+$$
 
 Where:
 - $\text{Precision@}i = \frac{1}{i}\sum_{j=1}^i r_j$ is the precision evaluated at cutoff $i$.
@@ -83,7 +95,9 @@ Where:
 - $R_{\text{total}}$ is the total number of known relevant documents in the evaluation collection for that query. Dividing by $R_{\text{total}}$ ensures that $\text{AP@}k$ penalizes models for missing relevant items that were never retrieved within the top $k$.
 
 Across a collection of test queries $Q$, the mean of $\text{AP}$ is **Mean Average Precision (MAP)**:
-$$\text{MAP} = \frac{1}{|Q|} \sum_{q=1}^{|Q|} \text{AP}(q)$$
+$$
+\text{MAP} = \frac{1}{|Q|} \sum_{q=1}^{|Q|} \text{AP}(q)
+$$
 
 MAP rewards systems that place relevant documents at the very top, while still evaluating every relevant item retrieved.
 
@@ -92,11 +106,15 @@ Neither MRR nor MAP natively handles **graded relevance** (e.g., distinguishing 
 
 #### Cumulative Gain (CG)
 The unweighted sum of graded relevance scores $g_i \in \{0, 1, 2, 3\}$ up to cutoff $k$:
-$$\text{CG@}k = \sum_{i=1}^{k} g_i$$
+$$
+\text{CG@}k = \sum_{i=1}^{k} g_i
+$$
 
 #### Discounted Cumulative Gain (DCG)
 To penalize placing high-grade results lower down the list, each item's gain is divided by a logarithmic discount factor:
-$$\text{DCG@}k = \sum_{i=1}^{k} \frac{\text{gain}(g_i)}{\log_2(i + 1)}$$
+$$
+\text{DCG@}k = \sum_{i=1}^{k} \frac{\text{gain}(g_i)}{\log_2(i + 1)}
+$$
 
 Two primary gain conventions exist in the literature:
 - **Exponential Gain (Burges et al., 2005 / Manning et al., 2008)**: $\text{gain}(g_i) = 2^{g_i} - 1$. This heavily emphasizes surfacing perfect matches (grade 3 has gain $2^3 - 1 = 7$, compared to grade 1 with gain $2^1 - 1 = 1$). This is widely used in learning-to-rank competitions and web search benchmarks.
@@ -107,7 +125,9 @@ At rank 1 ($i = 1$), the denominator is $\log_2(1 + 1) = \log_2(2) = 1.0$, apply
 #### Normalized Discounted Cumulative Gain (NDCG)
 Because raw DCG depends on the number and grades of relevant items for a specific query, raw DCG scores cannot be averaged across queries. We normalize DCG by the **Ideal DCG (IDCG)**—the DCG score of the exact same candidate items sorted in perfect descending order of relevance:
 
-$$\text{NDCG@}k = \frac{\text{DCG@}k}{\text{IDCG@}k}$$
+$$
+\text{NDCG@}k = \frac{\text{DCG@}k}{\text{IDCG@}k}
+$$
 
 $\text{NDCG@}k$ is bounded strictly in the range $[0.0, 1.0]$. A score of $1.0$ indicates that the top-$k$ results are ordered in ideal descending relevance order.
 
@@ -172,8 +192,8 @@ Let us evaluate at cutoff **$k = 3$** across two candidate rankings:
 | **Hit Rate@3** | $1.0$ | $1.0$ | At least one relevant document appears in the top 3. |
 | **MRR** | **$1.0000$** | **$0.5000$** | Order 1: first hit at rank 1 ($1/1 = 1.0$). Order 2: first hit delayed to rank 2 ($1/2 = 0.5$). |
 | **AP@3** | **$0.5556$** | **$0.3889$** | Order 1: $(1/1 + 2/3) / 3 = (5/3)/3 = 5/9 \approx 0.5556$. Order 2: $(1/2 + 2/3) / 3 = (7/6)/3 = 7/18 \approx 0.3889$. |
-| **DCG@3 (exp)** | **$8.5000$** | **$5.9165$** | Order 1: $\frac{7}{\log_2(2)} + 0 + \frac{3}{\log_2(4)} = 7 + 1.5 = 8.5$. Order 2: $0 + \frac{7}{\log_2(3)} + \frac{3}{\log_2(4)} = 4.4165 + 1.5 = 5.9165$. |
-| **IDCG@3 (exp)** | $9.3928$ | $9.3928$ | Ideal ranking `[A, B, C]` with grades `[3, 2, 1]`: $\frac{7}{\log_2(2)} + \frac{3}{\log_2(3)} + \frac{1}{\log_2(4)} = 7 + 1.8928 + 0.5 = 9.3928$. |
+| **DCG@3 (exp)** | **$8.5000$** | **$5.9165$** | Order 1: $7/\log_2(2) + 0 + 3/\log_2(4) = 7 + 1.5 = 8.5$. Order 2: $0 + 7/\log_2(3) + 3/\log_2(4) = 4.4165 + 1.5 = 5.9165$. |
+| **IDCG@3 (exp)** | $9.3928$ | $9.3928$ | Ideal ranking `[A, B, C]` with grades `[3, 2, 1]`: $7/\log_2(2) + 3/\log_2(3) + 1/\log_2(4) = 7 + 1.8928 + 0.5 = 9.3928$. |
 | **NDCG@3 (exp)** | **$0.9049$** | **$0.6299$** | Order 1: $8.5 / 9.3928 \approx 0.9049$. Order 2: $5.9165 / 9.3928 \approx 0.6299$. |
 
 <RunnableCode code={`import math
@@ -246,25 +266,33 @@ Production recommenders evaluate operational proxy metrics alongside NDCG:
 
 ### 1. Catalog Coverage (System-Level Metric)
 Catalog coverage measures the fraction of unique items in the catalog that are recommended to at least one user across the entire platform over an evaluation window:
-$$\text{CatalogCoverage} = \frac{|\bigcup_{u \in U} R_u|}{|\mathcal{C}|}$$
+$$
+\text{CatalogCoverage} = \frac{|\bigcup_{u \in U} R_u|}{|\mathcal{C}|}
+$$
 
 Where $R_u$ is the recommended slate for user $u$, and $\mathcal{C}$ is the total catalog. Low coverage indicates that the algorithm ignores the long tail of valuable inventory. (Note: in a single-query interactive calculator, measuring unique items in a single slate against a small corpus is only an illustrative micro-proxy).
 
 ### 2. Category-Diversity Proxy
 Users dislike slates where all recommendations belong to the exact same narrow subcategory. A straightforward operational proxy measures the fraction of distinct categories present in the top-$k$ slate:
-$$\text{CategoryDiversityProxy}(R_u) = \frac{|\{c(d) \mid d \in R_u\}|}{k}$$
+$$
+\text{CategoryDiversityProxy}(R_u) = \frac{|\{c(d) \mid d \in R_u\}|}{k}
+$$
 
 Pairwise distance formulations can also measure intra-list diversity over item embeddings across all pairs in the slate.
 
 ### 3. Novelty Proxy
 Novelty measures how non-obvious recommendations are relative to platform popularity. A standard operational proxy uses negative log probability (self-information):
-$$\text{NoveltyProxy}(R_u) = \frac{1}{k} \sum_{i \in R_u} -\log_2(P(i))$$
+$$
+\text{NoveltyProxy}(R_u) = \frac{1}{k} \sum_{i \in R_u} -\log_2(P(i))
+$$
 
 Where $P(i)$ is the item's historical interaction share. Highly popular items have high $P(i)$ and low novelty; long-tail items have low $P(i)$ and high novelty bits.
 
 ### 4. Unvisited-Category Ratio vs. True Serendipity
 A common exploration heuristic measures the fraction of recommended items from categories outside the user's historical interaction profile:
-$$\text{UnvisitedCategoryRatio}(R_u) = \frac{|\{d \in R_u \mid \text{category}(d) \notin \text{History}(u)\}|}{k}$$
+$$
+\text{UnvisitedCategoryRatio}(R_u) = \frac{|\{d \in R_u \mid \text{category}(d) \notin \text{History}(u)\}|}{k}
+$$
 
 It is critical to distinguish an **unvisited-category ratio** from **true serendipity**:
 - *Unvisited-Category Ratio* merely measures whether an item comes from an unfamiliar topic or genre. An irrelevant, unhelpful item from an unvisited category increases this ratio, but degrades user satisfaction.
@@ -355,12 +383,12 @@ By presenting both models' candidates within the same user session, interleaving
 
 | Metric | Form | Sensitivity | Typical Use Case |
 | :--- | :--- | :--- | :--- |
-| **Precision@k** | $\frac{1}{k}\sum_{i=1}^k r_i$ | Unranked set inside cutoff | Quick sanity check on candidate quality. |
-| **Recall@k** | $\frac{1}{R_{\text{total}}}\sum_{i=1}^k r_i$ | Unranked set against corpus | Retrieval candidate generation evaluation. |
+| **Precision@k** | $(1/k)\sum_{i=1}^k r_i$ | Unranked set inside cutoff | Quick sanity check on candidate quality. |
+| **Recall@k** | $(1/R_{\text{total}})\sum_{i=1}^k r_i$ | Unranked set against corpus | Retrieval candidate generation evaluation. |
 | **Hit Rate@k** | $\mathbb{I}(\sum_{i=1}^k r_i > 0)$ | Binary success in top-$k$ | Navigational search, single-item lookup. |
-| **MRR** | $\frac{1}{\vert Q \vert}\sum_{q} \frac{1}{\text{rank}_1}$ | First relevant result only | Navigational queries, target entity extraction. |
+| **MRR** | $(1/\vert Q \vert)\sum_{q} (1/\text{rank}_1)$ | First relevant result only | Navigational queries, target entity extraction. |
 | **MAP** | Mean of $\text{AP@}k$ | All relevant positions normalized by $R_{\text{total}}$ | Multi-relevant ad-hoc information retrieval. |
-| **NDCG@k** | $\frac{\text{DCG@}k}{\text{IDCG@}k}$ | Graded relevance + log position discount | Production web search, e-commerce, LTR. |
+| **NDCG@k** | $\text{DCG@}k / \text{IDCG@}k$ | Graded relevance + log position discount | Production web search, e-commerce, LTR. |
 | **Interleaving** | Shared blended slate | Relative pairwise preference | Sensitive online model comparison with reduced traffic. |
 
 Next: [Recommendation Foundations: Interactions & Neighborhoods](/docs/search-ranking-recommendations/recommendation-foundations) — explore interaction matrices, collaborative filtering, implicit feedback, and candidate retrieval.

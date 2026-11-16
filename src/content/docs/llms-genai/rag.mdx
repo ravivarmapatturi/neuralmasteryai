@@ -164,7 +164,9 @@ top_chunks = bm25.get_top_n(tokenized_query, chunks, n=5)
 
 The prose above describes two corrections in words; here's the formula they're actually corrections *to*. For a query $Q$ with terms $q_1,\ldots,q_n$ and a document $D$:
 
-$$\text{score}(D, Q) = \sum_{i=1}^{n} \text{IDF}(q_i) \cdot \frac{f(q_i, D) \cdot (k_1 + 1)}{f(q_i, D) + k_1 \cdot \left(1 - b + b \cdot \dfrac{|D|}{\text{avgdl}}\right)}$$
+$$
+\text{score}(D, Q) = \sum_{i=1}^{n} \text{IDF}(q_i) \cdot \frac{f(q_i, D) \cdot (k_1 + 1)}{f(q_i, D) + k_1 \cdot \left(1 - b + b \cdot \dfrac{|D|}{\text{avgdl}}\right)}
+$$
 
 where $f(q_i, D)$ is how many times term $q_i$ literally appears in $D$, $|D|$ is $D$'s length in words, $\text{avgdl}$ is the average document length across the whole corpus, and $k_1$ (typically 1.2–2.0) and $b$ (typically 0.75) are tunable constants.
 
@@ -190,7 +192,9 @@ The merging itself is the interesting part, and **Reciprocal Rank Fusion** is th
 
 The formula itself is simple — for a document $d$ appearing in one or more ranked lists:
 
-$$\text{RRF}(d) = \sum_{r \,\in\, \text{rankings}} \frac{1}{k + \text{rank}_r(d)}$$
+$$
+\text{RRF}(d) = \sum_{r \,\in\, \text{rankings}} \frac{1}{k + \text{rank}_r(d)}
+$$
 
 where $\text{rank}_r(d)$ is $d$'s 1-indexed position in ranking $r$ (dense results, sparse/BM25 results, or — in RAG-Fusion — each of several query-variant result lists), and $k$ is a damping constant (commonly 60) that keeps a single 1st-place finish from completely dominating the sum. Compute this sum for every document that appears in *any* of the lists being fused, then sort by total RRF score descending.
 

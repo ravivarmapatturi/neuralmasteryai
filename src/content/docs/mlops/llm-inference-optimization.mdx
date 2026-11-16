@@ -279,11 +279,15 @@ Decode is memory-bound, so a target-model forward pass costs about the same whet
 
 If each drafted token is accepted with probability $\alpha$, Leviathan et al. (2023) show the expected number of tokens per target pass is
 
-$$E[\text{tokens per pass}] = \frac{1 - \alpha^{\gamma + 1}}{1 - \alpha}$$
+$$
+E[\text{tokens per pass}] = \frac{1 - \alpha^{\gamma + 1}}{1 - \alpha}
+$$
 
 and, if one draft step costs $c$ times a target step, the expected speedup is
 
-$$\text{speedup} = \frac{1 - \alpha^{\gamma + 1}}{(1 - \alpha)(\gamma c + 1)}$$
+$$
+\text{speedup} = \frac{1 - \alpha^{\gamma + 1}}{(1 - \alpha)(\gamma c + 1)}
+$$
 
 ```python
 def expected_tokens(alpha, gamma):
@@ -378,7 +382,7 @@ Report percentiles, not averages, and measure at the concurrency you'll actually
 | Chunked prefill | Long prompts in pieces: worst stream gap 985 ms to 56 ms |
 | Disaggregation | Separate prefill and decode GPUs, connected by KV transfer |
 | Quantization | Fewer bits, faster decode; 8-bit nearly free, 4-bit needs good methods; measure on your task |
-| Speculative decoding | $\frac{1-\alpha^{\gamma+1}}{(1-\alpha)(\gamma c+1)}$; great at small batch with a good draft |
+| Speculative decoding | $(1-\alpha^{\gamma+1}) / ((1-\alpha)(\gamma c+1))$; great at small batch with a good draft |
 
 ---
 

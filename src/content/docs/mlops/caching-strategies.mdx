@@ -28,7 +28,9 @@ Everything below is how those questions are answered in software.
 
 A cache stores the results of expensive work so that repeated requests can be answered from fast storage. Its benefit is captured by one formula. With hit rate $h$ (the fraction of requests answered from the cache), cache lookup time $t_c$ and the time of the underlying computation $t_s$, the average latency is
 
-$$\bar t = t_c + (1 - h)\, t_s$$
+$$
+\bar t = t_c + (1 - h)\, t_s
+$$
 
 since every request checks the cache, and only misses pay for the real work. The same shape holds for cost: only misses pay for the database query, the feature computation or the model call.
 
@@ -179,7 +181,9 @@ TTL and eviction are independent: TTL limits *staleness*, eviction limits *memor
 
 How well eviction works depends on the shape of the traffic. Request popularity in real systems is usually highly skewed: a few items get most requests, and a long tail gets a few each. It's often modelled with a **Zipf distribution**, where the $i$-th most popular item is requested in proportion to $1/i^s$, and the exponent $s$ controls the skew. If a cache could hold exactly the $k$ most popular of $N$ items, its hit rate would be
 
-$$h_{\text{ideal}} = \frac{\sum_{i=1}^{k} i^{-s}}{\sum_{i=1}^{N} i^{-s}}$$
+$$
+h_{\text{ideal}} = \frac{\sum_{i=1}^{k} i^{-s}}{\sum_{i=1}^{N} i^{-s}}
+$$
 
 This script measures what Redis's LRU actually achieves: 10,000 items of about 1 KB each, a cache limited to 2 MB (room for about 900), and 60,000 requests at three levels of skew:
 

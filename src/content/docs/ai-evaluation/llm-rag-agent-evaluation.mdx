@@ -59,7 +59,9 @@ This distinction stopped being theoretical in 2026: a large-scale study found pr
 
 **What this changes in practice**: validating a judge against raw percent-agreement with human labels isn't enough either, because percent agreement doesn't correct for chance — a judge issuing the same score on every item can score high percent-agreement against a lopsided human-label distribution without discriminating between good and bad outputs at all. Use **Cohen's κ** (kappa) instead, which subtracts out the agreement rate expected from chance:
 
-$$\kappa = \frac{p_o - p_e}{1 - p_e}$$
+$$
+\kappa = \frac{p_o - p_e}{1 - p_e}
+$$
 
 where $p_o$ is the observed agreement rate between judge and human, and $p_e$ is the agreement rate two random raters would produce by chance given the label distribution. A judge scoring 90% raw agreement against a dataset where 90% of items are labeled "pass" could have $\kappa$ near zero — it may just be predicting the majority class, not actually discriminating quality. As a rule of thumb, treat $\kappa$ below 0.4 as weak agreement worth real scrutiny before trusting the judge at scale, regardless of how good the raw percentage looks.
 

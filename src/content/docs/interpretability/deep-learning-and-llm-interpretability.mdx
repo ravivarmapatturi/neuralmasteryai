@@ -35,7 +35,9 @@ If a model's score is already near 0 or 1 for a given input (deep into a sigmoid
 
 **Integrated Gradients** fixes this by not evaluating the gradient only at the saturated endpoint — it accumulates the gradient along the *entire straight-line path* from a baseline (typically all-zeros) to the actual input, most of which isn't saturated:
 
-$$\text{IG}_i(x) = (x_i - x_i^{\text{baseline}}) \int_0^1 \frac{\partial F(x^{\text{baseline}} + \alpha(x - x^{\text{baseline}}))}{\partial x_i}\, d\alpha$$
+$$
+\text{IG}_i(x) = (x_i - x_i^{\text{baseline}}) \int_0^1 \frac{\partial F(x^{\text{baseline}} + \alpha(x - x^{\text{baseline}}))}{\partial x_i}\, d\alpha
+$$
 
 The diagram above computes that integral for real, via a 40-step Riemann sum — which is exactly how it's done in practice, since the integral rarely has a closed form for a real network. **Grad-CAM** is a different fix for a different failure mode: rather than raw input-pixel gradients (noisy at pixel granularity), it uses gradients flowing into a CNN's late convolutional layers, producing coarser but often more semantically meaningful heatmaps.
 

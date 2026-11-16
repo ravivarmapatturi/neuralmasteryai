@@ -81,13 +81,19 @@ Standard softmax over a vector $x \in \mathbb{R}^N$ requires two sequential pass
 
 In FlashAttention, $x$ arrives in small blocks (tiles) that fit in SRAM. When a new block $x^{(2)}$ arrives with local maximum $m_2$ and local sum $d_2$, FlashAttention merges it with previous state $(m_1, d_1)$ using the online recurrence:
 
-$$m_{\text{new}} = \max(m_1, m_2)$$
+$$
+m_{\text{new}} = \max(m_1, m_2)
+$$
 
-$$d_{\text{new}} = d_1 \cdot e^{m_1 - m_{\text{new}}} + d_2 \cdot e^{m_2 - m_{\text{new}}}$$
+$$
+d_{\text{new}} = d_1 \cdot e^{m_1 - m_{\text{new}}} + d_2 \cdot e^{m_2 - m_{\text{new}}}
+$$
 
 The running output vector $O$ is rescaled instantaneously without ever materializing all elements at once:
 
-$$O_{\text{new}} = O_1 \cdot \left(\frac{d_1 \cdot e^{m_1 - m_{\text{new}}}}{d_{\text{new}}}\right) + O_2 \cdot \left(\frac{e^{m_2 - m_{\text{new}}}}{d_{\text{new}}}\right)$$
+$$
+O_{\text{new}} = O_1 \cdot \left(\frac{d_1 \cdot e^{m_1 - m_{\text{new}}}}{d_{\text{new}}}\right) + O_2 \cdot \left(\frac{e^{m_2 - m_{\text{new}}}}{d_{\text{new}}}\right)
+$$
 
 This mathematical formulation enables exact attention computation in $O(N)$ memory with zero numerical error.
 
@@ -196,7 +202,9 @@ We simulate an on-chip SRAM capacity of only 3 elements, forcing the computation
   - New global maximum $m_{\text{new}} = \max(3.4, 4.5) = 4.5$
   - Rescaling factor: $e^{m_1 - m_{\text{new}}} = e^{3.4 - 4.5} = e^{-1.1} = 0.3329$
   - Updated denominator:
-    $$d_{\text{new}} = 1.3833 \times 0.3329 + (e^{0.8-4.5} + e^{4.5-4.5} + e^{2.9-4.5}) = 0.4605 + (0.0247 + 1.0 + 0.2019) = 1.6871$$
+    $$
+    d_{\text{new}} = 1.3833 \times 0.3329 + (e^{0.8-4.5} + e^{4.5-4.5} + e^{2.9-4.5}) = 0.4605 + (0.0247 + 1.0 + 0.2019) = 1.6871
+    $$
 - **Final Normalized Output**: Both tiles are divided by $d_{\text{new}}$, yielding `[0.0219, 0.1973, 0.0538, 0.0147, 0.5927, 0.1197]`, matching the global softmax down to 15 decimal places with zero precision loss.
 
 ### Run It Yourself

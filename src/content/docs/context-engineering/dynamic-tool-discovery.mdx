@@ -27,15 +27,21 @@ Instead, a smart apprentice looks at the pipe, walks over to the plumbing cabine
 
 When an agent platform registers 200 distinct tools, each accompanied by an OpenAPI or JSONSchema definition detailing parameters, types, enums, and docstrings, the prompt overhead explodes:
 
-$$\text{Total Tool Overhead} = \sum_{i=1}^{M} \text{Tokens}(\text{Schema}_i)$$
+$$
+\text{Total Tool Overhead} = \sum_{i=1}^{M} \text{Tokens}(\text{Schema}_i)
+$$
 
 If each tool schema averages 250 tokens:
 
-$$200 \text{ tools} \times 250 \text{ tokens} = 50{,}000 \text{ tokens per turn}$$
+$$
+200 \text{ tools} \times 250 \text{ tokens} = 50{,}000 \text{ tokens per turn}
+$$
 
 For an agent loop running 15 turns to resolve an issue:
 
-$$15 \text{ turns} \times 50{,}000 \text{ tokens} = 750{,}000 \text{ input tokens}$$
+$$
+15 \text{ turns} \times 50{,}000 \text{ tokens} = 750{,}000 \text{ input tokens}
+$$
 
 At current frontier pricing ($3.00 per million input tokens), tool schemas alone cost $2.25 per run and consume nearly 40% of a 128,000-token context window on static overhead.
 
@@ -96,7 +102,9 @@ To support hundreds of enterprise capabilities without blowing up context, produ
 
 1. **Deterministic Domain Routing**: If an agent transitions into a known sub-state (e.g. "Database Migration State"), the harness injects only the database tool suite (`run_sql_query`, `explain_analyze`, `rollback_migration`).
 2. **Dense Vector Tool Retrieval**: Each tool description is embedded using an embedding model (such as `text-embedding-3-small`). At turn $t$, the user prompt and recent conversation history are embedded and matched against the tool catalog via cosine similarity:
-   $$\text{Score}(Q, T_i) = \frac{\mathbf{e}_Q \cdot \mathbf{e}_{T_i}}{\|\mathbf{e}_Q\| \|\mathbf{e}_{T_i}\|}$$
+   $$
+   \text{Score}(Q, T_i) = \frac{\mathbf{e}_Q \cdot \mathbf{e}_{T_i}}{\|\mathbf{e}_Q\| \|\mathbf{e}_{T_i}\|}
+   $$
 3. **The Meta-Tool Pattern (`search_tools`)**: The agent is provided with only 3–5 baseline tools plus a special discovery tool:
    ```json
    {

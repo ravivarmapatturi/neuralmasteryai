@@ -123,11 +123,15 @@ Root Span: agent.run (trace_id: 4bf92f35, span_id: a101)
 
 To protect against infinite loops, the observability layer computes a rolling tool signature hash over the last $K$ turns:
 
-$$\text{Sig}_t = \text{MD5}(\text{tool\_name} + \text{canonical\_json}(\text{arguments}))$$
+$$
+\text{Sig}_t = \text{MD5}(\text{tool\_name} + \text{canonical\_json}(\text{arguments}))
+$$
 
 If $\text{Sig}_t == \text{Sig}_{t-1} == \text{Sig}_{t-2}$ and the tool exit status was `ERROR`, the loop detector triggers an immediate circuit breaker:
 
-$$\text{Trigger Condition}: \sum_{i=0}^{N-1} \mathbb{I}(\text{Sig}_{t-i} == \text{Sig}_t \land \text{Status}_{t-i} == \text{ERROR}) \ge 3$$
+$$
+\text{Trigger Condition}: \sum_{i=0}^{N-1} \mathbb{I}(\text{Sig}_{t-i} == \text{Sig}_t \land \text{Status}_{t-i} == \text{ERROR}) \ge 3
+$$
 
 Rather than allowing the model to burn tokens across 50 repetitive attempts, the supervisor halts execution, injects a diagnostic intervention prompt into context, or routes the task to a human-in-the-loop fallback.
 

@@ -15,7 +15,9 @@ import { Solution } from '../../../components/content/ExpandableDepth';
 
 Explicitly building that $n \times n$ matrix during backprop would be wasteful — real deep learning frameworks never materialize it. Instead they compute the **vector-Jacobian product (VJP)** directly: given the upstream gradient $\frac{\partial L}{\partial s}$ (how loss changes with each softmax *output*), get $\frac{\partial L}{\partial z}$ (how loss changes with each softmax *input*) in one $O(n)$ pass, using an identity that falls out of the Jacobian formula above:
 
-$$\frac{\partial L}{\partial z_j} = s_j\left(\frac{\partial L}{\partial s_j} - \sum_i \frac{\partial L}{\partial s_i} s_i\right)$$
+$$
+\frac{\partial L}{\partial z_j} = s_j\left(\frac{\partial L}{\partial s_j} - \sum_i \frac{\partial L}{\partial s_i} s_i\right)
+$$
 
 **Your task**: implement `softmax_gradient(s, grad_output)`, where `s` is a softmax output (already computed, sums to 1) and `grad_output` is $\partial L/\partial s$. Return $\partial L/\partial z$, the same length as `s`.
 

@@ -80,7 +80,9 @@ In an illustrative multi-stage funnel, candidate pools of 50 to 100 fused docume
 
 Dense retrieval relies on two-tower neural architectures. A query encoder $f_Q(q) \in \mathbb{R}^d$ and a document encoder $f_D(d) \in \mathbb{R}^d$ map strings into a shared metric space. Document vectors $\mathbf{v}_d = f_D(d)$ are computed offline and indexed in memory. At query time, the engine encodes the user query $\mathbf{v}_q = f_Q(q)$ and retrieves items maximizing inner product similarity:
 
-$$\text{Sim}(q, d) = \langle \mathbf{v}_q, \mathbf{v}_d \rangle = \sum_{i=1}^{d} v_{q, i} \cdot v_{d, i}$$
+$$
+\text{Sim}(q, d) = \langle \mathbf{v}_q, \mathbf{v}_d \rangle = \sum_{i=1}^{d} v_{q, i} \cdot v_{d, i}
+$$
 
 When vectors are $L_2$-normalized ($\|\mathbf{v}\|_2 = 1$), inner product equals cosine similarity.
 
@@ -94,8 +96,8 @@ Production vector engines (such as Milvus, Vespa, Qdrant, and Lucene) employ **A
 | Index Architecture | Search Complexity | Index Build Time | Memory Footprint | Recall Characteristics | Primary Operational Role |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Flat (Exhaustive)** | $O(N \cdot d)$ | $O(1)$ (No index) | Baseline ($4 \times d$ bytes/vector) | Exact (100% recall) | Small catalogs, golden evaluation baselines, reranking small candidate pools. |
-| **IVF (Inverted File)** | $O(\frac{N}{C} \cdot \text{nprobe} \cdot d)$ | Moderate (k-means clustering) | Low (Posting lists of vector IDs) | Approximate (tunable via centroid count $C$ and $\text{nprobe}$) | Medium catalogs where memory is bounded and indexing throughput matters. |
-| **IVF-PQ (Product Quantization)** | $O(\text{nprobe} \cdot \frac{N}{C} \cdot M)$ | High (codebook training) | Extremely low ($M$ bytes/vector, e.g. 16–64B) | Compressed approximate (bounded by quantization distortion) | Very large vector corpora constrained by cluster RAM limits. |
+| **IVF (Inverted File)** | $O((N/C) \cdot \text{nprobe} \cdot d)$ | Moderate (k-means clustering) | Low (Posting lists of vector IDs) | Approximate (tunable via centroid count $C$ and $\text{nprobe}$) | Medium catalogs where memory is bounded and indexing throughput matters. |
+| **IVF-PQ (Product Quantization)** | $O(\text{nprobe} \cdot (N/C) \cdot M)$ | High (codebook training) | Extremely low ($M$ bytes/vector, e.g. 16–64B) | Compressed approximate (bounded by quantization distortion) | Very large vector corpora constrained by cluster RAM limits. |
 | **HNSW (Hierarchical NSW)** | $O(\log N)$ | High ($O(N \log N)$ graph construction) | High (Raw vectors + 32–64 edge pointers/node) | High approximate (tunable via graph connectivity $M$ and $\text{efSearch}$) | Latency-sensitive production search requiring graph-guided nearest neighbor routing. |
 
 <PredictFirst
@@ -114,15 +116,21 @@ Production vector engines (such as Milvus, Vespa, Qdrant, and Lucene) employ **A
 Product Quantization (Jégou et al., 2011) divides a $d$-dimensional vector $\mathbf{x} \in \mathbb{R}^d$ into $M$ orthogonal sub-vectors $\mathbf{u}_m \in \mathbb{R}^{d/M}$. For each sub-space $m \in \{1, \dots, M\}$, k-means clustering trains a codebook with $K^* = 256$ centroids $\mathbf{c}_{m, 1}, \dots, \mathbf{c}_{m, 256}$.
 
 Each sub-vector is replaced by the 8-bit index ($1 \text{ byte}$) of its nearest centroid:
-$$\mathbf{x} \approx [k_1, k_2, \dots, k_M], \quad k_m \in \{0, \dots, 255\}$$
+$$
+\mathbf{x} \approx [k_1, k_2, \dots, k_M], \quad k_m \in \{0, \dots, 255\}
+$$
 
 A 768-dimensional float32 vector requires $768 \times 4 = 3{,}072 \text{ bytes}$. With $M=64$ sub-vectors, the quantized vector requires only $64 \text{ bytes}$—a **48× reduction in memory**.
 
 During query execution, **Asymmetric Distance Computation (ADC)** keeps the query vector $\mathbf{q}$ unquantized. The engine pre-computes an lookup table of distances between the query's $M$ sub-vectors and the 256 codebook centroids:
-$$D_{m, k} = \|\mathbf{q}_m - \mathbf{c}_{m, k}\|^2$$
+$$
+D_{m, k} = \|\mathbf{q}_m - \mathbf{c}_{m, k}\|^2
+$$
 
 The distance between the query and any quantized document vector is then evaluated via $M$ fast table lookups and additions without floating-point vector products:
-$$\text{Dist}(\mathbf{q}, \mathbf{x}) \approx \sum_{m=1}^{M} D_{m, k_m}$$
+$$
+\text{Dist}(\mathbf{q}, \mathbf{x}) \approx \sum_{m=1}^{M} D_{m, k_m}
+$$
 </GoDeeper>
 
 ## Multi-Vector Late Interaction: ColBERT
@@ -135,14 +143,18 @@ ColBERT (Khattab & Zaharia, 2020) solves this with **late interaction**. Instead
 
 Relevance scoring applies the **MaxSim operator**: for every query token, compute cosine similarity against all document tokens, identify the maximum match, and sum across query tokens:
 
-$$\text{Score}_{\text{ColBERT}}(q, d) = \sum_{i=1}^{|q|} \max_{j \in \{1, \dots, |d|\}} \langle \mathbf{q}_i, \mathbf{d}_j \rangle$$
+$$
+\text{Score}_{\text{ColBERT}}(q, d) = \sum_{i=1}^{|q|} \max_{j \in \{1, \dots, |d|\}} \langle \mathbf{q}_i, \mathbf{d}_j \rangle
+$$
 
 As demonstrated by Khattab & Zaharia (2020) on passage retrieval benchmarks such as MS MARCO, ColBERT's late interaction substantially outperforms single-vector bi-encoders and approaches the retrieval effectiveness of cross-encoders while avoiding quadratic all-to-all cross-attention by relying on pre-indexed token embeddings and fast MaxSim reductions.
 
 ## Hybrid Fusion: Reciprocal Rank Fusion (RRF)
 
 When combining the candidate lists from a lexical retriever and a dense retriever, naively adding raw scores fails:
-$$\text{Score}_{\text{naive}}(d) = \text{Score}_{\text{BM25}}(d) + \text{Score}_{\text{Dense}}(d)$$
+$$
+\text{Score}_{\text{naive}}(d) = \text{Score}_{\text{BM25}}(d) + \text{Score}_{\text{Dense}}(d)
+$$
 
 BM25 scores are unbounded $[0, \infty)$ and scale with document length and term frequency saturation, whereas dense inner products scale with embedding norms. Normalizing scores via Min-Max scaling ($\frac{s - s_{\min}}{s_{\max} - s_{\min}}$) introduces severe instability: a single outlier score in one channel compresses the variance of all other scores in that batch.
 
@@ -151,7 +163,9 @@ Cormack, Clarke, and Büttcher (2009) introduced **Reciprocal Rank Fusion (RRF)*
 
 For a set of retrieval channels $M$ (e.g. Lexical and Dense), the RRF score of document $d$ is:
 
-$$\text{RRF}(d) = \sum_{m \in M} \frac{w_m}{k + r_m(d)}$$
+$$
+\text{RRF}(d) = \sum_{m \in M} \frac{w_m}{k + r_m(d)}
+$$
 
 Where:
 - $r_m(d) \in \{1, 2, 3, \dots\}$ is the 1-based rank of document $d$ in channel $m$. If document $d$ is not retrieved by channel $m$, its reciprocal term for that channel is $0$.
@@ -359,7 +373,7 @@ For architectural patterns on deploying cross-encoders with caching and dynamic 
 | **HNSW Index** | Multi-layer skip-graph proximity routing | $O(\log N)$ search complexity, tunable recall | High memory footprint for graph edge links. |
 | **Product Quantization** | Sub-vector codebook decomposition ($M$ bytes/vector) | 16× to 48× memory compression | Slight loss in distance computation precision. |
 | **ColBERT MaxSim** | $\sum_i \max_j \langle \mathbf{q}_i, \mathbf{d}_j \rangle$ token alignments | Retains token-level nuances without full cross-attention | Larger index footprint than single-vector bi-encoders. |
-| **RRF Fusion** | $\sum_m \frac{w_m}{k + r_m(d)}$ | Scale-free rank combination, no calibration required | Ignores margin between scores within a list. |
+| **RRF Fusion** | $\sum_m w_m / (k + r_m(d))$ | Scale-free rank combination, no calibration required | Ignores margin between scores within a list. |
 | **Cross-Encoder** | Joint bidirectional transformer attention $[q; d]$ | High precision, resolves negation and syntax | $O(N)$ forward passes, cannot pre-index documents. |
 
 Next: [Ranking Fundamentals & Link Analysis](/docs/search-ranking-recommendations/ranking-fundamentals) — learn how multi-stage rankers score candidate documents using multi-modal feature families, log features correctly without data leakage, and compute link authority via PageRank.

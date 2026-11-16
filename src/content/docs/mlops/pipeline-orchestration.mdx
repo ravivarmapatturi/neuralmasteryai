@@ -100,7 +100,9 @@ Many failures are **transient**: a network timeout, a database at its connection
 
 How long to wait between attempts matters. Retrying immediately often hits the same overloaded service. **Exponential backoff** waits longer after each failure:
 
-$$\text{delay}_n = \min\left(d_{\max},\; d_0 \cdot 2^{\,n}\right)$$
+$$
+\text{delay}_n = \min\left(d_{\max},\; d_0 \cdot 2^{\,n}\right)
+$$
 
 for attempt $n = 0, 1, 2, \ldots$ With $d_0 = 30$ s, the waits are 30 s, 60 s, 120 s, 240 s. If many tasks failed at the same moment, say because a shared database restarted, they would all retry at the same moments too and knock it over again. **Jitter** fixes that by randomizing each delay, for example drawing uniformly between 0 and $\text{delay}_n$, which spreads the retries out.
 

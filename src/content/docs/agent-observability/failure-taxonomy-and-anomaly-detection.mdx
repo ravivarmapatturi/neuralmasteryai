@@ -88,7 +88,9 @@ To intercept these failure modes in real time, the observability sentinel comput
 
 For any tool call with name $N$ and parameter dictionary $P$, we compute the canonical execution signature $\sigma$:
 
-$$\sigma = \text{SHA-256}\Big(N \;\parallel\; \text{Serialize}_{\text{sorted}}(P)\Big)_{[0:12]}$$
+$$
+\sigma = \text{SHA-256}\Big(N \;\parallel\; \text{Serialize}_{\text{sorted}}(P)\Big)_{[0:12]}
+$$
 
 ```python
 # Canonical Serialization:
@@ -100,7 +102,9 @@ $$\sigma = \text{SHA-256}\Big(N \;\parallel\; \text{Serialize}_{\text{sorted}}(P
 
 Given a sequence of execution outcomes $\{(\sigma_t, e_t)\}_{t=1}^T$ where $e_t \in \mathbb{Z}$ is the process exit code:
 
-$$\text{LoopTrigger}(T) = \bigwedge_{i=0}^{K-1} \Big(\sigma_{T-i} = \sigma_T \;\land\; e_{T-i} \ne 0\Big)$$
+$$
+\text{LoopTrigger}(T) = \bigwedge_{i=0}^{K-1} \Big(\sigma_{T-i} = \sigma_T \;\land\; e_{T-i} \ne 0\Big)
+$$
 
 When $K = 3$, three consecutive identical tool calls that failed trip the circuit breaker.
 
@@ -108,7 +112,9 @@ When $K = 3$, three consecutive identical tool calls that failed trip the circui
 
 For an alternating window of length 4:
 
-$$\text{OscillationTrigger}(T) = \Big(\sigma_T = \sigma_{T-2}\Big) \;\land\; \Big(\sigma_{T-1} = \sigma_{T-3}\Big) \;\land\; \Big(\sigma_T \ne \sigma_{T-1}\Big)$$
+$$
+\text{OscillationTrigger}(T) = \Big(\sigma_T = \sigma_{T-2}\Big) \;\land\; \Big(\sigma_{T-1} = \sigma_{T-3}\Big) \;\land\; \Big(\sigma_T \ne \sigma_{T-1}\Big)
+$$
 
 If this condition evaluates to true, the sentinel halts the oscillation and forces the agent to alter its execution strategy.
 
@@ -146,7 +152,9 @@ Under high context pressure, LLM autoregressive generation can suffer from degen
 
 Observability harnesses monitor the **Repetition Entropy** of the generated reasoning tokens:
 
-$$H_{\text{rep}} = -\sum_{g \in G_4} P(g) \log_2 P(g)$$
+$$
+H_{\text{rep}} = -\sum_{g \in G_4} P(g) \log_2 P(g)
+$$
 
 Where $G_4$ is the set of 4-gram token sequences in the completion. If $H_{\text{rep}}$ falls below a critical threshold ($\le 2.1$), the generation engine detects token stuttering, cancels the stream, and resets the sampling temperature.
 

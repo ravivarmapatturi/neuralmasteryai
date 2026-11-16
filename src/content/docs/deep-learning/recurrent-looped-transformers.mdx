@@ -32,7 +32,9 @@ Full derivations of steps 1 and 2 already exist on this site in real depth — [
 
 An RNN reads a sequence token by token, updating one hidden vector $h_t$ at each step:
 
-$$h_t = \tanh(W_h h_{t-1} + W_x x_t + b)$$
+$$
+h_t = \tanh(W_h h_{t-1} + W_x x_t + b)
+$$
 
 That single design choice — one running summary, updated in place — is both the entire idea and the entire problem. It's the idea because it lets the model handle sequences of any length with a fixed number of parameters. It's the problem for two concrete reasons:
 
@@ -55,11 +57,15 @@ Modern reasoning models work around this from *outside* the architecture — by 
 
 The idea of looping isn't new, and it isn't unique to RLT. **Universal Transformers**, published in 2018, already established the basic move: instead of stacking $N$ distinct transformer blocks with $N$ separate sets of weights, apply the *same* block repeatedly, feeding each output back in as the next input. Formally, where a normal $N$-layer Transformer computes
 
-$$z^{(1)} = \text{Block}_1(x), \quad z^{(2)} = \text{Block}_2(z^{(1)}), \quad \dots, \quad z^{(N)} = \text{Block}_N(z^{(N-1)})$$
+$$
+z^{(1)} = \text{Block}_1(x), \quad z^{(2)} = \text{Block}_2(z^{(1)}), \quad \dots, \quad z^{(N)} = \text{Block}_N(z^{(N-1)})
+$$
 
 with $N$ separate weight sets $\text{Block}_1, \dots, \text{Block}_N$, a looped version computes the same chain of $N$ applications using **one** shared block:
 
-$$z^{(1)} = \text{Block}(x), \quad z^{(2)} = \text{Block}(z^{(1)}), \quad \dots, \quad z^{(N)} = \text{Block}(z^{(N-1)})$$
+$$
+z^{(1)} = \text{Block}(x), \quad z^{(2)} = \text{Block}(z^{(1)}), \quad \dots, \quad z^{(N)} = \text{Block}(z^{(N-1)})
+$$
 
 The immediate payoff is parameter efficiency: you get $N$ applications of depth while storing the weights for only one block. The cost is that you don't get $N$ applications' worth of *compute* savings — the forward pass still runs the block $N$ times, and gradients during training still flow back through all $N$ applications, so training cost stays close to the full-depth version even though stored parameter count drops sharply. Modern looped models generally add a **learned exit gate** on top of that basic idea — the model itself decides, per token, how many loop passes are worth running, rather than a fixed count set at design time — which is what turns "loop the same block $N$ times" into something closer to variable, content-dependent depth.
 

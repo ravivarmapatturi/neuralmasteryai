@@ -42,7 +42,9 @@ The discipline of AI cost engineering is the same as for any cloud cost (often c
 
 For transformer models there's a reliable first-principles estimate. Training takes about **6 floating-point operations per parameter per token**: 2 for the forward pass (a multiply and an add per parameter) and about 4 for the backward pass. So for $N$ parameters and $D$ training tokens:
 
-$$C \approx 6ND \text{ FLOPs}, \qquad \text{GPU-hours} \approx \frac{6ND}{\text{peak FLOP/s} \times \text{MFU} \times 3600}$$
+$$
+C \approx 6ND \text{ FLOPs}, \qquad \text{GPU-hours} \approx \frac{6ND}{\text{peak FLOP/s} \times \text{MFU} \times 3600}
+$$
 
 where **MFU** (model FLOPs utilization) is the fraction of the hardware's peak arithmetic the training run actually achieves; well-tuned large runs reach roughly 35 to 55%. For an 8-billion-parameter model trained on 15 trillion tokens on H100 GPUs:
 
@@ -70,7 +72,9 @@ Two practical lessons. Efficiency work on the training run (mixed precision, bet
 
 For a feature built on a model API, cost per request is simply tokens times prices:
 
-$$\text{cost} = n_{\text{in}} \cdot p_{\text{in}} + n_{\text{out}} \cdot p_{\text{out}}$$
+$$
+\text{cost} = n_{\text{in}} \cdot p_{\text{in}} + n_{\text{out}} \cdot p_{\text{out}}
+$$
 
 with output tokens typically priced several times higher than input tokens. The numbers that matter are therefore **how many tokens go in and come out per request**, and they're usually far larger than the user's question, because the prompt also carries a system prompt, instructions, examples and retrieved documents.
 

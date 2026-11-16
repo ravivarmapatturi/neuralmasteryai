@@ -51,7 +51,9 @@ BM25 addresses keyword repetition and document length by wrapping term frequency
 
 For a query $Q$ with terms $q_1, q_2, \dots, q_m$ and a document $D$ in a corpus of $N$ documents:
 
-$$\text{BM25}(D, Q) = \sum_{i=1}^{m} \text{IDF}(q_i) \cdot \frac{f(q_i, D) \cdot (k_1 + 1)}{f(q_i, D) + k_1 \cdot \left(1 - b + b \cdot \dfrac{|D|}{\text{avgdl}}\right)}$$
+$$
+\text{BM25}(D, Q) = \sum_{i=1}^{m} \text{IDF}(q_i) \cdot \frac{f(q_i, D) \cdot (k_1 + 1)}{f(q_i, D) + k_1 \cdot \left(1 - b + b \cdot \dfrac{|D|}{\text{avgdl}}\right)}
+$$
 
 ### Symbol Table
 
@@ -59,7 +61,7 @@ $$\text{BM25}(D, Q) = \sum_{i=1}^{m} \text{IDF}(q_i) \cdot \frac{f(q_i, D) \cdot
 | :--- | :--- | :--- |
 | **$f(q_i, D)$** | Term frequency ($\text{tf}$): raw count of query term $q_i$ in document $D$ | Positive integer ($0, 1, 2, \dots$). |
 | **$\vert D \vert$** | Document length: total token count of document $D$ | Measured in words or subword tokens. |
-| **$\text{avgdl}$** | Average document length across all $N$ documents in the corpus | $\text{avgdl} = \frac{1}{N} \sum_{j=1}^N \vert D_j \vert$. |
+| **$\text{avgdl}$** | Average document length across all $N$ documents in the corpus | $\text{avgdl} = (1/N) \sum_{j=1}^N \vert D_j \vert$. |
 | **$k_1$** | Term-frequency saturation constant | Commonly set between $1.2$ and $2.0$ (Robertson &amp; Zaragoza, 2009). Caps marginal score gain. |
 | **$b$** | Document-length normalization constant | Range $[0, 1]$, commonly set to $0.75$. Controls length penalty severity. |
 | **$\text{IDF}(q_i)$** | Inverse document frequency weight of query term $q_i$ | Measures term rarity across catalog. |
@@ -76,13 +78,17 @@ The canonical defaults $k_1 \in [1.2, 1.5]$ and $b = 0.75$ originated from histo
 
 Classical Robertson-Spärck Jones IDF computes:
 
-$$\text{IDF}_{\text{classic}}(q) = \ln\left(\frac{N - \text{df}(q) + 0.5}{\text{df}(q) + 0.5}\right)$$
+$$
+\text{IDF}_{\text{classic}}(q) = \ln\left(\frac{N - \text{df}(q) + 0.5}{\text{df}(q) + 0.5}\right)
+$$
 
 However, if a term appears in more than half the corpus ($\text{df} > N / 2$), the numerator becomes smaller than the denominator ($N - \text{df} + 0.5 < \text{df} + 0.5$), and $\text{IDF}_{\text{classic}}$ becomes **negative**. If a document contains a common word alongside relevant rare words, a negative IDF actively subtracts from the document's total score.
 
 To prevent common words from receiving negative weights, search engines such as Apache Lucene (and engines built upon it, including Elasticsearch and OpenSearch) implement Robertson &amp; Zaragoza's (2009) smoothed variant:
 
-$$\text{IDF}(q) = \ln\left(1 + \frac{N - \text{df}(q) + 0.5}{\text{df}(q) + 0.5}\right)$$
+$$
+\text{IDF}(q) = \ln\left(1 + \frac{N - \text{df}(q) + 0.5}{\text{df}(q) + 0.5}\right)
+$$
 
 Because $\frac{N - \text{df} + 0.5}{\text{df} + 0.5} \ge 0$ for all valid $\text{df} \le N$, the term inside the natural logarithm is guaranteed to be $\ge 1$. Consequently, $\text{IDF}(q) \ge 0$ under all circumstances.
 
@@ -105,28 +111,44 @@ Length Normalization (b)    = 0.75
 Let us derive each component step by step:
 
 ### Step 1: Compute Smoothed IDF
-$$\text{IDF} = \ln\left(1 + \frac{1000 - 100 + 0.5}{100 + 0.5}\right) = \ln\left(1 + \frac{900.5}{100.5}\right) = \ln\left(1 + 8.960199\right) = \ln(9.960199) \approx \mathbf{2.2986} \quad (\mathbf{2.299})$$
+$$
+\text{IDF} = \ln\left(1 + \frac{1000 - 100 + 0.5}{100 + 0.5}\right) = \ln\left(1 + \frac{900.5}{100.5}\right) = \ln\left(1 + 8.960199\right) = \ln(9.960199) \approx \mathbf{2.2986} \quad (\mathbf{2.299})
+$$
 
 ### Step 2: Compute Document Length Factor (B)
-$$B = 1 - b + b \cdot \left(\frac{|D|}{\text{avgdl}}\right) = 1 - 0.75 + 0.75 \times \left(\frac{100}{100}\right) = 0.25 + 0.75(1.0) = \mathbf{1.000}$$
+$$
+B = 1 - b + b \cdot \left(\frac{|D|}{\text{avgdl}}\right) = 1 - 0.75 + 0.75 \times \left(\frac{100}{100}\right) = 0.25 + 0.75(1.0) = \mathbf{1.000}
+$$
 
 When a document's length equals the corpus average ($|D| = \text{avgdl}$), $B$ is exactly $1.0$ regardless of $b$.
 
 ### Step 3: Compute Saturating Term Frequency Factor
-$$\text{TF Factor} = \frac{\text{tf} \cdot (k_1 + 1)}{\text{tf} + k_1 \cdot B} = \frac{3 \cdot (1.2 + 1)}{3 + 1.2 \cdot (1.0)} = \frac{3 \times 2.2}{3 + 1.2} = \frac{6.6}{4.2} = \frac{11}{7} \approx \mathbf{1.5714} \quad (\mathbf{1.571})$$
+$$
+\text{TF Factor} = \frac{\text{tf} \cdot (k_1 + 1)}{\text{tf} + k_1 \cdot B} = \frac{3 \cdot (1.2 + 1)}{3 + 1.2 \cdot (1.0)} = \frac{3 \times 2.2}{3 + 1.2} = \frac{6.6}{4.2} = \frac{11}{7} \approx \mathbf{1.5714} \quad (\mathbf{1.571})
+$$
 
 ### Step 4: Compute Total BM25 Term Score
-$$\text{Score} = \text{IDF} \times \text{TF Factor} = 2.298602 \times 1.571429 \approx \mathbf{3.6121} \quad (\mathbf{3.612})$$
+$$
+\text{Score} = \text{IDF} \times \text{TF Factor} = 2.298602 \times 1.571429 \approx \mathbf{3.6121} \quad (\mathbf{3.612})
+$$
 
 ### What Happens When We Alter Parameters?
 
 1. **Increasing Term Frequency ($3 \to 30$)**:
-   $$\text{TF Factor} = \frac{30 \times 2.2}{30 + 1.2 \times 1.0} = \frac{66}{31.2} \approx 2.1154 \implies \text{Score} = 2.2986 \times 2.1154 \approx \mathbf{4.862}$$
+   $$
+   \text{TF Factor} = \frac{30 \times 2.2}{30 + 1.2 \times 1.0} = \frac{66}{31.2} \approx 2.1154 \implies \text{Score} = 2.2986 \times 2.1154 \approx \mathbf{4.862}
+   $$
    Even though the term frequency increased by $10\times$ (from 3 to 30), the score only rose from $3.612$ to $4.862$ ($1.35\times$). The score can never exceed the theoretical ceiling:
-   $$\text{Max Score} = \text{IDF} \times (k_1 + 1) = 2.2986 \times 2.2 = \mathbf{5.057}$$
+   $$
+   \text{Max Score} = \text{IDF} \times (k_1 + 1) = 2.2986 \times 2.2 = \mathbf{5.057}
+   $$
 2. **Increasing Document Length ($100 \to 500$, with $b = 0.75$)**:
-   $$B = 1 - 0.75 + 0.75 \times \left(\frac{500}{100}\right) = 0.25 + 3.75 = 4.0$$
-   $$\text{TF Factor} = \frac{6.6}{3 + 1.2 \times 4.0} = \frac{6.6}{3 + 4.8} = \frac{6.6}{7.8} \approx 0.8462 \implies \text{Score} = 2.2986 \times 0.8462 \approx \mathbf{1.945}$$
+   $$
+   B = 1 - 0.75 + 0.75 \times \left(\frac{500}{100}\right) = 0.25 + 3.75 = 4.0
+   $$
+   $$
+   \text{TF Factor} = \frac{6.6}{3 + 1.2 \times 4.0} = \frac{6.6}{3 + 4.8} = \frac{6.6}{7.8} \approx 0.8462 \implies \text{Score} = 2.2986 \times 0.8462 \approx \mathbf{1.945}
+   $$
    The verbose document is penalized, cutting its score nearly in half.
 3. **Disabling Length Penalty ($b = 0$)**:
    When $b = 0$, $B = 1.0$ regardless of length. The 500-word document receives the exact same score ($3.612$) as the 100-word document.
@@ -145,9 +167,9 @@ To observe BM25 across an entire collection, explore the 4-document toy search e
 
 | Architectural Dimension | Classic TF-IDF | Okapi BM25 | Production Impact |
 | :--- | :--- | :--- | :--- |
-| **Term Frequency Growth** | Linear ($\text{tf}$) or ad-hoc logarithmic ($1 + \ln \text{tf}$) | Nonlinear saturating curve $\frac{\text{tf}(k_1 + 1)}{\text{tf} + k_1 B}$ | Prevents keyword stuffing; caps maximum single-term gain at $k_1 + 1$. |
-| **Document Length Normalization** | Raw division by length ($\text{count} / \vert d \vert$) or cosine vector norm | Flexible interpolation $B = 1 - b + b \frac{\vert d \vert}{\text{avgdl}}$ | Tunable via $b$: $b=0$ ignores length, $b=1$ scales strictly with length. |
-| **IDF Formulation** | $\ln(N / \text{df})$ or $\ln((1+N)/(1+\text{df})) + 1$ | Probabilistic smoothed $\ln\left(1 + \frac{N - \text{df} + 0.5}{\text{df} + 0.5}\right)$ | Probabilistic Robertson smoothed variant; strictly non-negative. |
+| **Term Frequency Growth** | Linear ($\text{tf}$) or ad-hoc logarithmic ($1 + \ln \text{tf}$) | Nonlinear saturating curve $\text{tf} \cdot (k_1 + 1) / (\text{tf} + k_1 B)$ | Prevents keyword stuffing; caps maximum single-term gain at $k_1 + 1$. |
+| **Document Length Normalization** | Raw division by length ($\text{count} / \vert d \vert$) or cosine vector norm | Flexible interpolation $B = 1 - b + b \cdot (\vert d \vert / \text{avgdl})$ | Tunable via $b$: $b=0$ ignores length, $b=1$ scales strictly with length. |
+| **IDF Formulation** | $\ln(N / \text{df})$ or $\ln((1+N)/(1+\text{df})) + 1$ | Probabilistic smoothed $\ln(1 + (N - \text{df} + 0.5) / (\text{df} + 0.5))$ | Probabilistic Robertson smoothed variant; strictly non-negative. |
 | **Tunable Knobs** | Typically none (fixed heuristics) | $k_1$ (saturation) and $b$ (length penalty) | Hyperparameters can be tuned via grid search or Bayesian optimization. |
 | **Theoretical Origin** | Geometric Vector Space Model (Salton, 1975) | Probabilistic Relevance Framework &amp; 2-Poisson Model (Robertson, 1994) | Grounded in formal decision theory and odds of relevance. |
 | **Semantic Understanding** | None (exact string tokens only) | None (exact string tokens only) | Both require dense neural vectors for semantic synonym matching. |
@@ -162,7 +184,9 @@ The 2-Poisson indexing model (Harter, 1975; Robertson et al., 1994) offers a the
 2. **Non-elitist documents ($\bar{E}$)**: Documents where $t$ appears only incidentally or peripherally. Occurrences follow a Poisson distribution with a lower mean rate $\mu$ ($\mu < \lambda$).
 
 In probabilistic relevance modeling (Robertson &amp; Spärck Jones, 1976; Manning et al., 2008), the optimal term weight depends on the log-odds ratio of relevance given the observed term frequency:
-$$w(\text{tf}) = \ln \left( \frac{P(\text{Relevant} \mid \text{tf})\, P(\text{Non-Relevant})}{P(\text{Non-Relevant} \mid \text{tf})\, P(\text{Relevant})} \right)$$
+$$
+w(\text{tf}) = \ln \left( \frac{P(\text{Relevant} \mid \text{tf})\, P(\text{Non-Relevant})}{P(\text{Non-Relevant} \mid \text{tf})\, P(\text{Relevant})} \right)
+$$
 
 Under 2-Poisson mixtures, this log-odds weight exhibits three key structural properties:
 - It starts at zero when $\text{tf} = 0$.
@@ -320,9 +344,9 @@ for doc_id, score in results:
 
 | BM25 Component | Formula | Architectural Role |
 | :--- | :--- | :--- |
-| **Term Frequency Saturation** | $\frac{\text{tf} \cdot (k_1 + 1)}{\text{tf} + k_1 B}$ | Flattens marginal score gains; caps contribution at $k_1 + 1$. |
-| **Length Normalization ($B$)** | $1 - b + b \cdot \left(\frac{\vert D \vert}{\text{avgdl}}\right)$ | Scales denominator: $B < 1$ boosts concise docs, $B > 1$ penalizes long docs. |
-| **Smoothed IDF** | $\ln\left(1 + \frac{N - \text{df} + 0.5}{\text{df} + 0.5}\right)$ | Guarantees non-negative term weights even when $\text{df} > N / 2$. |
+| **Term Frequency Saturation** | $\text{tf} \cdot (k_1 + 1) / (\text{tf} + k_1 B)$ | Flattens marginal score gains; caps contribution at $k_1 + 1$. |
+| **Length Normalization ($B$)** | $1 - b + b \cdot (\vert D \vert / \text{avgdl})$ | Scales denominator: $B < 1$ boosts concise docs, $B > 1$ penalizes long docs. |
+| **Smoothed IDF** | $\ln(1 + (N - \text{df} + 0.5) / (\text{df} + 0.5))$ | Guarantees non-negative term weights even when $\text{df} > N / 2$. |
 | **$k_1$ Parameter** | Typically $1.2 - 2.0$ | Controls how rapidly saturation sets in. Higher $k_1$ behaves more like linear TF. |
 | **$b$ Parameter** | Typically $0.75$ | Controls severity of document length penalty ($b=0$ disables length penalty). |
 | **Hybrid RAG Role** | Combined with dense vectors via RRF | Essential for retrieving exact identifiers, codes, and rare proper nouns. |

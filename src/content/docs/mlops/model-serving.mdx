@@ -229,13 +229,17 @@ Two numbers describe a service's performance. **Latency** is how long one reques
 
 **Little's law** relates the average number of requests in the system $L$, the arrival rate $\lambda$ and the average time each spends in the system $W$:
 
-$$L = \lambda W$$
+$$
+L = \lambda W
+$$
 
 At 200 requests a second and 50 ms each, about 10 requests are in flight at any moment, so the server needs at least 10 concurrent slots (threads, processes or batch positions) or requests will queue.
 
 The more important result is about **utilization** $\rho = \lambda / \mu$, the arrival rate divided by the service's maximum throughput $\mu$. In the simplest queueing model (random arrivals, one server, the M/M/1 queue) the average time in the system is
 
-$$W = \frac{1}{\mu - \lambda} = \frac{1}{\mu}\cdot\frac{1}{1 - \rho}$$
+$$
+W = \frac{1}{\mu - \lambda} = \frac{1}{\mu}\cdot\frac{1}{1 - \rho}
+$$
 
 At 50% utilization, requests take twice the bare service time; at 90%, ten times; at 99%, a hundred times. And when $\rho \geq 1$, arrivals outpace service and the queue grows without bound. **Latency doesn't degrade gracefully as load rises; it degrades suddenly near capacity.** This is why services are sized to run well below their maximum, typically 50 to 70% at peak, and why autoscaling triggers before saturation, not at it.
 

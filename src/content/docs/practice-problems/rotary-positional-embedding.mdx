@@ -11,7 +11,9 @@ import RunnableCode from '../../../components/content/RunnableCode';
 
 **Difficulty: Hard** · Concept: [Foundation Model Internals — Positional Encoding](/docs/llms-genai/foundation-model-internals#positional-encoding)
 
-$$\begin{pmatrix}x'_{2i} \\ x'_{2i+1}\end{pmatrix} = \begin{pmatrix}\cos\theta_{i,p} & -\sin\theta_{i,p} \\ \sin\theta_{i,p} & \cos\theta_{i,p}\end{pmatrix}\begin{pmatrix}x_{2i} \\ x_{2i+1}\end{pmatrix}, \quad \theta_{i,p} = p \cdot \text{base}^{-2i/d}$$
+$$
+\begin{pmatrix}x'_{2i} \\ x'_{2i+1}\end{pmatrix} = \begin{pmatrix}\cos\theta_{i,p} & -\sin\theta_{i,p} \\ \sin\theta_{i,p} & \cos\theta_{i,p}\end{pmatrix}\begin{pmatrix}x_{2i} \\ x_{2i+1}\end{pmatrix}, \quad \theta_{i,p} = p \cdot \text{base}^{-2i/d}
+$$
 
 RoPE encodes a token's position not by adding a position vector (the original Transformer's approach) but by *rotating* pairs of dimensions in the query/key vectors by an angle proportional to the token's position — different frequency per dimension pair, exactly like the original sinusoidal encoding's frequency schedule, but applied as a rotation instead of an addition. The payoff: the dot product between a rotated query and a rotated key ends up depending only on their *relative* position, not their absolute positions, which is exactly the property attention actually needs and is a big part of why RoPE is the dominant choice in current frontier models.
 

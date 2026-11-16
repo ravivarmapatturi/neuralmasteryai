@@ -110,7 +110,9 @@ A simpler alternative to RLHF: instead of training a separate reward model and r
 
 "Reformulates the objective" is precise enough to actually show. [Rafailov et al.'s DPO paper](https://arxiv.org/abs/2305.18290) starts from the same KL-constrained reward-maximization objective RLHF optimizes with PPO, and shows it has a closed-form optimal policy — which can be algebraically inverted to express the *reward* directly in terms of the *policy's* own log-probabilities relative to the reference model. Substituting that reparameterized reward into the Bradley-Terry preference model (the standard "probability response $y_w$ is preferred over $y_l$" formula) eliminates the reward function entirely, leaving a loss defined purely on the policy:
 
-$$\mathcal{L}_{\text{DPO}}(\pi_\theta;\pi_{\text{ref}}) = -\mathbb{E}_{(x,y_w,y_l)\sim D}\left[\log\sigma\left(\beta\log\frac{\pi_\theta(y_w\mid x)}{\pi_{\text{ref}}(y_w\mid x)} - \beta\log\frac{\pi_\theta(y_l\mid x)}{\pi_{\text{ref}}(y_l\mid x)}\right)\right]$$
+$$
+\mathcal{L}_{\text{DPO}}(\pi_\theta;\pi_{\text{ref}}) = -\mathbb{E}_{(x,y_w,y_l)\sim D}\left[\log\sigma\left(\beta\log\frac{\pi_\theta(y_w\mid x)}{\pi_{\text{ref}}(y_w\mid x)} - \beta\log\frac{\pi_\theta(y_l\mid x)}{\pi_{\text{ref}}(y_l\mid x)}\right)\right]
+$$
 
 $y_w$ is the preferred ("winning") response, $y_l$ the dispreferred ("losing") one, and $\beta$ the same KL-strength hyperparameter that constrains RLHF away from the reference model — here it directly scales how sharply the loss reacts to a given policy/reference log-ratio gap. No reward model, no sampling, no RL training loop: $\mathcal{L}_{\text{DPO}}$ is a plain classification-style loss computable directly from $(x, y_w, y_l)$ triples and the two models' log-probabilities on them.
 

@@ -129,10 +129,14 @@ In **Depthwise-Separable Convolutions** (Lin et al., MCUNet):
 1. **Depthwise Step**: Applies a single $K \times K$ spatial filter per input channel independently ($H \times W \times C_{\text{in}} \times K^2$).
 2. **Pointwise Step**: Applies a $1 \times 1$ linear projection across channels ($H \times W \times C_{\text{in}} \times C_{\text{out}}$).
 
-$$\text{Compute Ratio} = \frac{H W C_{\text{in}} K^2 + H W C_{\text{in}} C_{\text{out}}}{H W C_{\text{in}} C_{\text{out}} K^2} = \frac{1}{C_{\text{out}}} + \frac{1}{K^2}$$
+$$
+\text{Compute Ratio} = \frac{H W C_{\text{in}} K^2 + H W C_{\text{in}} C_{\text{out}}}{H W C_{\text{in}} C_{\text{out}} K^2} = \frac{1}{C_{\text{out}}} + \frac{1}{K^2}
+$$
 
 For standard $3 \times 3$ kernels ($K=3$) with 32 output channels, depthwise separation slashes computational load by **nearly 9×**:
-$$\frac{1}{32} + \frac{1}{9} \approx 0.031 + 0.111 = 0.142 \implies \mathbf{7\times \text{ to } 9\times \text{ fewer FLOPs!}}$$
+$$
+\frac{1}{32} + \frac{1}{9} \approx 0.031 + 0.111 = 0.142 \implies \mathbf{7\times \text{ to } 9\times \text{ fewer FLOPs!}}
+$$
 
 <GoDeeper title="Go deeper: ARM Cortex-M DSP assembly acceleration with CMSIS-NN">
 
@@ -164,10 +168,14 @@ Consider a TinyML image classifier running on an STM32 MCU (128 KB total SRAM, 5
 - Layer 5 (Dense): Input 8 KB, Output 1 KB, Flash Weights 14 KB
 
 Total Model Weights stored in Flash ROM:
-$$\text{Weights}_{\text{Flash}} = 48 + 16 + 32 + 0 + 14 = \mathbf{110 \text{ KB}}$$
+$$
+\text{Weights}_{\text{Flash}} = 48 + 16 + 32 + 0 + 14 = \mathbf{110 \text{ KB}}
+$$
 
 If each layer allocated independent memory on the heap, total activation memory would be:
-$$\text{Memory}_{\text{Naive}} = 12 \text{ (Input)} + 24 + 24 + 16 + 8 + 1 = \mathbf{85 \text{ KB}}$$
+$$
+\text{Memory}_{\text{Naive}} = 12 \text{ (Input)} + 24 + 24 + 16 + 8 + 1 = \mathbf{85 \text{ KB}}
+$$
 
 Using the **Ping-Pong Static Arena**:
 - Buffer A (24 KB, offset `0..24 KB`)

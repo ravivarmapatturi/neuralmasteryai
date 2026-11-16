@@ -46,11 +46,15 @@ An MDP formalizes "an agent interacting with an environment over time" as a tupl
 
 The Bellman equations are the recursive structure that makes RL solvable at all — they express a state's value in terms of its *immediate* reward plus the (discounted) value of whatever state comes next, rather than requiring the entire infinite future to be considered explicitly every time:
 
-$$V^\pi(s) = \mathbb{E}_{a \sim \pi}\left[R(s,a) + \gamma \, \mathbb{E}_{s' \sim P}\left[V^\pi(s')\right]\right]$$
+$$
+V^\pi(s) = \mathbb{E}_{a \sim \pi}\left[R(s,a) + \gamma \, \mathbb{E}_{s' \sim P}\left[V^\pi(s')\right]\right]
+$$
 
 The analogous equation for $Q$:
 
-$$Q^\pi(s,a) = \mathbb{E}_{s'}\left[R(s,a,s') + \gamma \, \mathbb{E}_{a' \sim \pi}\left[Q^\pi(s', a')\right]\right]$$
+$$
+Q^\pi(s,a) = \mathbb{E}_{s'}\left[R(s,a,s') + \gamma \, \mathbb{E}_{a' \sim \pi}\left[Q^\pi(s', a')\right]\right]
+$$
 
 This recursive "value now = immediate reward + discounted value of what's next" structure is exactly the same self-referential idea as [dynamic programming](/docs/mathematics-for-ai/algorithms-data-structures) — the optimal solution to a larger problem is built from optimal solutions to smaller subproblems. Solving it directly, by repeatedly applying the Bellman *optimality* equation ($V(s) \leftarrow \max_a [R + \gamma V(s')]$) to every state until the values stop changing, is called **value iteration** — watch it actually converge, one full sweep of the grid at a time:
 
@@ -62,7 +66,9 @@ This is the mathematical basis every value-based RL algorithm (Q-learning, DQN, 
 
 A model-free algorithm (no need to know the transition function $P$ explicitly — it learns purely from experienced transitions) that directly learns the optimal action-value function $Q^*$ via the update rule:
 
-$$Q(s,a) \leftarrow Q(s,a) + \alpha \left[r + \gamma \max_{a'} Q(s',a') - Q(s,a)\right]$$
+$$
+Q(s,a) \leftarrow Q(s,a) + \alpha \left[r + \gamma \max_{a'} Q(s',a') - Q(s,a)\right]
+$$
 
 The term in brackets is the **TD (temporal difference) error** — the gap between the current estimate $Q(s,a)$ and a better, bootstrapped target ($r$ plus the discounted best estimate of the next state's value) — the update nudges $Q$ toward that better target by a step size $\alpha$. Step through this exact update on a real 4-state corridor, using the same trace from the loop diagram above:
 
@@ -74,7 +80,9 @@ Q-learning is **off-policy**: the update uses $\max_{a'} Q(s', a')$ — the valu
 
 Nearly identical to Q-learning, with one crucial difference — SARSA (**S**tate-**A**ction-**R**eward-**S**tate-**A**ction, named for the quintuple its update uses) is **on-policy**:
 
-$$Q(s,a) \leftarrow Q(s,a) + \alpha \left[r + \gamma\, Q(s',a') - Q(s,a)\right]$$
+$$
+Q(s,a) \leftarrow Q(s,a) + \alpha \left[r + \gamma\, Q(s',a') - Q(s,a)\right]
+$$
 
 Here $a'$ is the action the agent *actually took* next (following its current, possibly-exploring policy), not the best possible action. This makes SARSA learn the value of the policy it's actually following (including its exploration behavior), which tends to produce more conservative, safer learned behavior in risky environments.
 

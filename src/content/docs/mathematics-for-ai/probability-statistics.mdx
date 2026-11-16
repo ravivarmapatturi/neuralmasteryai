@@ -53,7 +53,9 @@ Why it matters: the bias-variance tradeoff (see [Machine Learning](/docs/machine
 
 ## Bayes' Theorem
 
-$$P(A \mid B) = \frac{P(B \mid A) \, P(A)}{P(B)}$$
+$$
+P(A \mid B) = \frac{P(B \mid A) \, P(A)}{P(B)}
+$$
 
 Lets you update a belief ($P(A)$, the *prior*) given new evidence ($B$) to get an updated belief ($P(A \mid B)$, the *posterior*). Real numbers, the classic base-rate case:
 
@@ -76,15 +78,21 @@ Adding L2 regularization to a loss function is mathematically equivalent to doin
 
 Start from the same Gaussian-noise linear regression setup as [Linear Regression's MLE derivation](/docs/machine-learning/linear-regression#2-the-cost-function-mean-squared-error) — that derivation showed $\log P(\text{data} \mid \mathbf{w}) = -\frac{n}{2}\log(2\pi\sigma^2) - \frac{1}{2\sigma^2}\sum_i\left(y^{(i)}-\hat{y}^{(i)}\right)^2$. MAP additionally puts a prior on the weights themselves — assume each weight is independently drawn from a zero-mean Gaussian, $w_j \sim \mathcal{N}(0, \tau^2)$, encoding the belief "weights are probably small":
 
-$$\log P(\mathbf{w}) = \sum_j\left[-\frac{1}{2}\log(2\pi\tau^2) - \frac{w_j^2}{2\tau^2}\right] = -\frac{d}{2}\log(2\pi\tau^2) - \frac{1}{2\tau^2}\|\mathbf{w}\|^2$$
+$$
+\log P(\mathbf{w}) = \sum_j\left[-\frac{1}{2}\log(2\pi\tau^2) - \frac{w_j^2}{2\tau^2}\right] = -\frac{d}{2}\log(2\pi\tau^2) - \frac{1}{2\tau^2}\|\mathbf{w}\|^2
+$$
 
 By Bayes' theorem, $P(\mathbf{w} \mid \text{data}) \propto P(\text{data}\mid\mathbf{w})\,P(\mathbf{w})$ — the normalizing constant $P(\text{data})$ doesn't depend on $\mathbf{w}$, so it can't affect where the maximum sits. MAP maximizes the log of that product, i.e. the *sum* of the two log-expressions above. Drop everything that's a constant with respect to $\mathbf{w}$ (both $\log(2\pi\sigma^2)$ and $\log(2\pi\tau^2)$ terms):
 
-$$\arg\max_{\mathbf{w}}\left[-\frac{1}{2\sigma^2}\sum_i\left(y^{(i)}-\hat{y}^{(i)}\right)^2 - \frac{1}{2\tau^2}\|\mathbf{w}\|^2\right]$$
+$$
+\arg\max_{\mathbf{w}}\left[-\frac{1}{2\sigma^2}\sum_i\left(y^{(i)}-\hat{y}^{(i)}\right)^2 - \frac{1}{2\tau^2}\|\mathbf{w}\|^2\right]
+$$
 
 Negate to turn the maximization into the equivalent minimization, and multiply through by the positive constant $2\sigma^2$ (doesn't change where the minimum is):
 
-$$\arg\min_{\mathbf{w}}\left[\sum_i\left(y^{(i)}-\hat{y}^{(i)}\right)^2 + \frac{\sigma^2}{\tau^2}\|\mathbf{w}\|^2\right]$$
+$$
+\arg\min_{\mathbf{w}}\left[\sum_i\left(y^{(i)}-\hat{y}^{(i)}\right)^2 + \frac{\sigma^2}{\tau^2}\|\mathbf{w}\|^2\right]
+$$
 
 That is exactly [Ridge regression's cost function](/docs/machine-learning/ridge-regression#the-ridge-cost-function) — sum of squared errors plus an $L2$ penalty on the weights — with the regularization strength pinned down precisely: $\lambda = \sigma^2/\tau^2$. A tight prior (small $\tau^2$, strong belief that weights should be near zero) produces large $\lambda$ and heavy regularization; a loose, uninformative prior ($\tau^2 \to \infty$) makes $\lambda \to 0$ and MAP collapses back to plain MLE. "L2 regularization = MAP with a Gaussian prior" isn't an analogy — it's the same optimization problem, term for term.
 
@@ -147,17 +155,23 @@ Drag a predicted distribution $Q$ toward (or away from) the true $P$ and watch a
 
 The formula above, $D_{KL}(P\|Q) = H(P,Q) - H(P)$, is worth confirming against KL's more common textbook definition, $D_{KL}(P\|Q) = \sum_x P(x)\log\frac{P(x)}{Q(x)}$ — they're the same thing. Split the log of a ratio into a difference of logs:
 
-$$\sum_x P(x)\log\frac{P(x)}{Q(x)} = \sum_x P(x)\log P(x) - \sum_x P(x)\log Q(x) = -H(P) - \left(-H(P,Q)\right) = H(P,Q) - H(P)$$
+$$
+\sum_x P(x)\log\frac{P(x)}{Q(x)} = \sum_x P(x)\log P(x) - \sum_x P(x)\log Q(x) = -H(P) - \left(-H(P,Q)\right) = H(P,Q) - H(P)
+$$
 
 using $H(P) = -\sum_x P(x)\log P(x)$ and $H(P,Q) = -\sum_x P(x)\log Q(x)$ directly from their definitions above.
 
 Now the non-negativity claim itself — genuinely worth proving, not just trusting, since it's what makes KL usable as a "distance" between distributions in the first place. Rewrite it as a negated expectation under $P$:
 
-$$D_{KL}(P\|Q) = \sum_x P(x)\log\frac{P(x)}{Q(x)} = -\sum_x P(x)\log\frac{Q(x)}{P(x)} = -\,\mathbb{E}_{x\sim P}\left[\log\frac{Q(x)}{P(x)}\right]$$
+$$
+D_{KL}(P\|Q) = \sum_x P(x)\log\frac{P(x)}{Q(x)} = -\sum_x P(x)\log\frac{Q(x)}{P(x)} = -\,\mathbb{E}_{x\sim P}\left[\log\frac{Q(x)}{P(x)}\right]
+$$
 
 $\log$ is a **concave** function, so Jensen's inequality applies in the direction $\mathbb{E}[\log Z] \leq \log \mathbb{E}[Z]$ (the mirror-image direction of the same inequality that establishes [TD3's overestimation bias](/docs/reinforcement-learning/advanced-rl#td3-fixing-overestimation-bias) elsewhere on this site, where $\max$ being convex flips it the other way). Let $Z = Q(x)/P(x)$, with the expectation taken over $x \sim P$:
 
-$$\mathbb{E}_{x\sim P}\left[\log\frac{Q(x)}{P(x)}\right] \;\leq\; \log\,\mathbb{E}_{x\sim P}\left[\frac{Q(x)}{P(x)}\right] = \log\sum_x P(x)\cdot\frac{Q(x)}{P(x)} = \log\sum_x Q(x) = \log 1 = 0$$
+$$
+\mathbb{E}_{x\sim P}\left[\log\frac{Q(x)}{P(x)}\right] \;\leq\; \log\,\mathbb{E}_{x\sim P}\left[\frac{Q(x)}{P(x)}\right] = \log\sum_x P(x)\cdot\frac{Q(x)}{P(x)} = \log\sum_x Q(x) = \log 1 = 0
+$$
 
 (the sum telescopes to $\sum_x Q(x)$ because $P(x)$ cancels, and any valid probability distribution sums to exactly 1). So $\mathbb{E}_P[\log(Q/P)] \leq 0$, which means $D_{KL}(P\|Q) = -\mathbb{E}_P[\log(Q/P)] \geq 0$ — always, for any two distributions over the same support. Equality holds only when $Q(x)/P(x)$ is constant everywhere $P$ has support, i.e. exactly when $Q = P$: two distributions have zero "distance" precisely when they're identical, and never negative distance otherwise.
 

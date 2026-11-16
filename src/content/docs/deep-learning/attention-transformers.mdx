@@ -78,7 +78,9 @@ The embedding lookup above gives every occurrence of a given token the *identica
 
 The original paper's sinusoidal formula — one special, fixed vector of length $d_{\text{model}}=512$ per position, computed once (not learned, not data-dependent) and simply added to that position's token embedding:
 
-$$PE(pos, 2i) = \sin\left(\frac{pos}{10000^{2i/d_{\text{model}}}}\right) \qquad PE(pos, 2i+1) = \cos\left(\frac{pos}{10000^{2i/d_{\text{model}}}}\right)$$
+$$
+PE(pos, 2i) = \sin\left(\frac{pos}{10000^{2i/d_{\text{model}}}}\right) \qquad PE(pos, 2i+1) = \cos\left(\frac{pos}{10000^{2i/d_{\text{model}}}}\right)
+$$
 
 $pos$ is the token's position in the sequence (0, 1, 2, ...) and $2i$/$2i{+}1$ are the even/odd dimension indices within the 512-length vector — so half the dimensions get a sine, half get a cosine, each pair at a different frequency set by $10000^{2i/d_{\text{model}}}$. Every position uses this exact same formula; nothing about it depends on which sentence or which words are being encoded, only on the position and dimension indices — which is also why it can be computed once, up front, and reused for every input.
 
@@ -104,19 +106,25 @@ For each token, the model computes three vectors via learned linear projections:
 
 Attention scores between token $i$ and token $j$ are computed as $Q_i \cdot K_j$ (a dot product — see [Linear Algebra](/docs/mathematics-for-ai/linear-algebra)), scaled and passed through softmax to get weights, which are then used to compute a weighted sum of all Value vectors:
 
-$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right) V$$
+$$
+\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right) V
+$$
 
 ### Matrix Shapes: Why QKᵀ Produces an n-by-n Grid
 
 Worth tracking the actual matrix shapes once, since everything above is a batch operation across the whole sequence at once, not one token at a time. A sequence of $n$ tokens, each a $d_{\text{model}}$-dimensional vector, is one input matrix of shape $(n, d_{\text{model}})$ — six words at $d_{\text{model}}=512$ is a $(6, 512)$ matrix. $Q$ and $K$ (after their linear projections) keep that same $(n, d_k)$ shape. Transposing $K$ flips it to $(d_k, n)$, and matrix multiplication cancels the shared inner dimension:
 
-$$\underbrace{(n, d_k)}_{Q} \times \underbrace{(d_k, n)}_{K^T} = \underbrace{(n, n)}_{QK^T}$$
+$$
+\underbrace{(n, d_k)}_{Q} \times \underbrace{(d_k, n)}_{K^T} = \underbrace{(n, n)}_{QK^T}
+$$
 
 $(6, 512) \times (512, 6) \to (6, 6)$: the $512$ cancels, leaving a $6\times 6$ grid — one row per Query token, one column per Key token, exactly the "every token scored against every token" matrix the worked example below computes with real numbers.
 
 Scaling by $\sqrt{d_k}$ and softmax are both shape-preserving (softmax normalizes each row, it doesn't change the matrix's dimensions), so the full formula's shape trace for six 512-dimensional tokens is:
 
-$$\text{softmax}\!\left(\frac{\overbrace{(6,512)}^{Q} \times \overbrace{(512,6)}^{K^T}}{\sqrt{512}}\right)_{(6,6)} \times \overbrace{(6,512)}^{V} = \overbrace{(6,512)}^{\text{output}}$$
+$$
+\text{softmax}\!\left(\frac{\overbrace{(6,512)}^{Q} \times \overbrace{(512,6)}^{K^T}}{\sqrt{512}}\right)_{(6,6)} \times \overbrace{(6,512)}^{V} = \overbrace{(6,512)}^{\text{output}}
+$$
 
 The $(6,6)$ attention-weight matrix times the $(6,512)$ Value matrix cancels the shared $6$, landing back at $(6,512)$ — self-attention's output is the *same shape* as its input, one context-mixed vector per token, which is exactly what lets these blocks stack $N$ times without the shape ever changing. That $(6,512)$ output isn't just shape-compatible with the input — each of its 6 rows is now that word's vector carrying real information about its relationship to every other word in the sentence, mixed in proportion to the attention weights computed above.
 
@@ -224,11 +232,15 @@ The claim above leans on one fact: for independent $X, Y$, $\text{Var}(X+Y) = \t
 
 Start from the definition, $\text{Var}(Z) = E[Z^2] - (E[Z])^2$, applied to $Z = X + Y$:
 
-$$\text{Var}(X+Y) = E[(X+Y)^2] - (E[X+Y])^2 = E[X^2 + 2XY + Y^2] - (E[X] + E[Y])^2$$
+$$
+\text{Var}(X+Y) = E[(X+Y)^2] - (E[X+Y])^2 = E[X^2 + 2XY + Y^2] - (E[X] + E[Y])^2
+$$
 
 Expand both sides — linearity of expectation lets $E[X^2+2XY+Y^2]$ split into $E[X^2] + 2E[XY] + E[Y^2]$, and $(E[X]+E[Y])^2$ expands to $E[X]^2 + 2E[X]E[Y] + E[Y]^2$:
 
-$$\text{Var}(X+Y) = \big(E[X^2] - E[X]^2\big) + \big(E[Y^2] - E[Y]^2\big) + 2\big(E[XY] - E[X]E[Y]\big) = \text{Var}(X) + \text{Var}(Y) + 2\,\text{Cov}(X,Y)$$
+$$
+\text{Var}(X+Y) = \big(E[X^2] - E[X]^2\big) + \big(E[Y^2] - E[Y]^2\big) + 2\big(E[XY] - E[X]E[Y]\big) = \text{Var}(X) + \text{Var}(Y) + 2\,\text{Cov}(X,Y)
+$$
 
 The cross term is exactly $\text{Cov}(X,Y)$, and independence is precisely the assumption that makes it vanish: independent $X,Y$ satisfy $E[XY] = E[X]E[Y]$ by definition, so $\text{Cov}(X,Y) = 0$. That's the entire gap the "independent" assumption is doing work in — with $d_k$ independent query/key components, all $\binom{d_k}{2}$ cross terms drop out, and only the $d_k$ individual variances (each 1, by assumption) survive: $\text{Var}\left(\sum_{i=1}^{d_k} q_ik_i\right) = \sum_{i=1}^{d_k}\text{Var}(q_ik_i) = d_k$.
 
@@ -256,7 +268,9 @@ Start with $Q = XW_Q$, the same full projection derived earlier — shape $(n, d
 
 Worth being precise about the difference between the generic $\text{Attention}(Q,K,V)$ defined earlier and $\text{head}_i = \text{Attention}(QW_i^Q, KW_i^K, VW_i^V)$ from the paper's Equation 2: **they're the exact same function** — $\text{Attention}(\cdot,\cdot,\cdot) = \text{softmax}(\cdot\,\cdot^T/\sqrt{d_k})\cdot$, unchanged. What differs is only *what gets passed in*. The generic version takes whatever $Q$, $K$, $V$ you hand it; $\text{head}_i$ calls that identical function, but first passes $Q$, $K$, $V$ through head $i$'s own slice of the projection ($QW_i^Q$ instead of raw $Q$) — every head reuses one primitive operation, on 8 different projected views of the same input.
 
-$$\text{MultiHead}(Q,K,V) = \text{Concat}(\text{head}_1, \ldots, \text{head}_8)\,W^O$$
+$$
+\text{MultiHead}(Q,K,V) = \text{Concat}(\text{head}_1, \ldots, \text{head}_8)\,W^O
+$$
 
 **Putting it together, in order**: project $Q$, $K$, $V$ once each (full $d_{\text{model}}$ width) → split each into 8 heads along the feature dimension → run the identical $\text{Attention}()$ primitive independently per head, in parallel → concatenate the 8 outputs back to $d_{\text{model}}$ width → project once more through $W^O$ to mix information across heads before it leaves the block.
 
@@ -312,7 +326,9 @@ Self-attention and cross-attention both mix information *across* tokens — ever
 
 **Position-wise feed-forward network**: two linear layers with a ReLU between, applied identically and independently to every position — the "per token" half of the pattern above:
 
-$$\text{FFN}(x) = \max(0, xW_1+b_1)W_2+b_2$$
+$$
+\text{FFN}(x) = \max(0, xW_1+b_1)W_2+b_2
+$$
 
 <FeedForwardDiagram />
 

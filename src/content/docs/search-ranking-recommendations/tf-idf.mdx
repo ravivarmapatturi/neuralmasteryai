@@ -47,7 +47,9 @@ Our objective is to calculate the exact TF-IDF score for each document and rank 
 
 Term Frequency measures how frequently a query word occurs inside a given document. In its normalized formulation, raw count is scaled by the total word count of the document to prevent long documents from gaining an unfair advantage:
 
-$$\text{TF}(t, d) = \frac{\text{Count of term } t \text{ in } d}{\text{Total words in } d}$$
+$$
+\text{TF}(t, d) = \frac{\text{Count of term } t \text{ in } d}{\text{Total words in } d}
+$$
 
 Let us compute the exact term frequencies for both query terms:
 
@@ -68,7 +70,9 @@ Notice that D2 mentions `"learning"` twice and `"machine"` once (3 query words i
 
 Term Frequency alone is insufficient: if a query contains both a common word and a rare word, TF treats both equally. **Inverse Document Frequency** measures how rare a term is across the entire catalog of $N$ documents:
 
-$$\text{IDF}(t) = \ln\left(\frac{N}{\text{df}(t)}\right)$$
+$$
+\text{IDF}(t) = \ln\left(\frac{N}{\text{df}(t)}\right)
+$$
 
 Where:
 - $N$: Total number of documents in the corpus ($N = 4$).
@@ -77,12 +81,18 @@ Where:
 
 Let us compute the IDF for each vocabulary term:
 - **`"machine"`**: Appears in D1, D2, and D3 $\implies \text{df} = 3$.
-  $$\text{IDF}(\text{"machine"}) = \ln\left(\frac{4}{3}\right) \approx 0.287682 \dots \approx 0.2877$$
+  $$
+  \text{IDF}(\text{"machine"}) = \ln\left(\frac{4}{3}\right) \approx 0.287682 \dots \approx 0.2877
+  $$
 - **`"learning"`**: Appears in D1, D2, and D3 $\implies \text{df} = 3$.
-  $$\text{IDF}(\text{"learning"}) = \ln\left(\frac{4}{3}\right) \approx 0.287682 \dots \approx 0.2877$$
+  $$
+  \text{IDF}(\text{"learning"}) = \ln\left(\frac{4}{3}\right) \approx 0.287682 \dots \approx 0.2877
+  $$
 
 Now contrast this with a rare word like `"cooking"`, which appears in only 1 document (D4):
-$$\text{IDF}(\text{"cooking"}) = \ln\left(\frac{4}{1}\right) = \ln(4) \approx 1.3863$$
+$$
+\text{IDF}(\text{"cooking"}) = \ln\left(\frac{4}{1}\right) = \ln(4) \approx 1.3863
+$$
 
 Because `"cooking"` is rare, its IDF is nearly five times higher than that of `"machine"` ($1.3863$ vs $0.2877$). Rare terms receive higher scores because their presence is stronger evidence of specific topical relevance.
 
@@ -92,11 +102,15 @@ Because `"cooking"` is rare, its IDF is nearly five times higher than that of `"
 
 The TF-IDF weight for a single term in a document is simply:
 
-$$\text{TF-IDF}(t, d) = \text{TF}(t, d) \times \text{IDF}(t)$$
+$$
+\text{TF-IDF}(t, d) = \text{TF}(t, d) \times \text{IDF}(t)
+$$
 
 To score a multi-term search query $q$, we sum the TF-IDF weights of all query terms:
 
-$$\text{Score}(d, q) = \sum_{t \in q} \text{TF-IDF}(t, d) = \sum_{t \in q} \left[\text{TF}(t, d) \times \text{IDF}(t)\right]$$
+$$
+\text{Score}(d, q) = \sum_{t \in q} \text{TF-IDF}(t, d) = \sum_{t \in q} \left[\text{TF}(t, d) \times \text{IDF}(t)\right]
+$$
 
 Let us compute the step-by-step scores for each document on query `"machine learning"`:
 
@@ -129,7 +143,9 @@ Let us compute the step-by-step scores for each document on query `"machine lear
 
 <NotebookCallout color="cobalt" title="Explaining the Mathematical Tie: D1 vs. D3">
 Notice that D1 and D3 tie at **0.1438**. This tie is **not a rounding accident**. Both documents have an identical total length of 4 words, and each contains exactly 1 occurrence of `"machine"` and 1 occurrence of `"learning"`. Because both query terms share the same document frequency ($\text{df} = 3$), their score contributions are identical:
-$$\text{Score}(D_1) = \text{Score}(D_3) = \left(\frac{1}{4} + \frac{1}{4}\right) \times \ln\left(\frac{4}{3}\right) = \frac{1}{2} \ln\left(\frac{4}{3}\right) \approx 0.143841 \dots$$
+$$
+\text{Score}(D_1) = \text{Score}(D_3) = \left(\frac{1}{4} + \frac{1}{4}\right) \times \ln\left(\frac{4}{3}\right) = \frac{1}{2} \ln\left(\frac{4}{3}\right) \approx 0.143841 \dots
+$$
 Furthermore, observe that D2 contains **3 query words** (one `"machine"`, two `"learning"`), whereas D1 and D3 contain only 2 query words. Despite having more keyword matches, D2 ranks lower ($0.1233$) because its length of 7 words dilutes its normalized term frequencies ($3/7 \approx 0.4286 < 0.5000$).
 </NotebookCallout>
 
@@ -145,9 +161,13 @@ Beyond summing scalar weights, TF-IDF forms the mathematical foundation of the *
 
 In the vector space model, a collection of documents shares a common vocabulary $V = \{t_1, t_2, \dots, t_{|V|}\}$. Each document $d$ and query $q$ is mapped to a vector in a $|V|$-dimensional Euclidean space:
 
-$$\mathbf{d} = \big[ \text{TF-IDF}(t_1, d),\, \text{TF-IDF}(t_2, d),\, \dots,\, \text{TF-IDF}(t_{|V|}, d) \big]^T \in \mathbb{R}^{|V|}$$
+$$
+\mathbf{d} = \big[ \text{TF-IDF}(t_1, d),\, \text{TF-IDF}(t_2, d),\, \dots,\, \text{TF-IDF}(t_{|V|}, d) \big]^T \in \mathbb{R}^{|V|}
+$$
 
-$$\mathbf{q} = \big[ \text{TF-IDF}(t_1, q),\, \text{TF-IDF}(t_2, q),\, \dots,\, \text{TF-IDF}(t_{|V|}, q) \big]^T \in \mathbb{R}^{|V|}$$
+$$
+\mathbf{q} = \big[ \text{TF-IDF}(t_1, q),\, \text{TF-IDF}(t_2, q),\, \dots,\, \text{TF-IDF}(t_{|V|}, q) \big]^T \in \mathbb{R}^{|V|}
+$$
 
 Each coordinate corresponds to exactly one term in the global vocabulary $V$. Because an individual document contains only a small subset of all vocabulary terms, coordinates for terms absent from the document are zero:
 
@@ -166,7 +186,9 @@ This is why TF-IDF belongs to the **sparse retrieval** family: vector dimensiona
 ### Measuring Relevance via Cosine Similarity
 In the vector space model, the relevance of document $\mathbf{d}$ to query $\mathbf{q}$ is measured by the **cosine similarity** between their respective vectors:
 
-$$\text{CosineSimilarity}(\mathbf{q}, \mathbf{d}) = \frac{\mathbf{q} \cdot \mathbf{d}}{\|\mathbf{q}\|_2 \|\mathbf{d}\|_2} = \frac{\sum_{t \in q \cap d} \text{TF-IDF}(t, q) \cdot \text{TF-IDF}(t, d)}{\sqrt{\sum_{t \in q} \text{TF-IDF}(t, q)^2} \cdot \sqrt{\sum_{t \in d} \text{TF-IDF}(t, d)^2}}$$
+$$
+\text{CosineSimilarity}(\mathbf{q}, \mathbf{d}) = \frac{\mathbf{q} \cdot \mathbf{d}}{\|\mathbf{q}\|_2 \|\mathbf{d}\|_2} = \frac{\sum_{t \in q \cap d} \text{TF-IDF}(t, q) \cdot \text{TF-IDF}(t, d)}{\sqrt{\sum_{t \in q} \text{TF-IDF}(t, q)^2} \cdot \sqrt{\sum_{t \in d} \text{TF-IDF}(t, d)^2}}
+$$
 
 Cosine similarity naturally normalizes for document length by dividing by the Euclidean norm $\|\mathbf{d}\|_2$, projecting all documents onto a unit hypersphere.
 
@@ -186,11 +208,17 @@ Cosine similarity naturally normalizes for document length by dividing by the Eu
 In production libraries such as Python's `scikit-learn` (`TfidfVectorizer`), several smoothing adjustments are applied to prevent zero divisions and negative weights:
 
 1. **Smoothed IDF**: To prevent division by zero when a term is absent from training documents, `smooth_idf=True` adds 1 to both numerator and denominator, plus an additional constant 1:
-   $$\text{IDF}_{\text{sklearn}}(t) = \ln\left(\frac{1 + N}{1 + \text{df}(t)}\right) + 1$$
+   $$
+   \text{IDF}_{\text{sklearn}}(t) = \ln\left(\frac{1 + N}{1 + \text{df}(t)}\right) + 1
+   $$
 2. **Sublinear Term Frequency**: Instead of raw or normalized counts, many systems apply logarithmic dampening to prevent high term counts from dominating:
-   $$\text{TF}_{\text{sublinear}}(t, d) = 1 + \ln(\text{count}(t, d)) \quad \text{for count} > 0$$
+   $$
+   \text{TF}_{\text{sublinear}}(t, d) = 1 + \ln(\text{count}(t, d)) \quad \text{for count} > 0
+   $$
 3. **L2 Vector Normalization**: Coordinates are normalized so each document vector has unit length:
-   $$\mathbf{v}_{\text{norm}} = \frac{\mathbf{v}}{\sqrt{\sum_i v_i^2}}$$
+   $$
+   \mathbf{v}_{\text{norm}} = \frac{\mathbf{v}}{\sqrt{\sum_i v_i^2}}
+   $$
 </GoDeeper>
 
 ## Limitations: The Semantic Vocabulary Mismatch Problem
@@ -203,7 +231,9 @@ Consider this classic failure mode:
 
 Even though the document answers the user's inquiry with 100% relevance, `"automobile"` does not literally match `"car"`, and `"repair"` does not literally match `"fix"`. Because the set of overlapping vocabulary terms is empty ($q \cap d = \emptyset$), the TF-IDF score is strictly:
 
-$$\text{Score}(\text{"automobile repair"}, \text{"how to fix a car"}) = 0.0000$$
+$$
+\text{Score}(\text{"automobile repair"}, \text{"how to fix a car"}) = 0.0000
+$$
 
 This vulnerability is known as the **vocabulary mismatch problem** (Furnas et al., 1987). Dense semantic models (such as Bi-encoders and sentence transformers, covered in [Semantic & Hybrid Search](/docs/search-ranking-recommendations/semantic-and-hybrid-search)) resolve this by projecting synonyms into nearby points in continuous embedding spaces.
 
@@ -325,8 +355,8 @@ for i, doc in enumerate(corpus, 1):
 
 | Concept | Mathematical Form | Systems Intuition |
 | :--- | :--- | :--- |
-| **Term Frequency (TF)** | $\frac{\text{count}(t, d)}{\vert d \vert}$ | Measures local word density; prevents long documents from dominating purely on volume. |
-| **Inverse Document Frequency (IDF)** | $\ln\left(\frac{N}{\text{df}(t)}\right)$ | Measures global specificity; rewards rare terms and discounts ubiquitous words. |
+| **Term Frequency (TF)** | $\text{count}(t, d) / \vert d \vert$ | Measures local word density; prevents long documents from dominating purely on volume. |
+| **Inverse Document Frequency (IDF)** | $\ln(N / \text{df}(t))$ | Measures global specificity; rewards rare terms and discounts ubiquitous words. |
 | **TF-IDF Weight** | $\text{TF}(t, d) \times \text{IDF}(t)$ | Combines local frequency with corpus-wide discriminative power. |
 | **Sparse Vector Space** | $\mathbf{d} \in \mathbb{R}^{\vert V \vert}$ | Documents represented as high-dimensional vectors with coordinates equal to zero for all absent vocabulary terms. |
 | **Vocabulary Mismatch** | $q \cap d = \emptyset \implies \text{Score} = 0$ | The inability of lexical search to recognize semantic synonyms without dense vectors. |

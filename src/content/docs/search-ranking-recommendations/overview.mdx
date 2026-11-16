@@ -93,15 +93,21 @@ Let $q$ denote a user query, and let $d$ denote a candidate document in catalog 
 Assume that a user examines the retrieved list sequentially from rank $1$ to rank $k$. Let $C_1$ denote the utility (reward) gained by the user when encountering a relevant document, and let $C_0$ denote the penalty (cost in time or effort) incurred when examining a non-relevant document.
 
 For an arbitrary document $d$, its expected utility is:
-$$\mathbb{E}[U(d)] = C_1 \cdot P(R = 1 \mid d, q) + C_0 \cdot P(R = 0 \mid d, q)$$
+$$
+\mathbb{E}[U(d)] = C_1 \cdot P(R = 1 \mid d, q) + C_0 \cdot P(R = 0 \mid d, q)
+$$
 
 Because $P(R = 0 \mid d, q) = 1 - P(R = 1 \mid d, q)$, we rearrange:
-$$\mathbb{E}[U(d)] = (C_1 - C_0) \cdot P(R = 1 \mid d, q) + C_0$$
+$$
+\mathbb{E}[U(d)] = (C_1 - C_0) \cdot P(R = 1 \mid d, q) + C_0
+$$
 
 Assuming that finding a relevant document provides strictly greater utility than finding a non-relevant document ($C_1 > C_0$), the expected utility $\mathbb{E}[U(d)]$ is a strictly increasing linear function of the posterior probability of relevance $P(R = 1 \mid d, q)$.
 
 Therefore, total expected user utility across a ranked slate is maximized if and only if documents are ordered in strictly decreasing order of their posterior probabilities of relevance:
-$$P(R = 1 \mid d_1, q) \ge P(R = 1 \mid d_2, q) \ge \dots \ge P(R = 1 \mid d_k, q)$$
+$$
+P(R = 1 \mid d_1, q) \ge P(R = 1 \mid d_2, q) \ge \dots \ge P(R = 1 \mid d_k, q)
+$$
 </GoDeeper>
 
 ### Why Modern Systems Extend Beyond Pure PRP
@@ -118,7 +124,9 @@ To understand why candidate generation requires high recall, let us formalize ho
 Let $\mathcal{C}$ denote the full catalog. Let $\mathcal{R}_q \subset \mathcal{C}$ represent the set of all items truly relevant to query or user context $q$.
 
 The multi-stage funnel generates a sequence of progressively smaller candidate sets:
-$$\mathcal{C} = C_0 \supset C_1 \supset C_2 \supset C_3 \supset C_4 = \text{Slate}$$
+$$
+\mathcal{C} = C_0 \supset C_1 \supset C_2 \supset C_3 \supset C_4 = \text{Slate}
+$$
 
 Where:
 - $C_1$: Retrieved candidates from candidate generation.
@@ -128,14 +136,20 @@ Where:
 
 Because each stage operates strictly as a filter on the preceding stage's output ($C_{i} \subseteq C_{i-1}$), relevance recall is monotonically non-increasing across stages:
 
-$$\text{Recall}(C_i) = \frac{|C_i \cap \mathcal{R}_q|}{|\mathcal{R}_q|}$$
+$$
+\text{Recall}(C_i) = \frac{|C_i \cap \mathcal{R}_q|}{|\mathcal{R}_q|}
+$$
 
-$$\text{Recall}(C_1) \ge \text{Recall}(C_2) \ge \text{Recall}(C_3) \ge \text{Recall}(C_4)$$
+$$
+\text{Recall}(C_1) \ge \text{Recall}(C_2) \ge \text{Recall}(C_3) \ge \text{Recall}(C_4)
+$$
 
 ### The Unrecoverable Loss Invariant
 
 If a relevant item $d^* \in \mathcal{R}_q$ is excluded during candidate generation ($d^* \notin C_1$), its downstream survival probability is strictly zero:
-$$\mathbb{P}(d^* \in C_4 \mid d^* \notin C_1) = 0$$
+$$
+\mathbb{P}(d^* \in C_4 \mid d^* \notin C_1) = 0
+$$
 
 This asymmetric risk profile dictates the engineering trade-off at each stage:
 - **Stage 1 (Retrieval)**: Tolerates low precision to minimize false negatives (type II errors). Surfacing 900 irrelevant candidates alongside 100 relevant candidates (precision = 0.10) is acceptable because downstream stages will eliminate the irrelevant items.
