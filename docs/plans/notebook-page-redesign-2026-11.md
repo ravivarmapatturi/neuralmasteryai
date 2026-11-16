@@ -30,3 +30,19 @@ Global CSS for the reading column and shared components (`NotebookCallout`, ELI5
 ## Done when (pilot)
 
 Report `docs/plans/notebook-page-redesign-report.md` with the screenshots, the list of components changed, contrast check results, and overflow results.
+
+## Owner addition (16 Nov 2026): inspect and fix ALL pages, not just BM25
+
+After the pilot is approved, the rollout is a full-site inspection, not a guess:
+
+1. **Automated audit of every Learn page and blog post** (all routes from `src/data/pageMeta.generated.json` + blog), run against the dev server in small batches (8 GB laptop, one heavy job, `flock`), at 1440 px and 375 px. Per page, record in `docs/evidence/site-audit/audit.json`:
+   - standalone formulas not rendered as `.katex-display`; any clipped element (`scrollHeight` > `clientHeight` with hidden overflow) or text cut at the edges;
+   - horizontal overflow at 375 px and 320 px;
+   - ASCII-art diagrams (`pre`/code blocks containing box-drawing or arrow art such as `──`, `│`, `├`, `-->`, `+---+`) that should be real pen-style diagrams;
+   - text not in Kalam outside code/maths;
+   - pages with no visual at all, or only one, for a long concept page (> 1,500 words);
+   - plain-text pseudo-headings (bold-only lines acting as headings);
+   - broken images, console errors.
+2. A ranked fix list (`docs/evidence/site-audit/fix-list.md`): worst pages first, weighted by traffic where known (most-visited Learn pages and the Search/RAG/ML core first).
+3. Fix in batches of ~10 pages with the same notebook design, simplification rules (plain language, theory in GoDeeper) and pen-style diagrams; report after each batch so Claude can ship in waves.
+4. The audit script stays in the repo (`npm run audit:pages`) so the site can be re-checked any time.
