@@ -3,6 +3,9 @@ name: visualization
 description: How to build any diagram or interactive visualizer in src/viz/ for Neural Mastery (Learn pages, labs, blog bodies). Use before creating or editing a diagram component.
 ---
 
+> **Mandatory:** also follow `notebook-page` (strict notebook look, no fake code blocks, no ASCII diagrams, display maths on its own lines, pen-style visuals). CI enforces it with `npm run check:notebook`.
+
+
 # Building a visualization
 
 A diagram must **answer one question the prose raises**. If you can't write that question in one sentence, don't build the diagram. Interactivity is earned: add a control only when changing it reveals something text cannot (a variable's effect, a step in a process, a failure).

@@ -7,7 +7,7 @@ description: Rules for writing or rewriting any Learn page (MDX under src/conten
 
 A Learn page teaches **one idea deeply** to a working engineer. The reader should finish able to explain the mechanism, compute a small example by hand, run it, and know when not to use it. Read `deep-learning/attention-transformers.mdx` before you start; it is the bar every page is compared against.
 
-Also load: `writing-voice` (prose), `visualization` (every diagram), `ship-gate` (done).
+Also load: **`notebook-page` (mandatory, strict, CI-enforced)**, `writing-voice` (prose), `visualization` (every diagram), `ship-gate` (done).
 
 ## 1. Decide before writing
 

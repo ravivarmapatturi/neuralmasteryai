@@ -3,6 +3,9 @@ name: lab
 description: Rules for building a Neural Mastery Lab (/labs): practice problems, DecisionLab, FailureLab, WouldYouShipThis, design experiments, coding exercises. Use whenever creating or changing a lab or practice problem.
 ---
 
+> **Mandatory:** also follow `notebook-page` (strict notebook look, no fake code blocks, no ASCII diagrams, display maths on its own lines, pen-style visuals). CI enforces it with `npm run check:notebook`.
+
+
 # Building a lab
 
 A lab makes the learner **decide and see the consequence**. Reading is not a lab. Every lab has: a situation, constraints, a prediction, an action, an observable result, and a short decision record. Existing patterns: `src/components/practice/{DecisionLab,FailureLab,WouldYouShipThis,DesignExperiment,PracticeWorkspace}.tsx`; catalog in `src/data/practiceCatalog.ts` and `src/data/practice/*.generated.json`.

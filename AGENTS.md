@@ -17,6 +17,7 @@ The user's latest instruction overrides this. `CLAUDE.md` and `GEMINI.md` point 
 
 | Skill | Use it when |
 | --- | --- |
+| `notebook-page` | **MANDATORY** for any Learn page, blog post, lab or visual. Strict notebook look and content rules, enforced by `npm run check:notebook` in CI. |
 | `agent-tracker` | Before touching any file, and at the end. |
 | `learn-page` | Writing or deepening any page in `src/content/docs/`. |
 | `blog-post` | Any post in `src/content/blog/`. |

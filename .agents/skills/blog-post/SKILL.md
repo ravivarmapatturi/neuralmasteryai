@@ -3,6 +3,9 @@ name: blog-post
 description: Rules for writing a Neural Mastery blog post (src/content/blog/*.mdx): news explainers, series parts, opinion/analysis. Use whenever creating or editing a blog post.
 ---
 
+> **Mandatory:** also follow `notebook-page` (strict notebook look, no fake code blocks, no ASCII diagrams, display maths on its own lines, pen-style visuals). CI enforces it with `npm run check:notebook`.
+
+
 # Writing a blog post
 
 Blog posts are timely, opinionated explainers: "Something happened / exists; here is what it actually is, how it works, and what it means for you." Reference example: `src/content/blog/agent-skills-explained.mdx`.
