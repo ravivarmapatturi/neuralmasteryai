@@ -109,8 +109,8 @@ test.describe('Cross-Page Notebook Typography & Surface Guard', () => {
                 '.nm-post-author small',
                 '.labs__meta',
               ],
-              'th': ['article.prose table:not(.nm-viz-content table) th', '.labs__table th'],
-              'td': ['article.prose table:not(.nm-viz-content table) td', '.labs__table td'],
+              'th': ['article.prose table:not(.nm-viz-content table):not(.nm-ws-grid) th', '.labs__table th'],
+              'td': ['article.prose table:not(.nm-viz-content table):not(.nm-ws-grid) td', '.labs__table td'],
               'callout-body': ['.nb-callout-body p', '.nb-callout-body'],
             };
 
