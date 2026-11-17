@@ -1959,3 +1959,30 @@ html.distraction-free .nm-doc-main {
 .prose table:not(.nm-ws-grid) thead th:nth-child(5n+4) { background: var(--nm-hl-4) !important; color: var(--nm-hl-4-ink) !important; }
 .prose table:not(.nm-ws-grid) thead th:nth-child(5n+5) { background: var(--nm-hl-5) !important; color: var(--nm-hl-5-ink) !important; }
 .prose table:not(.nm-ws-grid) tbody td:first-child { font-weight: 700; color: var(--nm-text-primary); }
+
+/* Page standard 2.1 (owner, 18 Nov): the notebook page is a sheet of paper on a
+   desk. The desk is a soft tint with a faint dot grid; the sheet is white with a
+   soft shadow, so empty side strips read as desk, not as unfinished page. */
+:root { --nm-desk: #EEF1F8; --nm-desk-dot: rgba(99,102,241,0.13); --nm-sheet-shadow: 0 1px 2px rgba(30,41,90,0.06), 0 12px 32px rgba(30,41,90,0.09); }
+[data-theme='dark'], [data-theme='forest-dark'] { --nm-desk: #0B0E1A; --nm-desk-dot: rgba(148,163,255,0.08); --nm-sheet-shadow: 0 1px 2px rgba(0,0,0,0.4), 0 14px 36px rgba(0,0,0,0.45); }
+.nm-doc-row {
+  background-color: var(--nm-desk);
+  background-image: radial-gradient(var(--nm-desk-dot) 1px, transparent 1.2px);
+  background-size: 18px 18px;
+}
+.nm-doc-row .nm-sidebar, .nm-doc-row .nm-toc { background: transparent !important; border-color: transparent !important; }
+.nm-doc-main.nm-notebook-sheet {
+  background-color: var(--nm-bg) !important;
+  box-shadow: var(--nm-sheet-shadow);
+  border-radius: 6px;
+  margin: 18px 12px 28px;
+}
+@media (max-width: 900px) {
+  .nm-doc-main.nm-notebook-sheet { margin: 0; border-radius: 0; box-shadow: none; }
+}
+/* The desk runs to the window edges on very wide screens too. */
+div:has(> .nm-doc-row) {
+  background-color: var(--nm-desk) !important;
+  background-image: radial-gradient(var(--nm-desk-dot) 1px, transparent 1.2px);
+  background-size: 18px 18px;
+}
