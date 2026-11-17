@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
+import { useVizTokens, SPACING } from '../../theme/vizTokens';
+import SketchBox from '../../components/notebook/SketchBox';
 
 // Fine-grained Shiki bundle -- explicit lang/theme/engine imports, not the
 // top-level `shiki` package's createHighlighter(), which bundles all ~200
@@ -76,29 +77,25 @@ export default function VisualizationCode({
     };
   }, [code, lang, t.mode]);
 
-  if (!html) {
-    return (
-      <pre
-        style={{
-          margin: `${SPACING.sm}px 0 0`,
-          padding: SPACING.sm,
-          background: t.surfaceAlt,
-          borderRadius: RADIUS.sm,
-          fontSize: 13,
-          overflowX: 'auto',
-          color: t.textPrimary,
-        }}
-      >
-        <code>{code}</code>
-      </pre>
-    );
-  }
-
+  // Page standard 2.7: code sits on light paper with a pen border and the
+  // language written by hand at the top -- never a black slab.
+  const label = lang === 'text' ? 'output' : lang;
   return (
-    <div
-      style={{ marginTop: SPACING.sm, borderRadius: RADIUS.sm, overflow: 'hidden', fontSize: 13 }}
-      // eslint-disable-next-line react/no-danger -- Shiki's own escaped output
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <SketchBox color={t.border} strokeWidth={1.3} style={{ marginTop: SPACING.sm }}>
+      <div className="nm-code-paper" style={{ padding: '0.5rem 0.9rem 0.75rem' }}>
+        <div style={{ fontFamily: "'Kalam', cursive", fontSize: 15, color: t.textMuted, marginBottom: 4 }}>{label}</div>
+        {html ? (
+          <div
+            style={{ overflowX: 'auto', fontSize: 15 }}
+            // eslint-disable-next-line react/no-danger -- Shiki's own escaped output
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        ) : (
+          <pre style={{ margin: 0, overflowX: 'auto', fontSize: 15, color: t.textPrimary, background: 'transparent' }}>
+            <code>{code}</code>
+          </pre>
+        )}
+      </div>
+    </SketchBox>
   );
 }

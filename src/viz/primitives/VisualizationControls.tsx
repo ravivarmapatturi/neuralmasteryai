@@ -76,7 +76,7 @@ export function PillSelect<T extends string | number>({
                 border: `1px solid ${active ? t.accentPrimary : t.border}`,
                 background: active ? t.accentPrimary : 'transparent',
                 color: active ? t.background : t.textPrimary,
-                fontSize: 13,
+                fontSize: 15,
                 fontWeight: 600,
                 cursor: 'pointer',
                 transition: 'all 120ms ease',

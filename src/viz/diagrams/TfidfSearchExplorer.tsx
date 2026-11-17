@@ -26,24 +26,19 @@ export function TfidfSearchExplorer() {
   return (
     <VisualizationContainer
       title="Interactive TF-IDF Search Engine"
-      footer={
-        `Corpus: N=4 documents. Uses normalized term frequency (TF = count / document length), ` +
-        `textbook natural-log IDF (ln(N / df)), and sum of term weights. ` +
-        `Notice that for query "machine learning", D1 and D3 tie at exactly 0.1438 because both documents ` +
-        `have 4 words and contain exactly 1 occurrence of each query term.`
-      }
+      footer={"D1 and D3 tie at exactly 0.1438: both have 4 words and use each search word once."}
     >
       <VisualizationHeader
-        eyebrow="Lexical scoring & sparse retrieval"
-        title="Explore TF-IDF Term Weighting & Document Ranking"
-        description="Select a search query below to inspect per-term document frequencies, natural-log IDF weights, and step-by-step document score breakdowns."
+        eyebrow="Try it"
+        title="Score the four documents for a search"
+        description="Pick a search. Each document shows its TF × IDF for every word and its total."
       />
 
       {/* Query Selector Buttons */}
       <div style={{ marginTop: SPACING.md }}>
         <div
           style={{
-            fontSize: 13,
+            fontSize: 15,
             fontWeight: 700,
             fontFamily: "'Kalam', cursive",
             color: t.textSecondary,
@@ -102,7 +97,7 @@ export function TfidfSearchExplorer() {
       >
         <div
           style={{
-            fontSize: 13,
+            fontSize: 15,
             fontWeight: 700,
             color: t.textPrimary,
             marginBottom: SPACING.xs,
@@ -121,7 +116,7 @@ export function TfidfSearchExplorer() {
               borderRadius: 9999,
               backgroundColor: t.accentPrimary,
               color: t.background,
-              fontSize: 11,
+              fontSize: 15,
               fontWeight: 800,
             }}
           >
@@ -129,7 +124,7 @@ export function TfidfSearchExplorer() {
           </span>
           Step A: Per-Term Inverse Document Frequency (IDF)
         </div>
-        <div style={{ fontSize: 13, color: t.textSecondary, marginBottom: SPACING.sm, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 15, color: t.textSecondary, marginBottom: SPACING.sm, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span>Formula:</span>
           <VisualizationMath latex="\text{IDF}(t) = \ln(N / \text{df})" display={false} />
           <span>with N = 4 documents.</span>
@@ -140,7 +135,7 @@ export function TfidfSearchExplorer() {
             style={{
               width: '100%',
               borderCollapse: 'collapse',
-              fontSize: 12,
+              fontSize: 15,
               textAlign: 'left',
             }}
           >
@@ -175,7 +170,7 @@ export function TfidfSearchExplorer() {
                   >
                     {qs.idf.toFixed(4)}
                   </td>
-                  <td style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary, fontSize: 11 }}>
+                  <td style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary, fontSize: 15 }}>
                     {qs.df === 1
                       ? 'Rare term (high discriminative power)'
                       : qs.df >= 3
@@ -193,7 +188,7 @@ export function TfidfSearchExplorer() {
       <div style={{ marginTop: SPACING.lg }}>
         <div
           style={{
-            fontSize: 13,
+            fontSize: 15,
             fontWeight: 700,
             color: t.textPrimary,
             marginBottom: SPACING.xs,
@@ -212,7 +207,7 @@ export function TfidfSearchExplorer() {
               borderRadius: 9999,
               backgroundColor: t.accentPrimary,
               color: t.background,
-              fontSize: 11,
+              fontSize: 15,
               fontWeight: 800,
             }}
           >
@@ -220,7 +215,7 @@ export function TfidfSearchExplorer() {
           </span>
           Step B: Ranked Documents &amp; Term Breakdown
         </div>
-        <div style={{ fontSize: 13, color: t.textSecondary, marginBottom: SPACING.md, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 15, color: t.textSecondary, marginBottom: SPACING.md, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span>Total Score =</span>
           <VisualizationMath latex="\sum_{t \in q} \text{TF}(t, D) \cdot \text{IDF}(t)" display={false} />
           {isTopTied && (
@@ -235,7 +230,7 @@ export function TfidfSearchExplorer() {
                 color: t.accentSecondary,
                 fontFamily: "'Kalam', cursive",
                 fontWeight: 700,
-                fontSize: 12,
+                fontSize: 15,
               }}
             >
               Exact mathematical tie at rank #1
@@ -276,7 +271,7 @@ export function TfidfSearchExplorer() {
                         borderRadius: RADIUS.sm,
                         backgroundColor: hasMatch ? t.accentPrimary : t.textMuted,
                         color: t.background,
-                        fontSize: 12,
+                        fontSize: 15,
                         fontWeight: 800,
                       }}
                     >
@@ -285,7 +280,7 @@ export function TfidfSearchExplorer() {
                     <span style={{ fontSize: 14, fontWeight: 700, color: t.textPrimary }}>
                       {doc.docId}
                     </span>
-                    <span style={{ fontSize: 12, color: t.textMuted }}>
+                    <span style={{ fontSize: 15, color: t.textMuted }}>
                       ({doc.docLength} {doc.docLength === 1 ? 'word' : 'words'})
                     </span>
                   </div>
@@ -305,7 +300,7 @@ export function TfidfSearchExplorer() {
                 <div
                   style={{
                     fontStyle: 'italic',
-                    fontSize: 13,
+                    fontSize: 15,
                     color: t.textSecondary,
                     marginBottom: SPACING.sm,
                   }}
@@ -319,7 +314,7 @@ export function TfidfSearchExplorer() {
                     display: 'flex',
                     flexWrap: 'wrap',
                     gap: SPACING.xs,
-                    fontSize: 11,
+                    fontSize: 15,
                     color: t.textSecondary,
                     paddingTop: SPACING.xs,
                     borderTop: `1px solid ${t.border}`,

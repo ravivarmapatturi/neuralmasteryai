@@ -132,9 +132,9 @@ export default function RunnableCode({
   const codePane = usePracticeCodePane();
 
   const content = (
-    <div style={{ border: '1px solid var(--nm-code-rule)', borderRadius: RADIUS.md, margin: `${SPACING.sm}px 0`, background: 'var(--nm-code-bg)', fontFamily: 'var(--font-hand)', overflow: 'hidden' }}>
+    <div style={{ border: '1.5px solid var(--nm-border)', borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px', margin: `${SPACING.sm}px 0`, background: 'var(--nm-code-bg)', fontFamily: 'var(--font-hand)', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `${SPACING.xs}px ${SPACING.sm}px`, borderBottom: '1px solid var(--nm-code-rule)', background: 'var(--nm-code-gutter-bg)' }}>
-        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--nm-code-keyword)', fontFamily: 'var(--font-hand)' }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--nm-code-keyword)', fontFamily: 'var(--font-hand)' }}>
           {tests ? 'Implement it yourself' : 'Run it yourself'}
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -151,7 +151,7 @@ export default function RunnableCode({
 
       {status === 'loading' && (
         <div style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, borderBottom: '1px solid var(--nm-code-rule)', background: 'var(--nm-code-gutter-bg)' }}>
-          <div style={{ fontSize: 11.5, color: 'var(--nm-code-gutter-text)', marginBottom: 4, fontFamily: 'var(--font-hand)' }}>
+          <div style={{ fontSize: 15, color: 'var(--nm-code-gutter-text)', marginBottom: 4, fontFamily: 'var(--font-hand)' }}>
             Downloading a real Python + NumPy runtime into your browser — usually under 20s, one time per page visit.
           </div>
           <div style={{ height: 3, borderRadius: 2, background: 'var(--nm-code-rule)', overflow: 'hidden' }}>
@@ -191,7 +191,7 @@ export default function RunnableCode({
               outline: 'none',
               resize: 'vertical',
               fontFamily: 'var(--font-mono)',
-              fontSize: 13.5,
+              fontSize: 15,
               lineHeight: 1.6,
             }}
           />
@@ -201,13 +201,13 @@ export default function RunnableCode({
       </Suspense>
 
       {tests && (
-        <div style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, fontSize: 12, color: 'var(--nm-code-comment)', background: 'var(--nm-code-gutter-bg)', borderTop: '1px solid var(--nm-code-rule)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' }}>
+        <div style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, fontSize: 15, color: 'var(--nm-code-comment)', background: 'var(--nm-code-gutter-bg)', borderTop: '1px solid var(--nm-code-rule)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' }}>
           {tests}
         </div>
       )}
 
       {loadError && (
-        <div style={{ padding: SPACING.sm, fontSize: 13, color: 'var(--nm-code-invalid)', fontFamily: 'var(--font-hand)' }}>
+        <div style={{ padding: SPACING.sm, fontSize: 15, color: 'var(--nm-code-invalid)', fontFamily: 'var(--font-hand)' }}>
           Couldn't load the in-browser Python runtime (needs network access to the CDN it loads from): {loadError}
         </div>
       )}
@@ -215,31 +215,31 @@ export default function RunnableCode({
       {status === 'done' && !loadError && (
         <div style={{ padding: SPACING.sm, borderTop: '1px solid var(--nm-code-rule)', background: 'var(--nm-code-bg)', fontFamily: 'var(--font-hand)' }}>
           {stdout && (
-            <pre style={{ margin: 0, marginBottom: error || testResults ? 8 : 0, fontSize: 12.5, color: 'var(--nm-code-text)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>
+            <pre style={{ margin: 0, marginBottom: error || testResults ? 8 : 0, fontSize: 15, color: 'var(--nm-code-text)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>
               {stdout}
             </pre>
           )}
           {error && (
-            <pre style={{ margin: 0, fontSize: 12.5, color: 'var(--nm-code-invalid)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>
+            <pre style={{ margin: 0, fontSize: 15, color: 'var(--nm-code-invalid)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>
               {error}
             </pre>
           )}
           {testResults && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-hand)' }}>
               {testResults.map((r, i) => (
-                <div key={i} style={{ fontSize: 12.5, color: r.passed ? 'var(--nm-code-string)' : 'var(--nm-code-invalid)', fontFamily: 'var(--font-mono)' }}>
+                <div key={i} style={{ fontSize: 15, color: r.passed ? 'var(--nm-code-string)' : 'var(--nm-code-invalid)', fontFamily: 'var(--font-mono)' }}>
                   {r.passed ? '✓' : '✗'} {r.name}
                   {!r.passed && <div style={{ paddingLeft: 16, color: 'var(--nm-code-gutter-text)', whiteSpace: 'pre-wrap' }}>{r.detail}</div>}
                 </div>
               ))}
               {testResults.length > 0 && (
-                <div style={{ marginTop: 4, fontSize: 12, color: 'var(--nm-code-gutter-text)', fontFamily: 'var(--font-hand)' }}>
+                <div style={{ marginTop: 4, fontSize: 15, color: 'var(--nm-code-gutter-text)', fontFamily: 'var(--font-hand)' }}>
                   {testResults.filter((r) => r.passed).length} / {testResults.length} passed
                 </div>
               )}
             </div>
           )}
-          {!stdout && !error && !testResults && <div style={{ fontSize: 12.5, color: 'var(--nm-code-gutter-text)', fontFamily: 'var(--font-hand)' }}>(no output)</div>}
+          {!stdout && !error && !testResults && <div style={{ fontSize: 15, color: 'var(--nm-code-gutter-text)', fontFamily: 'var(--font-hand)' }}>(no output)</div>}
         </div>
       )}
     </div>
@@ -260,7 +260,7 @@ function btnStyle(variant: 'primary' | 'secondary', disabled = false) {
     cursor: disabled ? 'not-allowed' : 'pointer',
     padding: '4px 12px',
     borderRadius: RADIUS.sm,
-    fontSize: 12.5,
+    fontSize: 15,
     fontFamily: 'var(--font-hand)',
     fontWeight: 600,
     border: `1px solid ${variant === 'primary' ? 'var(--nm-code-keyword)' : 'var(--nm-code-rule)'}`,

@@ -11,7 +11,7 @@ import type { VizTokens } from '../../theme/vizTokens';
 const MONO = 'var(--font-mono)';
 
 const notebookChrome = EditorView.theme({
-  '&': { fontSize: '13.5px', height: '100%', color: 'var(--nm-code-text)', backgroundColor: 'var(--nm-code-bg)' },
+  '&': { fontSize: '15px', height: '100%', color: 'var(--nm-code-text)', backgroundColor: 'var(--nm-code-bg)' },
   '.cm-scroller': { fontFamily: MONO, lineHeight: '1.6', minHeight: '100%', overflow: 'auto' },
   '.cm-content': { fontFamily: MONO, minHeight: '96px', padding: '10px 0', caretColor: 'var(--nm-code-cursor)' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--nm-code-cursor)' },
@@ -77,6 +77,7 @@ export default function CodeEditor({
         doc: value,
         extensions: [
           basicSetup,
+          EditorView.lineWrapping,
           python(),
           indentUnit.of('    '), // real 4-space Python indent, not CM6's 2-space default
           Prec.highest(keymap.of([indentWithTab])), // Tab inserts indent -- a Python-only tool needs this more than the a11y default of tabbing focus away

@@ -26,7 +26,7 @@ export default function VisualizationHeader({
         <div
           style={{
             fontFamily: "'Kalam', cursive",
-            fontSize: 13,
+            fontSize: 15,
             fontWeight: 700,
             color: t.accentPrimary,
             marginBottom: 4,

@@ -22,16 +22,12 @@ export function VectorSpaceArrowsDiagram() {
   return (
     <VisualizationContainer
       title="The Vector Space Model: Documents as Directional Arrows"
-      footer={
-        "In the Vector Space Model, each document is a directional arrow in a shared coordinate space. " +
-        "Notice that D1 and D3 point in the exact same direction (slope 1.0, 45°) because both allocate an equal 25% of their words to 'machine' and 'learning'. " +
-        "D2 tilts higher toward 'learning' because it repeats 'learning' twice."
-      }
+      footer={"D1 and D3 point the same way because each spends a quarter of its words on \"machine\" and a quarter on \"learning\". D2 leans up: it says \"learning\" twice."}
     >
       <VisualizationHeader
-        eyebrow="Vector space geometry"
-        title="Documents as Directional Arrows in Term Coordinate Space"
-        description="Inspect how document text maps to coordinates and directional arrows defined by query term frequencies."
+        eyebrow="Picture it"
+        title="Each document is an arrow"
+        description="Pick a document to highlight its arrow. Direction shows which words it uses most."
       />
 
       <div style={{ marginTop: 8, marginBottom: 12 }}>
@@ -53,6 +49,7 @@ export function VectorSpaceArrowsDiagram() {
         width="100%"
         viewBox={`0 0 ${width} ${height}`}
         style={{
+          minWidth: width,
           display: 'block',
           border: `1.5px solid ${t.border}`,
           borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
@@ -84,10 +81,10 @@ export function VectorSpaceArrowsDiagram() {
             <g key={val} opacity={0.35}>
               <line x1={ptX.x} y1={originY} x2={ptX.x} y2={originY - 0.35 * scaleY} stroke={t.border} strokeDasharray="3 3" />
               <line x1={originX} y1={ptY.y} x2={originX + 0.38 * scaleX} y2={ptY.y} stroke={t.border} strokeDasharray="3 3" />
-              <text x={ptX.x} y={originY + 16} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
+              <text x={ptX.x} y={originY + 16} fill={t.textMuted} fontSize={14} fontFamily="'Kalam', cursive" textAnchor="middle">
                 {val.toFixed(1)}
               </text>
-              <text x={originX - 10} y={ptY.y + 4} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="end">
+              <text x={originX - 10} y={ptY.y + 4} fill={t.textMuted} fontSize={14} fontFamily="'Kalam', cursive" textAnchor="end">
                 {val.toFixed(1)}
               </text>
             </g>
@@ -99,10 +96,10 @@ export function VectorSpaceArrowsDiagram() {
         <line x1={originX} y1={originY} x2={originX} y2={originY - 245} stroke={t.textPrimary} strokeWidth={2} markerEnd="url(#arrow-axis)" />
 
         {/* Axis Labels */}
-        <text x={originX + 340} y={originY + 48} fill={t.textPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="end">
+        <text x={originX + 340} y={originY + 48} fill={t.textPrimary} fontSize={14} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="end">
           TF("machine", d) →
         </text>
-        <text x={34} y={originY - 120} transform={`rotate(-90 34 ${originY - 120})`} fill={t.textPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+        <text x={34} y={originY - 120} transform={`rotate(-90 34 ${originY - 120})`} fill={t.textPrimary} fontSize={14} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
           TF("learning", d) →
         </text>
 
@@ -112,7 +109,7 @@ export function VectorSpaceArrowsDiagram() {
         {(highlighted === 'all' || highlighted === 'd4') && (
           <g opacity={highlighted === 'all' || highlighted === 'd4' ? 1 : 0.2}>
             <circle cx={originX} cy={originY} r={6} fill={t.textMuted} />
-            <text x={originX + 8} y={originY + 34} fill={t.textMuted} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
+            <text x={originX + 8} y={originY + 34} fill={t.textMuted} fontSize={14} fontFamily="'Kalam', cursive" fontWeight={700}>
               D4 at (0, 0)
             </text>
           </g>
@@ -126,7 +123,7 @@ export function VectorSpaceArrowsDiagram() {
             <g style={{ opacity: isDim ? 0.15 : 1, transition: 'opacity 0.2s' }}>
               <line x1={originX} y1={originY} x2={pt.x} y2={pt.y} stroke={t.accentPurple} strokeWidth={3} markerEnd="url(#arrow-d2)" />
               <circle cx={pt.x} cy={pt.y} r={4} fill={t.accentPurple} />
-              <text x={pt.x - 8} y={pt.y - 10} fill={t.accentPurple} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700}>
+              <text x={pt.x - 8} y={pt.y - 10} fill={t.accentPurple} fontSize={14} fontFamily="'Kalam', cursive" fontWeight={700}>
                 D2 (0.14, 0.29)
               </text>
             </g>
@@ -141,11 +138,11 @@ export function VectorSpaceArrowsDiagram() {
             <g style={{ opacity: isDim ? 0.15 : 1, transition: 'opacity 0.2s' }}>
               <line x1={originX} y1={originY} x2={pt.x} y2={pt.y} stroke={t.accentPrimary} strokeWidth={3} markerEnd="url(#arrow-d1)" />
               <circle cx={pt.x} cy={pt.y} r={4} fill={t.accentPrimary} />
-              <text x={pt.x + 12} y={pt.y + 4} fill={t.accentPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700}>
+              <text x={pt.x + 12} y={pt.y + 4} fill={t.accentPrimary} fontSize={14} fontFamily="'Kalam', cursive" fontWeight={700}>
                 D1 &amp; D3 (0.25, 0.25)
               </text>
-              <text x={pt.x + 12} y={pt.y + 24} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
-                Collinear (45° diagonal)
+              <text x={pt.x + 12} y={pt.y + 24} fill={t.textSecondary} fontSize={14} fontFamily="'Kalam', cursive">
+                same direction (45°)
               </text>
             </g>
           );
@@ -153,24 +150,24 @@ export function VectorSpaceArrowsDiagram() {
 
         {/* Diagonal 45 deg guide */}
         <line x1={originX} y1={originY} x2={originX + 0.32 * scaleX} y2={originY - 0.32 * scaleY} stroke={t.accentWarn} strokeDasharray="4 4" strokeWidth={1} opacity={0.6} />
-        <text x={originX + 0.32 * scaleX + 8} y={originY - 0.32 * scaleY + 4} fill={t.accentWarn} fontSize={11} fontFamily="'Kalam', cursive">
+        <text x={originX + 0.32 * scaleX + 8} y={originY - 0.32 * scaleY + 4} fill={t.accentWarn} fontSize={14} fontFamily="'Kalam', cursive">
           45° line of balance
         </text>
 
         {/* Notes callout card in top right */}
-        <g transform="translate(470, 150)">
-          <SketchRect x={0} y={0} width={196} height={90} color={t.border} roughness={1.2} strokeWidth={1.2} />
-          <text x={12} y={22} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
-            Notebook observation:
+        <g transform="translate(452, 150)">
+          <SketchRect x={0} y={0} width={218} height={96} color={t.border} roughness={1.2} strokeWidth={1.2} />
+          <text x={12} y={22} fill={t.textPrimary} fontSize={14} fontFamily="'Kalam', cursive" fontWeight={700}>
+            What to notice:
           </text>
-          <text x={12} y={40} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
+          <text x={12} y={40} fill={t.textSecondary} fontSize={14} fontFamily="'Kalam', cursive">
             • Direction = topic balance
           </text>
-          <text x={12} y={58} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
+          <text x={12} y={58} fill={t.textSecondary} fontSize={14} fontFamily="'Kalam', cursive">
             • D1 and D3 overlap perfectly
           </text>
-          <text x={12} y={76} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
-            • Length = term concentration
+          <text x={12} y={76} fill={t.textSecondary} fontSize={14} fontFamily="'Kalam', cursive">
+            • Length = how often
           </text>
         </g>
       </svg>

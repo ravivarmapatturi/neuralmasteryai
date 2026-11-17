@@ -75,7 +75,7 @@ export const PURE_WHITE: VizTokens = {
   textPrimary: '#1B1F3B',
   textSecondary: '#334155',
   textMuted: '#475569',
-  accentPrimary: '#4338CA',
+  accentPrimary: '#15803D', // green pen (page standard 2.3); was indigo, which made every drawing blue-on-blue
   accentSecondary: '#1D4ED8',
   accentWarn: '#C2410C',
   accentDanger: '#BE123C',

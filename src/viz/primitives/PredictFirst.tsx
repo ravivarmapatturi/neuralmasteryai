@@ -36,7 +36,7 @@ export default function PredictFirst({
     >
       <div
         style={{
-          fontSize: 13,
+          fontSize: 15,
           fontWeight: 700,
           fontFamily: "'Kalam', cursive",
           color: t.accentWarn,
@@ -88,7 +88,7 @@ export default function PredictFirst({
         })}
       </div>
       {revealed && (
-        <div style={{ marginTop: 10, fontSize: 13, color: t.textSecondary, paddingTop: 8, borderTop: `1px solid ${t.border}` }}>
+        <div style={{ marginTop: 10, fontSize: 15, color: t.textSecondary, paddingTop: 8, borderTop: `1px solid ${t.border}` }}>
           <strong style={{ color: selected === correctIndex ? t.accentPrimary : t.accentDanger }}>
             {selected === correctIndex ? 'Correct. ' : 'Not quite. '}
           </strong>

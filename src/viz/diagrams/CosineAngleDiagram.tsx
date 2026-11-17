@@ -36,16 +36,16 @@ export function CosineAngleDiagram() {
       footer={
         `At angle θ = ${angleDeg}°, cos(θ) = ${cosVal.toFixed(4)}. ` +
         (angleDeg === 0
-          ? "When θ = 0°, cos(0°) = 1.000: the two arrows point in the identical direction (maximum possible similarity)."
+          ? "Same direction: the score is 1, the highest it can be."
           : angleDeg === 90
-          ? "When θ = 90°, cos(90°) = 0.000: the vectors are orthogonal, meaning they share zero common vocabulary terms."
-          : `As the angle widens from 0° to 90°, similarity drops from 1.0 down to 0.0 regardless of how long either document is.`)
+          ? "At right angles: the score is 0, no shared words."
+          : "The wider the angle, the lower the score, however long the documents are.")
       }
     >
       <VisualizationHeader
-        eyebrow="Angle-based relevance"
-        title="Cosine Angle Between Query &amp; Document Vectors"
-        description="Drag the slider to adjust angle θ between the query and document arrows. Observe how cosine similarity depends strictly on direction, not document length."
+        eyebrow="Try it"
+        title="The angle between two arrows"
+        description="Drag the slider. The score depends only on the angle, not on how long the arrows are."
       />
 
       <div style={{ marginTop: 8, marginBottom: 12, maxWidth: 360 }}>
@@ -64,6 +64,7 @@ export function CosineAngleDiagram() {
         width="100%"
         viewBox={`0 0 ${width} ${height}`}
         style={{
+          minWidth: width,
           display: 'block',
           border: `1.5px solid ${t.border}`,
           borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
@@ -116,20 +117,20 @@ export function CosineAngleDiagram() {
         </text>
 
         {/* Origin Label */}
-        <text x={ox - 24} y={oy + 18} fill={t.textMuted} fontSize={12} fontFamily="'Kalam', cursive">
+        <text x={ox - 24} y={oy + 18} fill={t.textMuted} fontSize={14} fontFamily="'Kalam', cursive">
           (0,0)
         </text>
 
         {/* Formula & Live Calculation Sketch Box */}
         <g transform="translate(410, 30)">
           <SketchRect x={0} y={0} width={215} height={158} color={t.border} roughness={1.3} strokeWidth={1.4} />
-          <text x={14} y={24} fill={t.textPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700}>
+          <text x={14} y={24} fill={t.textPrimary} fontSize={14} fontFamily="'Kalam', cursive" fontWeight={700}>
             Live Cosine Calculation:
           </text>
           <text x={14} y={58} fill={t.accentSecondary} fontSize={22} fontFamily="'Kalam', cursive" fontWeight={800}>
             cos({angleDeg}°) = {cosVal.toFixed(3)}
           </text>
-          <text x={14} y={86} fill={t.textSecondary} fontSize={12} fontFamily="'Kalam', cursive">
+          <text x={14} y={86} fill={t.textSecondary} fontSize={14} fontFamily="'Kalam', cursive">
             {angleDeg === 0
               ? '★ Perfect match (identical direction)'
               : angleDeg === 90
@@ -139,11 +140,11 @@ export function CosineAngleDiagram() {
               : '▲ Weak directional overlap'}
           </text>
           <line x1={14} y1={100} x2={200} y2={100} stroke={t.border} opacity={0.4} />
-          <text x={14} y={120} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive">
+          <text x={14} y={120} fill={t.textMuted} fontSize={14} fontFamily="'Kalam', cursive">
             Normalized dot product:
           </text>
           <foreignObject x={14} y={126} width={185} height={25}>
-            <div style={{ color: t.textPrimary, fontSize: 12 }}>
+            <div style={{ color: t.textPrimary, fontSize: 15 }}>
               <VisualizationMath latex="\cos(\theta) = \frac{\mathbf{q} \cdot \mathbf{d}}{\|\mathbf{q}\| \|\mathbf{d}\|}" display={false} />
             </div>
           </foreignObject>

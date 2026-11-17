@@ -57,29 +57,14 @@ export default function VisualizationContainer({
             marginTop: SPACING.sm,
             paddingTop: SPACING.sm,
             borderTop: `1px solid ${t.border}`,
-            fontSize: 13,
+            fontSize: 15,
             color: t.textSecondary,
           }}
         >
           {footer}
         </div>
       )}
-      <span
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          bottom: 6,
-          right: 10,
-          fontSize: 9,
-          letterSpacing: '0.02em',
-          color: t.textMuted,
-          opacity: 0.35,
-          pointerEvents: 'none',
-          userSelect: 'none',
-        }}
-      >
-        Neural Mastery
-      </span>
+      {/* Page standard 2.2: no text under 14px, so the tiny watermark is gone. */}
     </div>
   );
 }
