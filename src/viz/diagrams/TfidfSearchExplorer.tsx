@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, VisualizationMath } from '../primitives';
 import { TOY_TFIDF_DOCS, rankDocumentsTfidf } from '../lib/tfidf';
 
 const PRESET_QUERIES: { label: string; terms: string[] }[] = [
@@ -10,7 +10,7 @@ const PRESET_QUERIES: { label: string; terms: string[] }[] = [
   { label: 'machine search', terms: ['machine', 'search'] },
 ];
 
-export default function TfidfSearchExplorer() {
+export function TfidfSearchExplorer() {
   const t = useVizTokens();
   const [selectedQueryIdx, setSelectedQueryIdx] = useState<number>(0);
 
@@ -34,7 +34,7 @@ export default function TfidfSearchExplorer() {
       }
     >
       <VisualizationHeader
-        eyebrow="Lexical Scoring & Sparse Retrieval"
+        eyebrow="Lexical scoring & sparse retrieval"
         title="Explore TF-IDF Term Weighting & Document Ranking"
         description="Select a search query below to inspect per-term document frequencies, natural-log IDF weights, and step-by-step document score breakdowns."
       />
@@ -43,15 +43,14 @@ export default function TfidfSearchExplorer() {
       <div style={{ marginTop: SPACING.md }}>
         <div
           style={{
-            fontSize: 12,
-            fontWeight: 600,
+            fontSize: 13,
+            fontWeight: 700,
+            fontFamily: "'Kalam', cursive",
             color: t.textSecondary,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
             marginBottom: SPACING.xs,
           }}
         >
-          Select Search Query:
+          Select search query:
         </div>
         <div
           role="group"
@@ -72,12 +71,12 @@ export default function TfidfSearchExplorer() {
                 aria-pressed={isSelected}
                 style={{
                   padding: `${SPACING.xs}px ${SPACING.md}px`,
-                  borderRadius: RADIUS.md,
+                  borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
                   border: `1.5px solid ${isSelected ? t.accentPrimary : t.border}`,
                   backgroundColor: isSelected ? t.surfaceAlt : t.surface,
                   color: isSelected ? t.accentPrimary : t.textPrimary,
-                  fontFamily: 'inherit',
-                  fontSize: 13,
+                  fontFamily: "'Kalam', cursive",
+                  fontSize: 14,
                   fontWeight: isSelected ? 700 : 500,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
@@ -97,8 +96,8 @@ export default function TfidfSearchExplorer() {
           marginTop: SPACING.lg,
           padding: SPACING.md,
           backgroundColor: t.surfaceAlt,
-          borderRadius: RADIUS.md,
-          border: `1px solid ${t.border}`,
+          borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
+          border: `1.5px solid ${t.border}`,
         }}
       >
         <div
@@ -130,11 +129,13 @@ export default function TfidfSearchExplorer() {
           </span>
           Step A: Per-Term Inverse Document Frequency (IDF)
         </div>
-        <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: SPACING.sm }}>
-          Formula: <code style={{ color: t.textPrimary }}>IDF(t) = ln(N / df)</code> with N = 4 documents.
+        <div style={{ fontSize: 13, color: t.textSecondary, marginBottom: SPACING.sm, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span>Formula:</span>
+          <VisualizationMath latex="\text{IDF}(t) = \ln(N / \text{df})" display={false} />
+          <span>with N = 4 documents.</span>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px', border: `1px solid ${t.border}` }}>
           <table
             style={{
               width: '100%',
@@ -219,23 +220,25 @@ export default function TfidfSearchExplorer() {
           </span>
           Step B: Ranked Documents &amp; Term Breakdown
         </div>
-        <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: SPACING.md }}>
-          Total Score = <code style={{ color: t.textPrimary }}>&sum; [TF(t, D) &times; IDF(t)]</code>
+        <div style={{ fontSize: 13, color: t.textSecondary, marginBottom: SPACING.md, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span>Total Score =</span>
+          <VisualizationMath latex="\sum_{t \in q} \text{TF}(t, D) \cdot \text{IDF}(t)" display={false} />
           {isTopTied && (
             <span
               style={{
                 marginLeft: SPACING.sm,
                 display: 'inline-block',
                 padding: '2px 8px',
-                borderRadius: RADIUS.sm,
+                borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
                 backgroundColor: t.surfaceAlt,
-                border: `1px solid ${t.accentSecondary}`,
+                border: `1.5px solid ${t.accentSecondary}`,
                 color: t.accentSecondary,
-                fontWeight: 600,
-                fontSize: 11,
+                fontFamily: "'Kalam', cursive",
+                fontWeight: 700,
+                fontSize: 12,
               }}
             >
-              Exact Mathematical Tie at Rank #1
+              Exact mathematical tie at rank #1
             </span>
           )}
         </div>
@@ -250,7 +253,7 @@ export default function TfidfSearchExplorer() {
                 key={doc.docId}
                 style={{
                   padding: SPACING.md,
-                  borderRadius: RADIUS.md,
+                  borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
                   border: `1.5px solid ${isTiedWithTop ? t.accentPrimary : hasMatch ? t.border : t.border}`,
                   backgroundColor: isTiedWithTop ? t.surfaceAlt : t.surface,
                   transition: 'all 0.15s ease',
@@ -349,3 +352,5 @@ export default function TfidfSearchExplorer() {
     </VisualizationContainer>
   );
 }
+
+export default TfidfSearchExplorer;

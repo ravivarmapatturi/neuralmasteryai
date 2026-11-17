@@ -14,7 +14,7 @@ const SPARSE_RANKING = ['Doc C', 'Doc B', 'Doc A', 'Doc D'];
  * POSITION, not its raw (differently-scaled) score -- 1/(k+rank) per list,
  * summed. Hover a doc to see its two positions add up to its fused rank.
  * See src/viz/lib/rrf.ts for the computation and its unit tests. */
-export default function HybridSearchFusionDiagram() {
+export function HybridSearchFusionDiagram() {
   const t = useVizTokens();
   const [hovered, setHovered] = useState<string | null>(null);
   const [k, setK] = useState(K);
@@ -70,3 +70,5 @@ export default function HybridSearchFusionDiagram() {
     </VisualizationContainer>
   );
 }
+
+export default HybridSearchFusionDiagram;

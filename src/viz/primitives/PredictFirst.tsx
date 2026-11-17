@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useVizTokens, RADIUS, SPACING, FONT_FAMILY } from '../../theme/vizTokens';
+import { useVizTokens, SPACING } from '../../theme/vizTokens';
 
 /**
  * A small "predict, then reveal" widget -- pick an answer before you touch
@@ -26,28 +26,27 @@ export default function PredictFirst({
   return (
     <div
       style={{
-        border: `1px solid ${t.border}`,
-        borderRadius: RADIUS.md,
-        padding: SPACING.sm,
-        margin: `${SPACING.sm}px 0`,
+        border: `1.5px solid ${t.border}`,
+        borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
+        padding: SPACING.md,
+        margin: `${SPACING.md}px 0`,
         background: t.surfaceAlt,
-        fontFamily: FONT_FAMILY,
+        fontFamily: "'Kalam', cursive",
       }}
     >
       <div
         style={{
-          fontSize: 12,
+          fontSize: 13,
           fontWeight: 700,
-          letterSpacing: '0.05em',
-          textTransform: 'uppercase',
+          fontFamily: "'Kalam', cursive",
           color: t.accentWarn,
           marginBottom: 6,
         }}
       >
-        Predict First
+        Predict first
       </div>
-      <div style={{ fontSize: 15, color: t.textPrimary, marginBottom: 10 }}>{question}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 16, color: t.textPrimary, marginBottom: 12, lineHeight: 1.5 }}>{question}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {options.map((opt, i) => {
           const isCorrect = i === correctIndex;
           const isSelected = i === selected;
@@ -71,15 +70,16 @@ export default function PredictFirst({
               onClick={() => setSelected(i)}
               style={{
                 textAlign: 'left',
-                padding: '8px 12px',
-                borderRadius: RADIUS.sm,
-                border: `1px solid ${border}`,
+                padding: '10px 14px',
+                borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
+                border: `1.5px solid ${border}`,
                 background: bg,
                 color,
-                fontSize: 14,
-                fontFamily: FONT_FAMILY,
+                fontSize: 14.5,
+                fontFamily: "'Kalam', cursive",
                 cursor: revealed ? 'default' : 'pointer',
-                fontWeight: revealed && isCorrect ? 700 : 400,
+                fontWeight: revealed && isCorrect ? 700 : 500,
+                transition: 'all 0.15s ease',
               }}
             >
               {opt}

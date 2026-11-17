@@ -8,7 +8,11 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
-import TfidfSearchExplorer from '../../../viz/diagrams/TfidfSearchExplorer';
+import { TfidfSearchExplorer } from '../../../viz/diagrams/TfidfSearchExplorer';
+import { VectorSpaceArrowsDiagram } from '../../../viz/diagrams/VectorSpaceArrowsDiagram';
+import { CosineAngleDiagram } from '../../../viz/diagrams/CosineAngleDiagram';
+import { SparseVectorBoxesDiagram } from '../../../viz/diagrams/SparseVectorBoxesDiagram';
+import { VocabularyMismatchDiagram } from '../../../viz/diagrams/VocabularyMismatchDiagram';
 
 # TF-IDF from First Principles
 
@@ -30,12 +34,10 @@ TF-IDF evaluates relevance by balancing two core intuitions:
 
 To understand TF-IDF from first principles, consider an illustrative toy corpus of $N = 4$ documents:
 
-```
-Document 1 (D1): "machine learning is powerful"               (Length |D1| = 4 words)
-Document 2 (D2): "deep learning is part of machine learning"   (Length |D2| = 7 words)
-Document 3 (D3): "machine learning improves search"            (Length |D3| = 4 words)
-Document 4 (D4): "cooking food is fun"                         (Length |D4| = 4 words)
-```
+- **Document 1 (D1)**: *"machine learning is powerful"* (Length $|D_1| = 4$ words)
+- **Document 2 (D2)**: *"deep learning is part of machine learning"* (Length $|D_2| = 7$ words)
+- **Document 3 (D3)**: *"machine learning improves search"* (Length $|D_3| = 4$ words)
+- **Document 4 (D4)**: *"cooking food is fun"* (Length $|D_4| = 4$ words)
 
 **Target User Query**: `"machine learning"` (query terms: $q_1 = \text{"machine"}$, $q_2 = \text{"learning"}$).
 
@@ -146,7 +148,7 @@ Notice that D1 and D3 tie at **0.1438**. This tie is **not a rounding accident**
 $$
 \text{Score}(D_1) = \text{Score}(D_3) = \left(\frac{1}{4} + \frac{1}{4}\right) \times \ln\left(\frac{4}{3}\right) = \frac{1}{2} \ln\left(\frac{4}{3}\right) \approx 0.143841 \dots
 $$
-Furthermore, observe that D2 contains **3 query words** (one `"machine"`, two `"learning"`), whereas D1 and D3 contain only 2 query words. Despite having more keyword matches, D2 ranks lower ($0.1233$) because its length of 7 words dilutes its normalized term frequencies ($3/7 \approx 0.4286 < 0.5000$).
+Observe also that D2 contains **3 query words** (one `"machine"`, two `"learning"`), whereas D1 and D3 contain only 2 query words. Despite having more keyword matches, D2 ranks lower ($0.1233$) because its length of 7 words dilutes its normalized term frequencies ($3/7 \approx 0.4286 < 0.5000$).
 </NotebookCallout>
 
 ## Interactive TF-IDF Search Engine
@@ -157,40 +159,41 @@ Change the query below to observe how document frequencies, IDF values, and docu
 
 ## The Vector Space Model & Sparse Retrieval
 
-Beyond summing scalar weights, TF-IDF forms the mathematical foundation of the **Vector Space Model** (Salton et al., 1975).
+Instead of computing one scalar score at a time, we can view words as coordinate directions in a geometric space. In a simple two-word vocabulary with "machine" on the horizontal axis and "learning" on the vertical axis, every document forms a directional arrow pointing out from the origin $(0, 0)$.
 
-In the vector space model, a collection of documents shares a common vocabulary $V = \{t_1, t_2, \dots, t_{|V|}\}$. Each document $d$ and query $q$ is mapped to a vector in a $|V|$-dimensional Euclidean space:
+<VectorSpaceArrowsDiagram />
+
+In this shared coordinate space, the direction of each arrow reveals its topical balance. Notice that D1 and D3 point along the exact same $45^\circ$ diagonal: both documents dedicate an equal 25% of their total words to "machine" and "learning". D2 tilts higher toward the vertical axis because it mentions "learning" twice as often as "machine". D4 sits directly at the origin because neither query word appears in it.
+
+Each coordinate in a document's vector corresponds to one specific word from the entire vocabulary $V$:
 
 $$
-\mathbf{d} = \big[ \text{TF-IDF}(t_1, d),\, \text{TF-IDF}(t_2, d),\, \dots,\, \text{TF-IDF}(t_{|V|}, d) \big]^T \in \mathbb{R}^{|V|}
+\mathbf{d} = \big[ \text{TF-IDF}(t_1, d),\, \text{TF-IDF}(t_2, d),\, \dots,\, \text{TF-IDF}(t_{|V|}, d) \big]^T
 $$
 
 $$
-\mathbf{q} = \big[ \text{TF-IDF}(t_1, q),\, \text{TF-IDF}(t_2, q),\, \dots,\, \text{TF-IDF}(t_{|V|}, q) \big]^T \in \mathbb{R}^{|V|}
+\mathbf{q} = \big[ \text{TF-IDF}(t_1, q),\, \text{TF-IDF}(t_2, q),\, \dots,\, \text{TF-IDF}(t_{|V|}, q) \big]^T
 $$
 
-Each coordinate corresponds to exactly one term in the global vocabulary $V$. Because an individual document contains only a small subset of all vocabulary terms, coordinates for terms absent from the document are zero:
+Because any single document contains only a small handful of words out of the entire dictionary, coordinates for absent words are exactly zero. We visualize this structure as a row of boxes below:
 
-```python
-# Sparse vector representation over vocabulary V:
-# Each coordinate corresponds to one vocabulary term t_i.
-# Terms absent from document d receive a weight of exactly 0.0.
-doc_vector = [
-    0.0, 0.0, 0.0719, 0.0, 0.0, 
-    0.0719, 0.0, 0.0, ...  # 0.0 for every vocabulary term absent from d
-]
-```
+<SparseVectorBoxesDiagram />
 
-This is why TF-IDF belongs to the **sparse retrieval** family: vector dimensionality is determined by the total vocabulary size $|V|$, while each document's representation has non-zero coordinates only for terms that appear in that document.
+This is why TF-IDF is called **sparse retrieval**: the vector length equals the full dictionary size ($|V| > 100{,}000$), but almost every coordinate is empty ($0.0$). Only the terms that literally appear in the document hold positive weights.
 
 ### Measuring Relevance via Cosine Similarity
-In the vector space model, the relevance of document $\mathbf{d}$ to query $\mathbf{q}$ is measured by the **cosine similarity** between their respective vectors:
+
+When comparing two arrows in vector space, should we measure the straight-line distance between their tips, or the angle between them?
+
+If Document B repeats the exact text of Document A twice in a row, its arrow points in the identical direction but stretches twice as far. Measuring straight-line distance would falsely report them as dissimilar. Measuring the **cosine of the angle $\theta$** between their arrows resolves this:
+
+<CosineAngleDiagram />
 
 $$
 \text{CosineSimilarity}(\mathbf{q}, \mathbf{d}) = \frac{\mathbf{q} \cdot \mathbf{d}}{\|\mathbf{q}\|_2 \|\mathbf{d}\|_2} = \frac{\sum_{t \in q \cap d} \text{TF-IDF}(t, q) \cdot \text{TF-IDF}(t, d)}{\sqrt{\sum_{t \in q} \text{TF-IDF}(t, q)^2} \cdot \sqrt{\sum_{t \in d} \text{TF-IDF}(t, d)^2}}
 $$
 
-Cosine similarity naturally normalizes for document length by dividing by the Euclidean norm $\|\mathbf{d}\|_2$, projecting all documents onto a unit hypersphere.
+When two arrows point in the identical direction ($\theta = 0^\circ$), $\cos(0^\circ) = 1.0$, indicating maximum possible similarity. When two arrows are perpendicular ($\theta = 90^\circ$), $\cos(90^\circ) = 0.0$, indicating zero shared words.
 
 <PredictFirst
   question="If document A is identical to document B in content, but document B simply repeats the entire text of document A twice in a row, what happens to their cosine similarity with query Q?"
@@ -204,38 +207,37 @@ Cosine similarity naturally normalizes for document length by dividing by the Eu
   explanation="In the Vector Space Model with L2 normalization, repeating a document doubles all coordinates: d_B = 2 * d_A. The Euclidean norm also doubles: ||d_B|| = 2 * ||d_A||. When computing cosine similarity, the factor of 2 in the numerator cancels with the factor of 2 in the denominator, yielding an identical score: (q · 2d_A) / (||q|| · 2||d_A||) = (q · d_A) / (||q|| · ||d_A||)."
 />
 
-<GoDeeper title="Scikit-Learn vs. Textbook TF-IDF Variants">
-In production libraries such as Python's `scikit-learn` (`TfidfVectorizer`), several smoothing adjustments are applied to prevent zero divisions and negative weights:
+<GoDeeper title="Theory & History: Vector Space Model & Production Variants">
+The vector space formulation was introduced by Gerard Salton and colleagues (1975) to represent text geometrically. Dividing by the Euclidean norm $\|\mathbf{d}\|_2$ projects every document arrow onto the surface of a unit sphere, decoupling topical direction from document length.
 
-1. **Smoothed IDF**: To prevent division by zero when a term is absent from training documents, `smooth_idf=True` adds 1 to both numerator and denominator, plus an additional constant 1:
+In production libraries like Python's `scikit-learn` (`TfidfVectorizer`), three standard adjustments are applied:
+1. **Smoothed IDF**: Adds a constant 1 to avoid division by zero when a term never appears:
    $$
    \text{IDF}_{\text{sklearn}}(t) = \ln\left(\frac{1 + N}{1 + \text{df}(t)}\right) + 1
    $$
-2. **Sublinear Term Frequency**: Instead of raw or normalized counts, many systems apply logarithmic dampening to prevent high term counts from dominating:
-   $$
-   \text{TF}_{\text{sublinear}}(t, d) = 1 + \ln(\text{count}(t, d)) \quad \text{for count} > 0
-   $$
-3. **L2 Vector Normalization**: Coordinates are normalized so each document vector has unit length:
-   $$
-   \mathbf{v}_{\text{norm}} = \frac{\mathbf{v}}{\sqrt{\sum_i v_i^2}}
-   $$
+2. **Sublinear Term Frequency**: Replaces raw counts with logarithmic dampening ($1 + \ln(\text{count})$) so ten word repetitions do not outweigh five distinct topic matches.
+3. **L2 Unit Normalization**: Ensures every vector has length 1: $\mathbf{v}_{\text{norm}} = \mathbf{v} / \|\mathbf{v}\|_2$.
 </GoDeeper>
 
 ## Limitations: The Semantic Vocabulary Mismatch Problem
 
-While TF-IDF provides principled relevance weighting, it suffers from a fundamental limitation inherent to all lexical matching: **it has zero understanding of semantic meaning**.
+The greatest limitation of TF-IDF is that it counts character strings rather than meanings. It has zero understanding of synonyms or intent.
 
-Consider this classic failure mode:
-- **User Query**: `"automobile repair"`
-- **Document Text**: `"how to fix a car"`
+Consider a reader searching for help with their car:
 
-Even though the document answers the user's inquiry with 100% relevance, `"automobile"` does not literally match `"car"`, and `"repair"` does not literally match `"fix"`. Because the set of overlapping vocabulary terms is empty ($q \cap d = \emptyset$), the TF-IDF score is strictly:
+<VocabularyMismatchDiagram />
+
+Even though *"how to fix a car"* directly answers *"automobile repair"*, not a single word overlaps:
+- *"automobile"* $\ne$ *"car"*
+- *"repair"* $\ne$ *"fix"*
+
+Because the intersection of character tokens is empty ($q \cap d = \emptyset$), the TF-IDF score is strictly zero:
 
 $$
 \text{Score}(\text{"automobile repair"}, \text{"how to fix a car"}) = 0.0000
 $$
 
-This vulnerability is known as the **vocabulary mismatch problem** (Furnas et al., 1987). Dense semantic models (such as Bi-encoders and sentence transformers, covered in [Semantic & Hybrid Search](/docs/search-ranking-recommendations/semantic-and-hybrid-search)) resolve this by projecting synonyms into nearby points in continuous embedding spaces.
+This failure is known as the **vocabulary mismatch problem** (Furnas et al., 1987). In [Semantic & Hybrid Search](/docs/search-ranking-recommendations/semantic-and-hybrid-search), we solve this by using neural embedding models that map synonyms into nearby points in continuous space.
 
 ## Run It Yourself: Pure Python TF-IDF from Scratch
 

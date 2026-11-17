@@ -45,7 +45,7 @@ const TOY_CORPUS: ToyDoc[] = [
 
 const QUERY = ['search', 'ranking'];
 
-export default function Bm25ScoringExplorer() {
+export function Bm25ScoringExplorer() {
   const t = useVizTokens();
   const [k1, setK1] = useState<number>(BM25_DEFAULT_K1);
   const [b, setB] = useState<number>(BM25_DEFAULT_B);
@@ -273,3 +273,5 @@ export default function Bm25ScoringExplorer() {
     </VisualizationContainer>
   );
 }
+
+export default Bm25ScoringExplorer;

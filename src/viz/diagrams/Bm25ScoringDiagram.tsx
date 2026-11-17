@@ -9,7 +9,7 @@ import { SketchArrow, SketchEllipse, SketchPath } from '../../components/noteboo
  * climbing, but the (k1+1)*tf / (k1+tf) term it's wrapped in flattens out
  * fast -- the 5th occurrence barely moves the score above the 1st few.
  * See src/viz/lib/bm25.ts for the computation and its unit tests. */
-export default function Bm25ScoringDiagram() {
+export function Bm25ScoringDiagram() {
   const t = useVizTokens();
   const [tf, setTf] = useState(5);
   const color = getConceptColor(t, 'attention');
@@ -52,3 +52,5 @@ export default function Bm25ScoringDiagram() {
     </VisualizationContainer>
   );
 }
+
+export default Bm25ScoringDiagram;

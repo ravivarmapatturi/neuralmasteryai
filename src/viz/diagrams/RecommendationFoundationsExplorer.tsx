@@ -10,7 +10,7 @@ import {
   toImplicitConfidence,
 } from '../lib/recommendationFoundations';
 
-export default function RecommendationFoundationsExplorer() {
+export function RecommendationFoundationsExplorer() {
   const t = useVizTokens();
   const [activeUserIdx, setActiveUserIdx] = useState<number>(0);
   const [viewMode, setViewMode] = useState<'user' | 'item' | 'implicit'>('user');
@@ -419,3 +419,5 @@ export default function RecommendationFoundationsExplorer() {
     </VisualizationContainer>
   );
 }
+
+export default RecommendationFoundationsExplorer;

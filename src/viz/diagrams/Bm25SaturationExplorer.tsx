@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, Slider } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, Slider, VisualizationMath } from '../primitives';
 import {
   bm25LengthNorm,
   bm25OneTermBreakdown,
@@ -9,7 +9,7 @@ import {
 
 type ViewMode = 'chart' | 'calculator';
 
-export default function Bm25SaturationExplorer() {
+export function Bm25SaturationExplorer() {
   const t = useVizTokens();
   const [activeTab, setActiveTab] = useState<ViewMode>('calculator');
 
@@ -76,25 +76,25 @@ export default function Bm25SaturationExplorer() {
       }
     >
       <VisualizationHeader
-        eyebrow="Probabilistic Retrieval & Term Saturation"
+        eyebrow="Probabilistic retrieval & term saturation"
         title="BM25 vs. TF-IDF: Saturation Curve & Score Calculator"
         description="Inspect how BM25 caps the marginal impact of repeated terms via k1, and how document-length normalization b penalizes verbose text."
       />
 
       {/* View Mode Toggle */}
-      <div style={{ marginTop: SPACING.md, display: 'flex', gap: SPACING.sm }}>
+      <div style={{ marginTop: SPACING.md, display: 'flex', gap: SPACING.sm, flexWrap: 'wrap' }}>
         <button
           type="button"
           onClick={() => setActiveTab('calculator')}
           aria-pressed={activeTab === 'calculator'}
           style={{
             padding: `${SPACING.xs}px ${SPACING.md}px`,
-            borderRadius: RADIUS.md,
+            borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
             border: `1.5px solid ${activeTab === 'calculator' ? t.accentPrimary : t.border}`,
             backgroundColor: activeTab === 'calculator' ? t.surfaceAlt : t.surface,
             color: activeTab === 'calculator' ? t.accentPrimary : t.textPrimary,
-            fontFamily: 'inherit',
-            fontSize: 13,
+            fontFamily: "'Kalam', cursive",
+            fontSize: 14,
             fontWeight: activeTab === 'calculator' ? 700 : 500,
             cursor: 'pointer',
           }}
@@ -107,12 +107,12 @@ export default function Bm25SaturationExplorer() {
           aria-pressed={activeTab === 'chart'}
           style={{
             padding: `${SPACING.xs}px ${SPACING.md}px`,
-            borderRadius: RADIUS.md,
+            borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
             border: `1.5px solid ${activeTab === 'chart' ? t.accentPrimary : t.border}`,
             backgroundColor: activeTab === 'chart' ? t.surfaceAlt : t.surface,
             color: activeTab === 'chart' ? t.accentPrimary : t.textPrimary,
-            fontFamily: 'inherit',
-            fontSize: 13,
+            fontFamily: "'Kalam', cursive",
+            fontSize: 14,
             fontWeight: activeTab === 'chart' ? 700 : 500,
             cursor: 'pointer',
           }}
@@ -229,8 +229,8 @@ export default function Bm25SaturationExplorer() {
               gap: SPACING.md,
               padding: SPACING.md,
               backgroundColor: t.surfaceAlt,
-              borderRadius: RADIUS.md,
-              border: `1px solid ${t.border}`,
+              borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
+              border: `1.5px solid ${t.border}`,
             }}
           >
             <Slider
@@ -283,80 +283,80 @@ export default function Bm25SaturationExplorer() {
             <div
               style={{
                 padding: SPACING.md,
-                borderRadius: RADIUS.md,
+                borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
                 backgroundColor: t.surface,
-                border: `1px solid ${t.border}`,
+                border: `1.5px solid ${t.border}`,
                 textAlign: 'center',
               }}
             >
-              <div style={{ fontSize: 11, color: t.textSecondary, textTransform: 'uppercase', fontWeight: 600 }}>
+              <div style={{ fontSize: 13, color: t.textSecondary, fontFamily: "'Kalam', cursive", fontWeight: 700 }}>
                 Smoothed IDF
               </div>
               <div style={{ fontSize: 22, fontWeight: 800, color: t.textPrimary, marginTop: 4 }}>
                 {calcResult.idf.toFixed(3)}
               </div>
-              <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>
-                ln(1 + 900.5 / 100.5)
+              <div style={{ fontSize: 11, color: t.textMuted, marginTop: 4 }}>
+                <VisualizationMath latex="\ln\left(1 + \frac{900.5}{100.5}\right)" display={false} />
               </div>
             </div>
 
             <div
               style={{
                 padding: SPACING.md,
-                borderRadius: RADIUS.md,
+                borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
                 backgroundColor: t.surface,
-                border: `1px solid ${t.border}`,
+                border: `1.5px solid ${t.border}`,
                 textAlign: 'center',
               }}
             >
-              <div style={{ fontSize: 11, color: t.textSecondary, textTransform: 'uppercase', fontWeight: 600 }}>
-                Length Factor B
+              <div style={{ fontSize: 13, color: t.textSecondary, fontFamily: "'Kalam', cursive", fontWeight: 700 }}>
+                Length factor B
               </div>
               <div style={{ fontSize: 22, fontWeight: 800, color: t.textPrimary, marginTop: 4 }}>
                 {lenNormB.toFixed(3)}
               </div>
-              <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>
-                1 - b + b*(|D|/avgdl)
+              <div style={{ fontSize: 11, color: t.textMuted, marginTop: 4 }}>
+                <VisualizationMath latex="1 - b + b \cdot \frac{|D|}{\text{avgdl}}" display={false} />
               </div>
             </div>
 
             <div
               style={{
                 padding: SPACING.md,
-                borderRadius: RADIUS.md,
+                borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
                 backgroundColor: t.surface,
-                border: `1px solid ${t.border}`,
+                border: `1.5px solid ${t.border}`,
                 textAlign: 'center',
               }}
             >
-              <div style={{ fontSize: 11, color: t.textSecondary, textTransform: 'uppercase', fontWeight: 600 }}>
-                TF Factor
+              <div style={{ fontSize: 13, color: t.textSecondary, fontFamily: "'Kalam', cursive", fontWeight: 700 }}>
+                TF factor
               </div>
               <div style={{ fontSize: 22, fontWeight: 800, color: t.accentPrimary, marginTop: 4 }}>
                 {calcResult.tfFactor.toFixed(3)}
               </div>
-              <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>
-                tf*(k1+1)/(tf+k1*B)
+              <div style={{ fontSize: 11, color: t.textMuted, marginTop: 4 }}>
+                <VisualizationMath latex="\frac{\text{tf} \cdot (k_1 + 1)}{\text{tf} + k_1 \cdot B}" display={false} />
               </div>
             </div>
 
             <div
               style={{
                 padding: SPACING.md,
-                borderRadius: RADIUS.md,
+                borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
                 backgroundColor: t.surfaceAlt,
                 border: `2px solid ${t.accentPrimary}`,
                 textAlign: 'center',
               }}
             >
-              <div style={{ fontSize: 11, color: t.accentPrimary, textTransform: 'uppercase', fontWeight: 700 }}>
-                BM25 Term Score
+              <div style={{ fontSize: 13, color: t.accentPrimary, fontFamily: "'Kalam', cursive", fontWeight: 700 }}>
+                BM25 term score
               </div>
               <div style={{ fontSize: 26, fontWeight: 900, color: t.accentPrimary, marginTop: 2 }}>
                 {calcResult.score.toFixed(3)}
               </div>
-              <div style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
-                IDF &times; TF factor
+              <div style={{ fontSize: 11, color: t.textSecondary, marginTop: 4 }}>
+                <VisualizationMath latex="\text{IDF} \cdot \text{TF}_{\text{factor}}" display={false} />
               </div>
             </div>
           </div>
@@ -368,8 +368,8 @@ export default function Bm25SaturationExplorer() {
             style={{
               padding: SPACING.md,
               backgroundColor: t.surfaceAlt,
-              borderRadius: RADIUS.md,
-              border: `1px solid ${t.border}`,
+              borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
+              border: `1.5px solid ${t.border}`,
               marginBottom: SPACING.md,
             }}
           >
@@ -388,8 +388,8 @@ export default function Bm25SaturationExplorer() {
           <div
             style={{
               backgroundColor: t.surface,
-              borderRadius: RADIUS.md,
-              border: `1px solid ${t.border}`,
+              borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
+              border: `1.5px solid ${t.border}`,
               padding: SPACING.sm,
               overflowX: 'auto',
             }}
@@ -530,3 +530,5 @@ export default function Bm25SaturationExplorer() {
     </VisualizationContainer>
   );
 }
+
+export default Bm25SaturationExplorer;

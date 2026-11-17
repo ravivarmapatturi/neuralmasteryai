@@ -22,6 +22,17 @@ function readCollapsed(key: string): boolean {
   return window.localStorage.getItem(key) === 'true';
 }
 
+function formatDiaryDate(isoOrDate?: string): string {
+  if (!isoOrDate) return '17 November 2026';
+  try {
+    const d = new Date(isoOrDate.includes('T') ? isoOrDate : `${isoOrDate}T00:00:00Z`);
+    if (isNaN(d.getTime())) return '17 November 2026';
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+  } catch {
+    return '17 November 2026';
+  }
+}
+
 const panelToggleStyle: CSSProperties = {
   position: 'sticky',
   top: '50vh',
@@ -97,7 +108,12 @@ export default function DocLayout() {
             </button>
           </div>
         </div>
-        <main className="nm-doc-main" style={{ flex: 1, padding: '2rem 3rem', minWidth: 0 }} ref={contentRef}>
+        <main className="nm-doc-main nm-notebook-sheet" style={{ flex: 1, padding: '2rem 3rem', minWidth: 0 }} ref={contentRef}>
+          <header className="nm-diary-header" aria-label="Notebook diary header">
+            <span>Neural Mastery</span>
+            <span aria-hidden="true">·</span>
+            <span>{formatDiaryDate(page.lastUpdated)}</span>
+          </header>
           <article className="prose">
             {page.route.endsWith('/roadmap') && <RoadmapProgressBanner section={page.section} />}
             <Suspense fallback={<div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 14 }}>Loading…</div>}>

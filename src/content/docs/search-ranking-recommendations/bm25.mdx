@@ -8,8 +8,10 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
-import Bm25SaturationExplorer from '../../../viz/diagrams/Bm25SaturationExplorer';
-import Bm25ScoringExplorer from '../../../viz/diagrams/Bm25ScoringExplorer';
+import { Bm25ScoringDiagram } from '../../../viz/diagrams/Bm25ScoringDiagram';
+import { Bm25SaturationExplorer } from '../../../viz/diagrams/Bm25SaturationExplorer';
+import { Bm25ScoringExplorer } from '../../../viz/diagrams/Bm25ScoringExplorer';
+import { HybridSearchFusionDiagram } from '../../../viz/diagrams/HybridSearchFusionDiagram';
 
 # BM25: Term Saturation & Length Normalization
 
@@ -35,6 +37,8 @@ Information retrieval systems must compare documents of wildly varying lengths:
 
 **BM25** (**Best Matching 25**), developed by Stephen Robertson, Karen Spärck Jones, and collaborators (1994, 2009), resolves both vulnerabilities.
 
+<Bm25ScoringDiagram />
+
 ---
 
 ## Interactive BM25 Saturation & Calculator
@@ -45,7 +49,7 @@ Explore how BM25 controls term-frequency saturation and document-length penaliza
 
 ---
 
-## Deriving the Robertson BM25 Formula
+## How BM25 Balances Word Counts and Document Length
 
 BM25 addresses keyword repetition and document length by wrapping term frequency inside a nonlinear saturating curve parameterized by $k_1$ and $b$.
 
@@ -62,12 +66,14 @@ $$
 | **$f(q_i, D)$** | Term frequency ($\text{tf}$): raw count of query term $q_i$ in document $D$ | Positive integer ($0, 1, 2, \dots$). |
 | **$\vert D \vert$** | Document length: total token count of document $D$ | Measured in words or subword tokens. |
 | **$\text{avgdl}$** | Average document length across all $N$ documents in the corpus | $\text{avgdl} = (1/N) \sum_{j=1}^N \vert D_j \vert$. |
-| **$k_1$** | Term-frequency saturation constant | Commonly set between $1.2$ and $2.0$ (Robertson &amp; Zaragoza, 2009). Caps marginal score gain. |
+| **$k_1$** | Term-frequency saturation constant | Commonly set between $1.2$ and $2.0$. Caps marginal score gain. |
 | **$b$** | Document-length normalization constant | Range $[0, 1]$, commonly set to $0.75$. Controls length penalty severity. |
 | **$\text{IDF}(q_i)$** | Inverse document frequency weight of query term $q_i$ | Measures term rarity across catalog. |
 
+### Parameter Heuristics in Production
+
 <NotebookCallout color="cobalt" title="Parameter Heuristics in Production">
-The canonical defaults $k_1 \in [1.2, 1.5]$ and $b = 0.75$ originated from historical TREC evaluations on newswire and web benchmark corpora (Robertson et al., 1994). In modern production systems, these serve as empirical baselines rather than universal constants:
+The canonical defaults $k_1 \in [1.2, 1.5]$ and $b = 0.75$ originated from historical TREC evaluations on newswire and web benchmark corpora. In modern production systems, these serve as empirical baselines rather than universal constants:
 - For short, homogeneous text (such as product titles or FAQ headers), length normalization is often dialed down ($b \approx 0.3 - 0.5$ or $b = 0$) to avoid unfairly penalizing descriptive titles.
 - For heterogeneous collections mixing short abstracts with 50-page technical manuals, higher $b$ values ($b \approx 0.75 - 0.85$) ensure long documents do not dominate.
 </NotebookCallout>
@@ -98,15 +104,14 @@ Because $\frac{N - \text{df} + 0.5}{\text{df} + 0.5} \ge 0$ for all valid $\text
 
 To verify BM25 calculations independently, consider a canonical test scenario specified across information retrieval literature:
 
-```
-Corpus Size (N)             = 1,000 documents
-Term Document Frequency (df) = 100 documents
-Average Document Length     = 100 words (avgdl)
-Target Document Length (|D|) = 100 words
-Term Frequency in Doc (tf)  = 3 occurrences
-Saturation Parameter (k1)   = 1.2
-Length Normalization (b)    = 0.75
-```
+**Benchmark Parameters:**
+- Corpus size: $N = 1{,}000$ documents
+- Term document frequency: $\text{df} = 100$ documents
+- Average document length: $\text{avgdl} = 100$ words
+- Target document length: $|D| = 100$ words
+- Term frequency in document: $\text{tf} = 3$ occurrences
+- Saturation parameter: $k_1 = 1.2$
+- Length normalization: $b = 0.75$
 
 Let us derive each component step by step:
 
@@ -175,12 +180,14 @@ To observe BM25 across an entire collection, explore the 4-document toy search e
 | **Semantic Understanding** | None (exact string tokens only) | None (exact string tokens only) | Both require dense neural vectors for semantic synonym matching. |
 
 <NotebookCallout color="amber" title="BM25 Is Not Merely TF-IDF with Two Tunable Knobs">
-Engineers sometimes describe BM25 as "just TF-IDF with $k_1$ and $b$ added." This is mathematically and historically incorrect. TF-IDF originated as an empirical geometric heuristic in vector spaces (Salton &amp; Buckley, 1988). BM25 emerged from the **Probabilistic Relevance Framework** (Robertson &amp; Spärck Jones, 1976; Robertson et al., 1994), motivated by the qualitative behavior of the **2-Poisson indexing model**. Rather than treating term frequency as an ad-hoc linear count, BM25 models term saturation using a tractable rational function that captures diminishing marginal relevance.
+Engineers sometimes describe BM25 as "just TF-IDF with $k_1$ and $b$ added." Rather than treating term frequency as an ad-hoc linear count, BM25 models term saturation using a rational function that captures diminishing marginal returns. Repeating a term gives decreasing score boosts, preventing keyword manipulation.
 </NotebookCallout>
 
-<GoDeeper title="The 2-Poisson Model Motivation">
-The 2-Poisson indexing model (Harter, 1975; Robertson et al., 1994) offers a theoretical perspective on term recurrence by positing two latent document classes for any term $t$:
-1. **Elitist documents ($E$)**: Documents that are genuinely *about* the concept denoted by term $t$. In this class, term occurrences are modeled as following a Poisson distribution with a higher mean rate $\lambda$.
+<GoDeeper title="Theory & History: The Robertson BM25 Derivation">
+BM25 emerged from the **Probabilistic Relevance Framework** (Robertson &amp; Spärck Jones, 1976; Robertson et al., 1994), motivated by the qualitative behavior of the **2-Poisson indexing model** (Harter, 1975).
+
+The 2-Poisson model posits two latent document classes for any term $t$:
+1. **Elitist documents ($E$)**: Documents that are genuinely *about* the concept denoted by term $t$. In this class, term occurrences follow a Poisson distribution with a higher mean rate $\lambda$.
 2. **Non-elitist documents ($\bar{E}$)**: Documents where $t$ appears only incidentally or peripherally. Occurrences follow a Poisson distribution with a lower mean rate $\mu$ ($\mu < \lambda$).
 
 In probabilistic relevance modeling (Robertson &amp; Spärck Jones, 1976; Manning et al., 2008), the optimal term weight depends on the log-odds ratio of relevance given the observed term frequency:
@@ -216,12 +223,10 @@ In production Retrieval-Augmented Generation (RAG) and search architectures, den
    When new product SKUs (`WH-1000XM5`), new drug compounds, or rare personal names are queried, pretrained embedding models suffer from token fragmentation or out-of-vocabulary artifacts, whereas BM25 indexes the exact subword or word token.
 
 ### Hybrid Retrieval & Reciprocal Rank Fusion (RRF)
-Modern production search pipelines combine lexical and semantic retrieval in a **hybrid architecture**:
-```
-User Query ──┬──► [ Inverted Index: BM25 ] ────► Lexical Top 100 ────┐
-             │                                                         ├──► [ Reciprocal Rank Fusion (RRF) ] ──► Cross-Encoder Ranker
-             └──► [ Vector ANN Index: HNSW ] ──► Semantic Top 100 ───┘
-```
+Modern production search pipelines combine lexical and semantic retrieval in a hybrid architecture:
+
+<HybridSearchFusionDiagram />
+
 In many retrieval tasks, lexical and semantic methods provide complementary strengths: BM25 provides strong literal matching for exact terminology, code identifiers, and rare terms (conditional on analyzer tokenization), whereas dense vector embeddings handle paraphrases and conceptual synonyms. Reciprocal Rank Fusion (RRF) blends candidate lists from both modalities without requiring cross-system score calibration.
 
 ---

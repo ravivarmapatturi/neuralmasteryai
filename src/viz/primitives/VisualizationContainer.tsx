@@ -1,5 +1,5 @@
 import React, { useId } from 'react';
-import { useVizTokens, RADIUS, SPACING, FONT_FAMILY } from '../../theme/vizTokens';
+import { useVizTokens, SPACING, FONT_FAMILY } from '../../theme/vizTokens';
 
 /**
  * The outer frame every visualization renders inside -- background, border,
@@ -35,8 +35,8 @@ export default function VisualizationContainer({
       style={{
         position: 'relative',
         background: t.surface,
-        border: `1px solid ${t.border}`,
-        borderRadius: RADIUS.lg,
+        border: `1.5px solid ${t.border}`,
+        borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
         padding: SPACING.md,
         margin: `${SPACING.md}px 0`,
         boxShadow: t.mode === 'dark' ? '0 8px 24px rgba(0, 0, 0, 0.35)' : '0 8px 24px rgba(20, 22, 26, 0.08)',
@@ -52,6 +52,7 @@ export default function VisualizationContainer({
       {footer && (
         <div
           id={footerId}
+          className="nm-viz-footer"
           style={{
             marginTop: SPACING.sm,
             paddingTop: SPACING.sm,

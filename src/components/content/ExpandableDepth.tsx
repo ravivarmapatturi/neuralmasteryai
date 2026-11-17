@@ -8,7 +8,7 @@ import { SketchRect } from '../notebook/RoughShape';
 type Depth = 'eli5' | 'deeper' | 'solution' | 'qa';
 
 const DEPTH_META: Record<Depth, { icon: string; label: string }> = {
-  eli5: { icon: '', label: 'Simple Explanation' },
+  eli5: { icon: '', label: 'Simple explanation' },
   deeper: { icon: '', label: 'Go deeper' },
   solution: { icon: '', label: 'Show solution' },
   qa: { icon: '', label: 'Question' },
@@ -82,8 +82,8 @@ function ExpandableDepth({
           width={Math.max(size.width - 6, 10)}
           height={Math.max(size.height - 6, 10)}
           color={color}
-          roughness={1.3}
-          strokeWidth={1.5}
+          roughness={1.6}
+          strokeWidth={1.8}
           id={`depth-${kind}-${title ?? 'box'}`}
         />
       </svg>

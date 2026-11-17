@@ -1,0 +1,185 @@
+import { useState } from 'react';
+import { useVizTokens } from '../../theme/vizTokens';
+import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { SketchRect } from '../../components/notebook/RoughShape';
+
+export function VectorSpaceArrowsDiagram() {
+  const t = useVizTokens();
+  const [highlighted, setHighlighted] = useState<string>('all');
+
+  const width = 540;
+  const height = 340;
+  const originX = 75;
+  const originY = 275;
+  const scaleX = 850;
+  const scaleY = 750;
+
+  const toSvg = (x: number, y: number) => ({
+    x: originX + x * scaleX,
+    y: originY - y * scaleY,
+  });
+
+  return (
+    <VisualizationContainer
+      title="The Vector Space Model: Documents as Directional Arrows"
+      footer={
+        "In the Vector Space Model, each document is a directional arrow in a shared coordinate space. " +
+        "Notice that D1 and D3 point in the exact same direction (slope 1.0, 45°) because both allocate an equal 25% of their words to 'machine' and 'learning'. " +
+        "D2 tilts higher toward 'learning' because it repeats 'learning' twice."
+      }
+    >
+      <VisualizationHeader
+        eyebrow="Vector space geometry"
+        title="Documents as Directional Arrows in Term Coordinate Space"
+        description="Inspect how document text maps to coordinates and directional arrows defined by query term frequencies."
+      />
+
+      <div style={{ marginTop: 8, marginBottom: 12 }}>
+        <PillSelect
+          label="Highlight document"
+          value={highlighted}
+          onChange={setHighlighted}
+          options={[
+            { value: 'all', label: 'All documents' },
+            { value: 'd1', label: 'D1 ("machine learning...")' },
+            { value: 'd3', label: 'D3 ("improves search")' },
+            { value: 'd2', label: 'D2 ("deep learning...")' },
+            { value: 'd4', label: 'D4 ("cooking food...")' },
+          ]}
+        />
+      </div>
+
+      <svg
+        width="100%"
+        viewBox={`0 0 ${width} ${height}`}
+        style={{
+          display: 'block',
+          border: `1.5px solid ${t.border}`,
+          borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
+          background: t.surface,
+        }}
+        role="img"
+        aria-label="Vector Space Diagram showing document arrows plotted against Term Frequency axes for machine and learning"
+      >
+        <defs>
+          <marker id="arrow-d1" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill={t.accentPrimary} />
+          </marker>
+          <marker id="arrow-d3" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill={t.accentSecondary} />
+          </marker>
+          <marker id="arrow-d2" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill={t.accentPurple} />
+          </marker>
+          <marker id="arrow-axis" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill={t.textPrimary} />
+          </marker>
+        </defs>
+
+        {/* Grid lines */}
+        {[0.1, 0.2, 0.3].map((val) => {
+          const ptX = toSvg(val, 0);
+          const ptY = toSvg(0, val);
+          return (
+            <g key={val} opacity={0.35}>
+              <line x1={ptX.x} y1={originY} x2={ptX.x} y2={originY - 0.35 * scaleY} stroke={t.border} strokeDasharray="3 3" />
+              <line x1={originX} y1={ptY.y} x2={originX + 0.5 * scaleX} y2={ptY.y} stroke={t.border} strokeDasharray="3 3" />
+              <text x={ptX.x} y={originY + 16} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
+                {val.toFixed(1)}
+              </text>
+              <text x={originX - 10} y={ptY.y + 4} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="end">
+                {val.toFixed(1)}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Coordinate Axes */}
+        <line x1={originX} y1={originY} x2={originX + 430} y2={originY} stroke={t.textPrimary} strokeWidth={2} markerEnd="url(#arrow-axis)" />
+        <line x1={originX} y1={originY} x2={originX} y2={originY - 245} stroke={t.textPrimary} strokeWidth={2} markerEnd="url(#arrow-axis)" />
+
+        {/* Axis Labels */}
+        <text x={originX + 415} y={originY + 28} fill={t.textPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="end">
+          TF("machine", d) →
+        </text>
+        <text x={originX - 10} y={originY - 240} fill={t.textPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="end">
+          ↑ TF("learning", d)
+        </text>
+
+        {/* Origin Label */}
+        <text x={originX - 12} y={originY + 16} fill={t.textMuted} fontSize={12} fontFamily="'Kalam', cursive">
+          (0,0)
+        </text>
+
+        {/* Document Arrows */}
+        {/* D4 dot at origin */}
+        {(highlighted === 'all' || highlighted === 'd4') && (
+          <g opacity={highlighted === 'all' || highlighted === 'd4' ? 1 : 0.2}>
+            <circle cx={originX} cy={originY} r={6} fill={t.textMuted} />
+            <text x={originX + 10} y={originY + 22} fill={t.textMuted} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
+              D4 (0, 0)
+            </text>
+          </g>
+        )}
+
+        {/* D2 Arrow */}
+        {(() => {
+          const pt = toSvg(0.143, 0.286);
+          const isDim = highlighted !== 'all' && highlighted !== 'd2';
+          return (
+            <g style={{ opacity: isDim ? 0.15 : 1, transition: 'opacity 0.2s' }}>
+              <line x1={originX} y1={originY} x2={pt.x} y2={pt.y} stroke={t.accentPurple} strokeWidth={3} markerEnd="url(#arrow-d2)" />
+              <circle cx={pt.x} cy={pt.y} r={4} fill={t.accentPurple} />
+              <text x={pt.x - 8} y={pt.y - 10} fill={t.accentPurple} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700}>
+                D2 (0.14, 0.29)
+              </text>
+            </g>
+          );
+        })()}
+
+        {/* D1 Arrow */}
+        {(() => {
+          const pt = toSvg(0.25, 0.25);
+          const isDim = highlighted !== 'all' && highlighted !== 'd1' && highlighted !== 'd3';
+          return (
+            <g style={{ opacity: isDim ? 0.15 : 1, transition: 'opacity 0.2s' }}>
+              <line x1={originX} y1={originY} x2={pt.x} y2={pt.y} stroke={t.accentPrimary} strokeWidth={3} markerEnd="url(#arrow-d1)" />
+              <circle cx={pt.x} cy={pt.y} r={4} fill={t.accentPrimary} />
+              <text x={pt.x + 12} y={pt.y + 4} fill={t.accentPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700}>
+                D1 &amp; D3 (0.25, 0.25)
+              </text>
+              <text x={pt.x + 12} y={pt.y + 20} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
+                Collinear (45° diagonal)
+              </text>
+            </g>
+          );
+        })()}
+
+        {/* Diagonal 45 deg guide */}
+        <line x1={originX} y1={originY} x2={originX + 0.34 * scaleX} y2={originY - 0.34 * scaleY} stroke={t.accentWarn} strokeDasharray="4 4" strokeWidth={1} opacity={0.6} />
+        <text x={originX + 0.34 * scaleX + 6} y={originY - 0.34 * scaleY} fill={t.accentWarn} fontSize={11} fontFamily="'Kalam', cursive">
+          45° line of balance
+        </text>
+
+        {/* Notes callout card in top right */}
+        <g transform="translate(320, 25)">
+          <SketchRect x={0} y={0} width={200} height={90} color={t.border} roughness={1.2} strokeWidth={1.2} />
+          <text x={12} y={22} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
+            Notebook observation:
+          </text>
+          <text x={12} y={40} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
+            • Direction = topic balance
+          </text>
+          <text x={12} y={58} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
+            • D1 and D3 overlap perfectly
+          </text>
+          <text x={12} y={76} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
+            • Length = term concentration
+          </text>
+        </g>
+      </svg>
+    </VisualizationContainer>
+  );
+}
+
+export default VectorSpaceArrowsDiagram;

@@ -8,7 +8,7 @@ type Approach = 'collab' | 'content' | 'explore';
 /** A brand-new user has no interaction history -- click through the
  * three approaches to see what each one can actually work with when
  * collaborative filtering has nothing to go on. */
-export default function ColdStartDiagram() {
+export function ColdStartDiagram() {
   const t = useVizTokens();
   const [approach, setApproach] = useState<Approach>('content');
   const failColor = t.accentDanger;
@@ -39,3 +39,5 @@ export default function ColdStartDiagram() {
     </VisualizationContainer>
   );
 }
+
+export default ColdStartDiagram;

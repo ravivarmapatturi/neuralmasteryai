@@ -16,6 +16,17 @@ import { BLOG_READ_POINTS, hasAward } from '../lib/gamification';
 import BlogCover from './BlogCover';
 import BlogMechanism from './BlogMechanism';
 
+function formatDiaryDate(isoOrDate?: string): string {
+  if (!isoOrDate) return '17 November 2026';
+  try {
+    const d = new Date(isoOrDate.includes('T') ? isoOrDate : `${isoOrDate}T00:00:00Z`);
+    if (isNaN(d.getTime())) return '17 November 2026';
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+  } catch {
+    return '17 November 2026';
+  }
+}
+
 /** /blog/:slug: one post, in the same prose styles as the Learn pages.
  * File-based posts render their MDX; editor-written posts are fetched from
  * Firestore and rendered from markdown with the same components. */
@@ -74,7 +85,12 @@ export default function BlogPostPage() {
       <ReadingProgress articleRef={articleRef} />
       <main className="nm-blog-shell">
         <div className="nm-post-grid">
-          <div className="nm-post-main">
+          <div className="nm-post-main nm-notebook-sheet">
+            <header className="nm-diary-header" aria-label="Notebook diary header">
+              <span>Neural Mastery</span>
+              <span aria-hidden="true">·</span>
+              <span>{formatDiaryDate(date)}</span>
+            </header>
             <header className="nm-post-header">
               <p className="nm-post-eyebrow">
               <Link to="/blog" style={{ color: 'var(--nm-accent-primary)' }}>

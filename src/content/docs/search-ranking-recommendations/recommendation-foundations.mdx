@@ -8,7 +8,10 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
-import RecommendationFoundationsExplorer from '../../../viz/diagrams/RecommendationFoundationsExplorer';
+import { RecommendationFoundationsExplorer } from '../../../viz/diagrams/RecommendationFoundationsExplorer';
+import { SearchVsRecLanesDiagram } from '../../../viz/diagrams/SearchVsRecLanesDiagram';
+import { UserItemMatrixDiagram } from '../../../viz/diagrams/UserItemMatrixDiagram';
+import { ColdStartDiagram } from '../../../viz/diagrams/ColdStartDiagram';
 
 # Recommendation Foundations: Interactions & Neighborhoods
 
@@ -16,28 +19,21 @@ import RecommendationFoundationsExplorer from '../../../viz/diagrams/Recommendat
 In search, the user tells us what they want by typing an explicit query ("learning to rank algorithms"). In recommendations, there is no search query. The system must infer intent from history: what items the user clicked, purchased, skipped, or rated. Collaborative filtering solves this by identifying shared taste. If Alice and Bob both read chapters on matrix algebra and vector search, and Bob also reads two-tower retrieval, the system recommends two-tower retrieval to Alice without needing to understand the underlying prose.
 </ELI5>
 
-For a broader architectural overview of recommendation baselines, global biases, and full-funnel retrieval pipelines, review our dedicated guide in [Recommender Systems](/docs/machine-learning/recommender-systems). In this chapter, we derive the mathematical foundations of user-item candidate generation, examine the structural shift from explicit to implicit feedback, and analyze why unobserved interactions must never be conflated with negative preference.
+For a broader architectural overview of recommendation baselines, global biases, and full-funnel retrieval pipelines, review our dedicated guide in [Recommender Systems](/docs/machine-learning/recommender-systems). In this chapter, we explore how recommender systems match users to items, trace the shift from star ratings to clicks and watch time, and explain why an unseen item must never be treated as a disliked item.
 
 ---
 
 ## Ranking Without an Explicit Query
 
-Information retrieval systems operate in two distinct modalities: query-driven search and context-driven recommendation.
+Information retrieval systems operate in two distinct ways: query-driven search and context-driven recommendation.
 
-In search, the query provides immediate intentional focus. The candidate generation layer filters millions of documents down to thousands by matching lexical terms or semantic query embeddings. 
+In search, the query provides immediate intentional focus. The candidate retrieval layer filters millions of documents down to thousands by matching search terms or semantic vectors.
 
-In recommendations, the user arrives at a home screen or feed with no typed tokens. The system's input is a user context vector $x_u$ (past interactions, timestamp, device, locale) and an interaction matrix $R \in \mathbb{R}^{m \times n}$ representing historical interactions between $m$ users and $n$ catalog items.
+In recommendations, there is no typed query. The user visits a homepage or feed. The system must look at who the user is, what they did in the past, and what similar people enjoyed.
 
-```
-Query-Driven Search:
-[User Query: "vector index"] ──► Lexical / Dense Match ──► Top 1,000 Candidates ──► LTR Reranker
+<SearchVsRecLanesDiagram />
 
-Context-Driven Recommendation:
-[User Context: History + Time] ──► Collaborative Neighborhoods ──► Candidate Pool ──► Deep CTR Ranker
-                                ──► Content-Based Filters
-```
-
-The fundamental challenge of recommender systems is extreme matrix sparsity. In typical production catalogs (such as e-commerce stores with $10^7$ items or video platforms with $10^8$ items), any single user interacts with at most $10^2$ to $10^3$ items. More than 99.9% of the interaction matrix cells are completely unobserved.
+The central challenge in recommendations is sparsity. In a catalog with millions of items, any single person interacts with only a handful. More than 99.9% of the user-item interaction matrix is completely unobserved.
 
 ---
 
@@ -47,6 +43,8 @@ To make every equation hand-checkable, we define a concrete toy universe of $m=4
 
 - **Users**: Alice ($u_1$), Bob ($u_2$), Charlie ($u_3$), Diana ($u_4$)
 - **Items**: Item 1 (*Matrix Algebra*), Item 2 (*Vector Search*), Item 3 (*Two-Tower Nets*), Item 4 (*Graph RAG*)
+
+<UserItemMatrixDiagram />
 
 Consider the observed explicit rating matrix $R$ on a 1-to-5 star scale:
 
@@ -415,21 +413,7 @@ print("Item 1 vs Item 2 Cosine Sim:", round(sim, 4))
 
 Collaborative filtering fails completely when either the user or the item has zero historical interactions. This failure state is known as the **cold-start problem** (Schein et al., 2002).
 
-```
-                      ┌────────────────────────────────────────────────────────┐
-                      │                   New User Arrives                     │
-                      └──────────────────────────┬─────────────────────────────┘
-                                                 │
-                                                 ▼
-                                     Has Interaction History?
-                                     ├─── YES ──► Collaborative Filtering (k-NN, Matrix Factorization)
-                                     │
-                                     └─── NO  ──► Cold-Start Triage:
-                                                  ├── Contextual Heuristics (device, country, time)
-                                                  ├── Popularity & Editorial Top-Charts
-                                                  ├── Content-Based Metadata Embedding
-                                                  └── Multi-Armed Bandit Exploration (ε-greedy, Thompson)
-```
+<ColdStartDiagram />
 
 In production architectures, cold-start is resolved through three complementary layers:
 
@@ -437,7 +421,14 @@ In production architectures, cold-start is resolved through three complementary 
 2. **Contextual Popularity Fallbacks**: For brand-new anonymous visitors, the retrieval layer serves trending or universally high-engagement items segmented by geo-location, referrer URL, or device type.
 3. **Bandit Exploration**: Rather than serving only historical winners, the system allocates a small exploration budget (e.g., 2% to 5% of traffic) to test unexposed items, rapidly accumulating interactions to exit the cold-start regime (Li et al., 2010).
 
-<GoDeeper title="Formalizing the Exposure Bias in Implicit Feedback">
+<GoDeeper title="Theory & History: Collaborative Filtering Foundations">
+### History and Milestone Papers
+- **GroupLens (1994)**: Resnick et al. introduced user-based collaborative filtering with Pearson correlation for Netnews discussion boards.
+- **Item-to-Item Collaborative Filtering (2001, 2003)**: Sarwar et al. and Linden et al. (Amazon) shifted the focus to item similarity, which is far more stable than user taste and can be precomputed offline.
+- **Matrix Factorization (2009)**: Koren, Bell, and Volinsky won the Netflix Prize by decomposing rating matrices into low-dimensional latent embeddings.
+- **Implicit Feedback (2008)**: Hu, Koren, and Volinsky introduced binary preference and confidence weights for click and watch logs.
+
+### Formalizing Exposure Bias in Implicit Feedback
 In observational interaction logs, the observed interaction indicator $O_{ui} \in \{0, 1\}$ represents whether item $i$ was exposed to user $u$. The true interaction outcome $Y_{ui}$ is only observed when $O_{ui} = 1$:
 
 $$

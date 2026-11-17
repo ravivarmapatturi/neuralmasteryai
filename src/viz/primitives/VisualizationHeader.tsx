@@ -1,6 +1,15 @@
 import React from 'react';
 import { useVizTokens, SPACING } from '../../theme/vizTokens';
 
+function toSentenceCase(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  if (trimmed === trimmed.toUpperCase()) {
+    return trimmed.charAt(0) + trimmed.slice(1).toLowerCase();
+  }
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
 export default function VisualizationHeader({
   eyebrow,
   title,
@@ -16,15 +25,14 @@ export default function VisualizationHeader({
       {eyebrow && (
         <div
           style={{
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
+            fontFamily: "'Kalam', cursive",
+            fontSize: 13,
+            fontWeight: 700,
             color: t.accentPrimary,
             marginBottom: 4,
           }}
         >
-          {eyebrow}
+          {toSentenceCase(eyebrow)}
         </div>
       )}
       {title && <div style={{ fontSize: 20, fontWeight: 700, marginBottom: description ? 6 : 0 }}>{title}</div>}

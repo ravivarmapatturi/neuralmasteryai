@@ -48,6 +48,8 @@
   --nm-accent-teal: #0d6b63;
   --nm-card-bg: var(--nm-surface);
   --nm-text: var(--nm-text-primary);
+  --nb-rule: #d8c9a3;
+  --nb-coral: #be3b2d;
 
   --bg: #faf4e6;
   --fg: #17305f;
@@ -135,6 +137,8 @@
   --nm-accent-teal: #5fd6c7;
   --nm-card-bg: var(--nm-surface);
   --nm-text: var(--nm-text-primary);
+  --nb-rule: #2a2e3d;
+  --nb-coral: #ff8f7e;
 
   --bg: #16181f;
   --fg: #e8eefc;
@@ -175,6 +179,8 @@
   --nm-accent-teal: #0f766e;
   --nm-card-bg: #ffffff;
   --nm-text: #1b1f3b;
+  --nb-rule: #a5b4fc;
+  --nb-coral: #b91c1c;
 
   --bg: #ffffff;
   --fg: #1b1f3b;
@@ -299,8 +305,8 @@
   --nm-accent-teal: #155a52;
   --nm-card-bg: var(--nm-surface);
   --nm-text: var(--nm-text-primary);
-
-  --bg: #f5ecd8;
+  --nb-rule: #8c7653;
+  --nb-coral: #a82b20;
   --fg: #2c1f14;
   --soft: #4d3b2c;
   --line: #8c7653;
@@ -338,8 +344,8 @@
   --nm-accent-teal: #2dd4bf;
   --nm-card-bg: var(--nm-surface);
   --nm-text: var(--nm-text-primary);
-
-  --bg: #0d1713;
+  --nb-rule: #437863;
+  --nb-coral: #f87171;
   --fg: #e6f4ed;
   --soft: #b2d3c2;
   --line: #437863;
@@ -612,11 +618,69 @@ pre.shiki,
    itself into a horizontally-scrollable region instead of blowing out
    the page's layout width, without needing a wrapper element in the MDX. */
 .prose table,
-.prose > table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0 0 1.5rem; font-size: 14px; }
+.prose > table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0 0 1.5rem;
+  font-size: 14px;
+  border: 1.5px solid var(--nm-border);
+  border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+  background: var(--nm-surface);
+}
 .prose th, .prose td { border: 1px solid var(--nm-border); padding: 0.5rem 0.85rem; text-align: left; vertical-align: top; }
-.prose th { background: var(--nm-surface); font-weight: 700; color: var(--nm-text-primary); }
+.prose th { background: var(--nm-surface-alt); font-weight: 700; color: var(--nm-text-primary); }
 .prose td { color: var(--nm-text-secondary); }
 .prose tr:nth-child(even) td { background: var(--nm-surface); }
+
+/* Notebook Sheet (Ruled Paper + Red Margin Line) & Diary Header */
+.nm-notebook-sheet {
+  position: relative;
+  background-color: var(--nm-bg);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 31px,
+    var(--nb-rule, rgba(23, 48, 95, 0.08)) 31px,
+    var(--nb-rule, rgba(23, 48, 95, 0.08)) 32px
+  );
+}
+
+.nm-notebook-sheet::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 1.5rem;
+  width: 2px;
+  background: var(--nb-coral, #be3b2d);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@media (max-width: 900px) {
+  .nm-notebook-sheet::before {
+    left: 0.5rem;
+    opacity: 0.45;
+  }
+}
+
+.nm-diary-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--nm-text-muted);
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--nb-rule, var(--nm-border));
+  letter-spacing: 0.02em;
+  user-select: none;
+}
 
 /* Hamburger button: only meaningful once the docked sidebar/TOC are hidden
    (see the max-width: 900px block below), hidden by default on desktop. */
@@ -717,6 +781,19 @@ mark,
   }
   .nm-panel-toggle {
     display: none !important;
+  }
+  /* Footnotes and captions must render at least 14px on phones */
+  .footnotes,
+  [data-footnotes],
+  .nm-viz-footer,
+  .prose .footnotes,
+  .prose figcaption,
+  .prose small,
+  .prose [data-footnote-ref],
+  .prose [data-footnotes] p,
+  .prose [data-footnotes] li {
+    font-size: 14px !important;
+    line-height: 1.5;
   }
 }
 
