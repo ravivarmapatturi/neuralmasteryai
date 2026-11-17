@@ -68,4 +68,4 @@ Review commit `d2ed08c6` against `docs/plans/notebook-fix-brief-phase2.md` Part 
 - Memory guard check: `free -h` reports 4.0 GiB available (< 5 GiB threshold; production build deferred to CI per repository 8 GB RAM rule).
 
 ### 3. Implementation Commit
-- Implementation commit: `351719c2` (local commit, no push).
+- Implementation commit: `8f189204` (local commit, no push).
