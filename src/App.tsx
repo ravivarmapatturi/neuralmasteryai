@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from 'react';
+import { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { MDXProvider } from '@mdx-js/react';
 import { mdxComponents } from './components/content/mdxComponents';
@@ -13,7 +13,6 @@ import { FocusTimerProvider } from './contexts/FocusTimerContext';
 import DocLayout from './components/layout/DocLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { lazyWithRetry } from './lib/lazyWithRetry';
-import { clearPreloadReloadGuard } from './lib/preloadError';
 // The practice problem bank is several MB; load it only on practice routes.
 const PracticeProblemLayout = lazyWithRetry(() => import('./components/layout/PracticeProblemLayout'));
 import ChooserPage from './components/ChooserPage';
@@ -73,10 +72,6 @@ function PracticeProblemRedirect() {
 
 
 export default function App() {
-  useEffect(() => {
-    clearPreloadReloadGuard();
-  }, []);
-
   return (
     <ThemeProvider>
       <ErrorBoundary level="root">

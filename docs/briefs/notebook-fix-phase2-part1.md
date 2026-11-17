@@ -29,18 +29,23 @@ Execute Part 1 of `docs/plans/notebook-fix-brief-phase2.md` only. Follow the sou
 - **Suspense Boundaries & Unhandled Errors**: `DocLayout.tsx`, `BlogPostPage.tsx`, and `App.tsx` wrapped lazy components in `<Suspense fallback={...}>` but had zero enclosing `<ErrorBoundary>` components. In React, when a lazy module import rejects (e.g. 404 on missing hashed chunk), `<Suspense>` does not display its fallback—it re-throws the rejection as a render error. Without an `<ErrorBoundary>`, React unmounts the entire component tree to `#root`, causing a blank white screen. A manual browser refresh fixes it because the browser downloads the updated `index.html` referencing current chunk hashes.
 
 ### 2. Reproduction & Bounded Diagnostic
-- **Environment Limitation**: The local environment has ~3 GiB available RAM (`free -g` reports 3 GiB, below the mandatory 5 GiB guard for running `npm run build`), and `dist/` does not exist. Full production build swapping was therefore not executable locally without violating the memory invariant.
-- **Bounded Diagnostic**: Executed a bounded diagnostic in Vitest/JSDOM (`src/components/ErrorBoundary.test.tsx`). Verified that an unhandled dynamic import rejection in `<Suspense>` throws an uncaught error and completely unmounts the tree without an ErrorBoundary. When protected by `lazyWithRetry` and `ErrorBoundary`, the retry mechanism attempts module recovery and the ErrorBoundary catches the final rejection, rendering a user-facing `<div role="alert">` with a prominent "Reload page" button rather than unmounting to a blank screen.
+- **Environment Limitation**: The local machine has ~3.6–4.0 GiB available RAM (`free -h`), below the mandatory 5 GiB guard for running `npm run build`. Static production build swapping was therefore avoided locally per repository memory invariants.
+- **Diagnostic & Test Analysis**: React's architectural contract dictates that unhandled rejections inside `<Suspense>` bubble up to the nearest `<ErrorBoundary>` or fail at the root container. In Vitest/JSDOM (`src/components/ErrorBoundary.test.tsx`), unit tests verify that without an `<ErrorBoundary>`, an unhandled lazy-import rejection provides no user-facing alert UI or recovery action. When protected by `lazyWithRetry` and `ErrorBoundary`, module load failures are intercepted, retried with backoff, and caught by `ErrorBoundary` to render a token-styled `<div role="alert">` with a prominent "Reload page" action.
+- **Empirical Stale-Client Reproduction**: Executed a bounded browser reproduction using Playwright across isolated worktrees under `flock /tmp/nm-heavy.lock`:
+  - *Pre-fix (commit 9f98e5ec)*: Navigating from `/docs/.../bm25` to `/docs/.../tf-idf` with the MDX module request aborted (representing the missing old chunk) resulted in an uncaught `TypeError: Failed to fetch dynamically imported module`, causing `#root` to completely unmount (`rootHtmlLength: 0`, blank white screen, 0 recovery UI).
+  - *Fixed (current working copy)*: With the same forced chunk fetch failure, the error was intercepted by `ErrorBoundary`, producing 0 uncaught page errors, retaining the entire navigation shell (`rootHtmlLength: 141586`), and rendering `<div role="alert">` with "Could not load this page", "Reload page", and "Try again".
 
 ### 3. Implementation Details
 - **Guarded `vite:preloadError` Reload** (`src/lib/preloadError.ts`):
   - Added `installPreloadErrorHandler(window)` which listens for `vite:preloadError`.
   - Checks `sessionStorage` for `nm:preload-reload`. On first failure, records the flag, calls `event.preventDefault()`, and reloads the window once.
   - If the flag already exists (indicating a reload was already attempted in this session), it suppresses further reloads to prevent infinite reload loops and allows `ErrorBoundary` to render the fallback UI.
-  - Added `clearPreloadReloadGuard()` invoked on successful app mount in `src/App.tsx`.
+  - If `sessionStorage` throws (e.g. private mode or restricted sandbox), the handler catches the exception gracefully without throwing or triggering an un-guarded reload loop, allowing the failed import to propagate to `ErrorBoundary`.
+  - Added `clearPreloadReloadGuard()` invoked only upon successful resolution of lazy imports in `retryImport()`.
   - Installed in `src/main.tsx`.
 - **Retrying `lazyWithRetry()` Helper** (`src/lib/lazyWithRetry.ts`):
   - Implemented `retryImport()` and `lazyWithRetry()` with configurable retry count (default 2) and exponential backoff.
+  - Clears the preload reload guard in `sessionStorage` only when an import successfully resolves. A failing import leaves the guard intact.
   - Replaced `lazy()` across lazy routes in `src/lib/contentTree.ts`, `src/lib/blog.ts`, and `src/App.tsx`.
 - **Root & Route `ErrorBoundary`** (`src/components/ErrorBoundary.tsx`):
   - Implemented class-based React `ErrorBoundary` supporting `level="root"` and `level="route"`.
@@ -50,16 +55,16 @@ Execute Part 1 of `docs/plans/notebook-fix-brief-phase2.md` only. Follow the sou
   - Wrapped root in `src/App.tsx`, and route-level suspense boundaries in `src/components/layout/DocLayout.tsx`, `src/components/BlogPostPage.tsx`, and `src/App.tsx`.
 
 ### 4. Test Suite
-- `src/lib/preloadError.test.ts`: 4 tests (reload and guard flag on first error, loop protection on subsequent error, flag clearing, exception resilience).
-- `src/lib/lazyWithRetry.test.ts`: 3 tests (immediate resolution, recovery on subsequent attempt, retry exhaustion with rethrown error).
-- `src/components/ErrorBoundary.test.tsx`: 8 tests (normal render, route fallback, root fallback, reload button click, try-again reset, custom fallback, error reporting, and integration test with `lazyWithRetry`).
-- Total: 15 unit tests passing.
+- `src/lib/preloadError.test.ts`: 4 tests (reload and guard flag on first error, loop protection on subsequent error, flag clearing, exception resilience without crashing or reloading).
+- `src/lib/lazyWithRetry.test.ts`: 6 tests (immediate resolution, recovery on subsequent attempt, retry exhaustion with rethrown error, clearing reload guard flag on success, leaving guard intact on failure, clearing guard on retry recovery).
+- `src/components/ErrorBoundary.test.tsx`: 9 tests (normal render, route fallback, root fallback, reload button click, try-again reset, custom fallback, error reporting, friendly reload fallback on lazy failure, and unhandled lazy rejection without boundary).
+- Total: 19 unit tests passing.
 
 ### 5. Verification Gate Results
 - `npm run typecheck` (`tsc -b`): Passed (exit code 0).
 - `npm run check:links`: Passed (scanned 1991 MDX files, 2147 routes, 0 broken links).
-- Focused Vitest (`src/lib/preloadError.test.ts`, `src/lib/lazyWithRetry.test.ts`, `src/components/ErrorBoundary.test.tsx`): 15/15 passed.
-- Related layout/contentTree Vitest: 21/21 passed.
-- Production build: Deferred per 8 GB RAM rule (available 3 GiB < 5 GiB required).
+- Focused Vitest (`src/lib/preloadError.test.ts`, `src/lib/lazyWithRetry.test.ts`, `src/components/ErrorBoundary.test.tsx`): 19/19 passed.
+- Related layout/contentTree Vitest: 42/42 passed.
+- Production build: Deferred per 8 GB RAM rule (available 4.0 GiB < 5 GiB required).
 - Heavy commands serialized via `flock /tmp/nm-heavy.lock`.
 - No uncommitted or pushed changes to remote. Stopped before Part 2.

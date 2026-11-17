@@ -1,4 +1,5 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
+import { clearPreloadReloadGuard } from './preloadError';
 
 export interface RetryOptions {
   retries?: number;
@@ -8,6 +9,10 @@ export interface RetryOptions {
 /**
  * Retries an async dynamic import function if it fails (e.g. transient network errors
  * or asset fetch hiccups).
+ *
+ * Upon successful module resolution, clears the reload guard in sessionStorage
+ * so subsequent stale-chunk failures in future sessions or navigations can trigger
+ * a fresh reload attempt.
  */
 export async function retryImport<T>(
   importer: () => Promise<T>,
@@ -15,7 +20,9 @@ export async function retryImport<T>(
   intervalMs = 300,
 ): Promise<T> {
   try {
-    return await importer();
+    const loaded = await importer();
+    clearPreloadReloadGuard();
+    return loaded;
   } catch (error) {
     if (retries <= 0) {
       throw error;

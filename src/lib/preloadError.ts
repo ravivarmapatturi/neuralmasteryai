@@ -23,7 +23,9 @@ export function installPreloadErrorHandler(win: Window = window): () => void {
         return;
       }
     } catch {
-      // sessionStorage may throw in restricted sandboxes / private browsing; fallback to reload once
+      // If sessionStorage is unavailable or throws (e.g. security sandbox, blocked cookies,
+      // or private browsing), do not reload to prevent an un-guarded reload loop. The handler
+      // catches the error gracefully, allowing the failed import to propagate to the ErrorBoundary.
     }
   };
 
@@ -33,9 +35,10 @@ export function installPreloadErrorHandler(win: Window = window): () => void {
   };
 }
 
-export function clearPreloadReloadGuard(win: Window = window): void {
+export function clearPreloadReloadGuard(win?: Window): void {
   try {
-    win.sessionStorage?.removeItem(PRELOAD_RELOAD_KEY);
+    const target = win ?? (typeof window !== 'undefined' ? window : undefined);
+    target?.sessionStorage?.removeItem(PRELOAD_RELOAD_KEY);
   } catch {
     // Ignore storage errors
   }

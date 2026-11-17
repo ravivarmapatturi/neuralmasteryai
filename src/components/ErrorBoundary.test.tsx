@@ -171,4 +171,39 @@ describe('ErrorBoundary + lazyWithRetry integration', () => {
     expect(screen.getByRole('button', { name: 'Reload page' })).toBeInTheDocument();
     expect(failingImporter).toHaveBeenCalledTimes(2); // initial + 1 retry
   });
+
+  it('unhandled lazy-import rejection without an ErrorBoundary leaves no error UI or recovery action', async () => {
+    const error = new TypeError('Failed to fetch dynamically imported module');
+    const failingImporter = vi.fn().mockRejectedValue(error);
+    const FailingComponent = (await import('../lib/lazyWithRetry')).lazyWithRetry(
+      failingImporter,
+      { retries: 0, intervalMs: 10 },
+    );
+    const { Suspense } = await import('react');
+
+    const onUnhandled = (e: PromiseRejectionEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('unhandledrejection', onUnhandled);
+
+    render(
+      <div>
+        <span data-testid="outer">Outer Shell</span>
+        <Suspense fallback={<div data-testid="suspense-fallback">Loading…</div>}>
+          <FailingComponent />
+        </Suspense>
+      </div>,
+    );
+
+    // Initial render shows Suspense fallback
+    expect(screen.getByTestId('suspense-fallback')).toBeInTheDocument();
+
+    // Allow retry and rejection to settle
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Without an ErrorBoundary, no friendly alert fallback is rendered
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    window.removeEventListener('unhandledrejection', onUnhandled);
+  });
 });

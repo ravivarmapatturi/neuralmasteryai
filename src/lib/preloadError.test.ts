@@ -74,7 +74,7 @@ describe('installPreloadErrorHandler', () => {
     expect(mockStorage[PRELOAD_RELOAD_KEY]).toBeUndefined();
   });
 
-  it('handles sessionStorage exceptions gracefully without crashing', () => {
+  it('handles sessionStorage exceptions gracefully without crashing or reloading', () => {
     fakeWindow.sessionStorage.getItem = vi.fn(() => {
       throw new Error('Access denied in private window');
     });
@@ -84,5 +84,7 @@ describe('installPreloadErrorHandler', () => {
     const event = { preventDefault: vi.fn() };
 
     expect(() => handler(event)).not.toThrow();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(mockReload).not.toHaveBeenCalled();
   });
 });
