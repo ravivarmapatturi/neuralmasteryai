@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import SketchBox from './SketchBox';
 import { useVizTokens } from '../../theme/vizTokens';
+import Watermark from './Watermark';
 
 /**
  * A pen-drawn flow diagram for Learn pages: boxes drawn by hand, joined by
@@ -97,6 +98,7 @@ export default function PenFlow({ title, rows, caption, ariaLabel }: PenFlowProp
               {caption}
             </figcaption>
           )}
+          <Watermark />
         </div>
       </SketchBox>
     </figure>

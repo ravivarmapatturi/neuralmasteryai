@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 const out = process.argv[2];
 const url = 'http://127.0.0.1:5184/docs/search-ranking-recommendations/tf-idf';
 const b = await chromium.launch();
-for (const [w, h] of [[1920, 1080], [1440, 900], [375, 812]]) {
+for (const [w, h] of (process.argv[3] ? JSON.parse(process.argv[3]) : [[1920, 1080], [1440, 900], [375, 812]])) {
   for (const theme of ['light', 'dark']) {
     const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: theme });
     const p = await ctx.newPage();

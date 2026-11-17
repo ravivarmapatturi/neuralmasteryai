@@ -45,7 +45,7 @@ export function TfidfSearchExplorer() {
             marginBottom: SPACING.xs,
           }}
         >
-          Select search query:
+          Pick a search:
         </div>
         <div
           role="group"
@@ -122,7 +122,7 @@ export function TfidfSearchExplorer() {
           >
             A
           </span>
-          Step A: Per-Term Inverse Document Frequency (IDF)
+          Step 1: how rare is each word? (IDF)
         </div>
         <div style={{ fontSize: 15, color: t.textSecondary, marginBottom: SPACING.sm, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span>Formula:</span>
@@ -130,7 +130,7 @@ export function TfidfSearchExplorer() {
           <span>with N = 4 documents.</span>
         </div>
 
-        <div style={{ overflowX: 'auto', borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px', border: `1px solid ${t.border}` }}>
+        <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
           <table
             style={{
               width: '100%',
@@ -141,11 +141,11 @@ export function TfidfSearchExplorer() {
           >
             <thead>
               <tr style={{ borderBottom: `1px solid ${t.border}` }}>
-                <th style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary }}>Query Term</th>
-                <th style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary }}>Doc Frequency (df)</th>
-                <th style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary }}>Ratio (N / df)</th>
-                <th style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary }}>Computed IDF</th>
-                <th style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary }}>Interpretation</th>
+                <th style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary }}>Word</th>
+                <th style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary }}>In how many documents</th>
+                <th style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary }}>4 ÷ that</th>
+                <th style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary }}>IDF</th>
+                <th style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary }}>Meaning</th>
               </tr>
             </thead>
             <tbody>
@@ -172,10 +172,10 @@ export function TfidfSearchExplorer() {
                   </td>
                   <td style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, color: t.textSecondary, fontSize: 15 }}>
                     {qs.df === 1
-                      ? 'Rare term (high discriminative power)'
+                      ? 'Rare: counts a lot'
                       : qs.df >= 3
-                      ? 'Common term across corpus (moderate weight)'
-                      : 'Moderate corpus frequency'}
+                      ? 'Common: counts a little'
+                      : 'In-between'}
                   </td>
                 </tr>
               ))}
@@ -213,7 +213,7 @@ export function TfidfSearchExplorer() {
           >
             B
           </span>
-          Step B: Ranked Documents &amp; Term Breakdown
+          Step 2: score and rank the documents
         </div>
         <div style={{ fontSize: 15, color: t.textSecondary, marginBottom: SPACING.md, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span>Total Score =</span>
@@ -233,7 +233,7 @@ export function TfidfSearchExplorer() {
                 fontSize: 15,
               }}
             >
-              Exact mathematical tie at rank #1
+              D1 and D3 tie exactly
             </span>
           )}
         </div>

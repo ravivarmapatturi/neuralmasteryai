@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, Slider, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, Slider } from '../primitives';
 import { SketchRect } from '../../components/notebook/RoughShape';
 
 export function CosineAngleDiagram() {
@@ -10,11 +10,11 @@ export function CosineAngleDiagram() {
   const rad = (angleDeg * Math.PI) / 180;
   const cosVal = Math.cos(rad);
 
-  const width = 640;
+  const width = 680;
   const height = 300;
   const ox = 110;
-  const oy = 230;
-  const len = 150;
+  const oy = 250;
+  const len = 200;
 
   // Fixed Query vector along horizontal line
   const qx = ox + len;
@@ -122,32 +122,30 @@ export function CosineAngleDiagram() {
         </text>
 
         {/* Formula & Live Calculation Sketch Box */}
-        <g transform="translate(410, 30)">
+        <g transform="translate(450, 30)">
           <SketchRect x={0} y={0} width={215} height={158} color={t.border} roughness={1.3} strokeWidth={1.4} />
           <text x={14} y={24} fill={t.textPrimary} fontSize={14} fontFamily="'Kalam', cursive" fontWeight={700}>
-            Live Cosine Calculation:
+            Live score
           </text>
           <text x={14} y={58} fill={t.accentSecondary} fontSize={22} fontFamily="'Kalam', cursive" fontWeight={800}>
             cos({angleDeg}°) = {cosVal.toFixed(3)}
           </text>
           <text x={14} y={86} fill={t.textSecondary} fontSize={14} fontFamily="'Kalam', cursive">
             {angleDeg === 0
-              ? '★ Perfect match (identical direction)'
+              ? '★ Same direction: best match'
               : angleDeg === 90
-              ? '✕ Orthogonal (zero shared words)'
+              ? '✕ Right angle: no shared words'
               : angleDeg <= 45
-              ? '✔ Strong directional overlap'
-              : '▲ Weak directional overlap'}
+              ? '✔ Close directions: good match'
+              : '▲ Far apart: weak match'}
           </text>
           <line x1={14} y1={100} x2={200} y2={100} stroke={t.border} opacity={0.4} />
           <text x={14} y={120} fill={t.textMuted} fontSize={14} fontFamily="'Kalam', cursive">
-            Normalized dot product:
+            The formula:
           </text>
-          <foreignObject x={14} y={126} width={185} height={25}>
-            <div style={{ color: t.textPrimary, fontSize: 15 }}>
-              <VisualizationMath latex="\cos(\theta) = \frac{\mathbf{q} \cdot \mathbf{d}}{\|\mathbf{q}\| \|\mathbf{d}\|}" display={false} />
-            </div>
-          </foreignObject>
+          <text x={14} y={146} fill={t.textPrimary} fontSize={16} fontFamily="'Kalam', cursive">
+            cos θ = (q · d) ÷ (|q| × |d|)
+          </text>
         </g>
       </svg>
     </VisualizationContainer>

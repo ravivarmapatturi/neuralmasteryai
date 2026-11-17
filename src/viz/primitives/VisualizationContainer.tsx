@@ -1,5 +1,6 @@
 import React, { useId } from 'react';
 import { useVizTokens, SPACING, FONT_FAMILY } from '../../theme/vizTokens';
+import Watermark from '../../components/notebook/Watermark';
 
 /**
  * The outer frame every visualization renders inside -- background, border,
@@ -64,7 +65,7 @@ export default function VisualizationContainer({
           {footer}
         </div>
       )}
-      {/* Page standard 2.2: no text under 14px, so the tiny watermark is gone. */}
+      <Watermark />
     </div>
   );
 }

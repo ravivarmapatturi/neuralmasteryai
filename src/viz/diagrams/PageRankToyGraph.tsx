@@ -1,5 +1,6 @@
 import { useVizTokens } from '../../theme/vizTokens';
 import { SketchEllipse } from '../../components/notebook/RoughShape';
+import Watermark from '../../components/notebook/Watermark';
 
 /**
  * The 4-node PageRank example graph, drawn by pen.
@@ -77,6 +78,7 @@ export default function PageRankToyGraph() {
       <figcaption style={{ textAlign: 'center', color: 'var(--nm-text-secondary)' }}>
         Each number is the share of a node's score that flows along that arrow.
       </figcaption>
+      <Watermark />
     </figure>
   );
 }

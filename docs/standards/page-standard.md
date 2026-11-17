@@ -94,7 +94,8 @@ All visible text is handwritten (Kalam). Only real program code uses the mono fo
 
 ### 2.6 Tables
 
-- Pen-drawn border, highlighted header row, 5 columns at most.
+- Pen-drawn border, 5 columns at most.
+- **Each column heading has its own highlighter colour**, cycling yellow, blue, purple, green, orange (owner's choice, 18 Nov). The first column is bold. Worksheet grids use one colour per stage instead.
 - No stacked fractions in cells; write `a/b`.
 - On phones a wide table scrolls inside its own frame; the page never scrolls sideways.
 

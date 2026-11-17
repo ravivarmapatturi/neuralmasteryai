@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import SketchBox from './SketchBox';
 import { useVizTokens } from '../../theme/vizTokens';
+import Watermark from './Watermark';
 
 /**
  * Neural Mastery worksheet: the whole method on one sheet, with every real
@@ -112,6 +113,7 @@ export default function Worksheet({ title, stages, ariaLabel }: WorksheetProps) 
               </div>
             </div>
           ))}
+          <Watermark />
         </div>
       </SketchBox>
     </figure>
