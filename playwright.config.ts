@@ -3,10 +3,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 const hasDist = fs.existsSync('dist/index.html');
 const serverPort = process.env.TEST_PORT || (hasDist ? '4173' : '5173');
-const defaultUrl = `http://127.0.0.1:${serverPort}/`;
+const defaultUrl = `http://localhost:${serverPort}/`;
 const defaultCommand = hasDist
   ? 'node scripts/static-server.cjs'
-  : 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173';
+  : 'node node_modules/vite/bin/vite.js --host localhost --port 5173';
 
 /**
  * CI/PR smoke suite -- fast critical-path checks against the actual
