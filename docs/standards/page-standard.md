@@ -46,6 +46,7 @@ Blog posts: title, one-paragraph summary, then the body with the same look rules
 - Diary header at the top: "Neural Mastery · date".
 - **The page is a sheet of paper on a desk** (owner, 18 Nov): the area around the page is a soft tint with a faint dot grid, and the page is white with a soft shadow. On phones the page fills the screen with no desk.
 - The margin line is a thin, soft pencil line in the table-border colour, not red.
+- The side panels open and close with labelled index tabs ("Topics" yellow, "On this page" blue, written vertically with an arrow). An unlabelled arrow is not enough.
 - **Reading column: 720 px maximum** for text. Drawings, tables and widgets may go to 960 px. Today prose runs up to 1,400 px; lines that long are hard to read.
 
 ### 2.2 Writing (one font, one size per role)
