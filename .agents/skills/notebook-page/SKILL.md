@@ -5,6 +5,8 @@ description: MANDATORY for every agent touching any Learn page, blog post, lab o
 
 # The notebook page (strict rules, owner-mandated 16 Nov 2026)
 
+**The full standard is `docs/standards/page-standard.md` (v1, 18 Nov 2026): one page structure, exact type sizes, drawings, tables, code, maths, widgets and banned words. Read it first; it wins over anything below.**
+
 The owner's words: "We have a notebook. In it we are writing the content, formulas, drawings and videos. That awesome feeling is what we have to bring." Every Neural Mastery page is **one page of a learner's notebook**, written by hand, explained simply, drawn with a pen. If a page looks like a clean technical document, it is wrong, even if every fact is right.
 
 These rules are not suggestions. `npm run check:notebook` fails CI on rule violations, and Claude rejects any batch that breaks them. If a rule seems impossible for your case, **stop and ask in your report**; do not work around it.
