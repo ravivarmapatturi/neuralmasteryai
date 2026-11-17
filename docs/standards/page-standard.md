@@ -45,7 +45,7 @@ Blog posts: title, one-paragraph summary, then the body with the same look rules
 - A plain white page (dark theme: its dark counterpart), with **only** the red margin line on the left. No ruled lines.
 - Diary header at the top: "Neural Mastery · date".
 - **The page is a sheet of paper on a desk** (owner, 18 Nov): the area around the page is a soft tint with a faint dot grid, and the page is white with a soft shadow. On phones the page fills the screen with no desk.
-- The margin line is a thin, soft pencil line in the table-border colour, not red.
+- The margin is a soft blue tinted strip with a firm 2 px blue pencil line, not red.
 - The side panels open and close with labelled index tabs ("Topics" yellow, "On this page" blue, written vertically with an arrow). An unlabelled arrow is not enough.
 - **Reading column: 720 px maximum** for text. Drawings, tables and widgets may go to 960 px. Today prose runs up to 1,400 px; lines that long are hard to read.
 
