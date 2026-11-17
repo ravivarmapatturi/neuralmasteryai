@@ -42,6 +42,31 @@ test.describe('Core application', () => {
     expect(errors.errors()).toEqual([]);
   });
 
+  test('marking a Learn page understood shows the coin and no old reward toast', async ({ page }) => {
+    await page.goto('docs/search-ranking-recommendations/tf-idf');
+    const markButton = page.getByRole('button', { name: 'Mark as understood' });
+    await expect(markButton).toBeVisible();
+    await markButton.click();
+    await expect(page.getByTestId('understood-coin')).toBeVisible();
+    await expect(page.getByTestId('understood-coin')).toContainText('+10');
+    await expect(page.locator('.nm-understood-coin')).toHaveCSS('animation-name', 'nm-coin-flip');
+    await expect(page.getByTestId('understood-coin')).toHaveCSS('animation-name', 'nm-coin-flight');
+    await expect(page.getByText('Page Understood!')).toHaveCount(0);
+    await expect(page.locator('#nm-xp-streak-counter')).toHaveClass(/nm-xp-pulse/);
+    await expect(page.locator('canvas')).toHaveCSS('pointer-events', 'none');
+  });
+
+  test('reduced motion shows a fading coin without flip or flight', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('docs/search-ranking-recommendations/tf-idf');
+    await page.getByRole('button', { name: 'Mark as understood' }).click();
+    const coin = page.getByTestId('understood-coin');
+    await expect(coin).toBeVisible();
+    await expect(coin).toHaveCSS('animation-name', 'nm-coin-fade');
+    await expect(page.locator('.nm-understood-coin')).toHaveCSS('animation-name', 'none');
+    await expect(page.locator('.nm-understood-coin-ring')).toBeHidden();
+  });
+
   test('desktop sidebar navigation works', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     const errors = collectConsoleErrors(page);

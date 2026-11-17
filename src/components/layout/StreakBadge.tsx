@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useGamification } from '../../contexts/GamificationContext';
+import { useEffect, useState } from 'react';
 
 /**
  * Always-visible streak indicator, not buried on one page -- the same
@@ -11,10 +12,30 @@ import { useGamification } from '../../contexts/GamificationContext';
  */
 export default function StreakBadge() {
   const { streak } = useGamification();
+  const [pulse, setPulse] = useState(false);
+
+  useEffect(() => {
+    const counter = document.getElementById('nm-xp-streak-counter');
+    if (!counter) return undefined;
+    if (counter.classList.contains('nm-xp-pulse')) setPulse(true);
+    const observer = new MutationObserver(() => {
+      if (counter.classList.contains('nm-xp-pulse')) setPulse(true);
+    });
+    observer.observe(counter, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, [streak]);
+
+  useEffect(() => {
+    if (!pulse) return undefined;
+    const timeout = window.setTimeout(() => setPulse(false), 700);
+    return () => window.clearTimeout(timeout);
+  }, [pulse]);
+
   if (streak === 0) return null;
 
   return (
     <Link
+      id="nm-xp-streak-counter"
       to="/profile"
       title={`${streak} day streak`}
       aria-label={`${streak} day streak`}
@@ -22,7 +43,7 @@ export default function StreakBadge() {
         display: 'flex',
         alignItems: 'center',
         gap: 4,
-        fontSize: 13,
+        fontSize: 14,
         fontWeight: 700,
         color: 'var(--nm-text-primary)',
         textDecoration: 'none',
@@ -31,9 +52,14 @@ export default function StreakBadge() {
         border: '1px solid var(--nm-border)',
         background: 'color-mix(in srgb, var(--nm-accent-warn) 10%, transparent)',
       }}
+      className={`nm-xp-streak-counter${pulse ? ' nm-xp-pulse' : ''}`}
     >
-      <span aria-hidden="true">🔥</span>
-      {streak}
+      {streak > 0 ? streak : 'XP'}
+      <style>{`
+        .nm-xp-pulse { animation: nm-xp-counter-pulse 650ms ease-out; }
+        @keyframes nm-xp-counter-pulse { 50% { transform: scale(1.12); box-shadow: 0 0 0 5px color-mix(in srgb, var(--nm-accent-warn) 28%, transparent); } }
+        @media (prefers-reduced-motion: reduce) { .nm-xp-pulse { animation: none; } }
+      `}</style>
     </Link>
   );
 }

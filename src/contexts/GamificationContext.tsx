@@ -24,7 +24,7 @@ import {
   normalizePracticeProblemPermalink,
 } from '../lib/gamification';
 import type { User } from 'firebase/auth';
-import { showRewardToast } from '../components/ui/Confetti';
+import { showRewardToast, showUnderstoodCoin } from '../components/ui/Confetti';
 import { BADGES } from '../lib/badges';
 
 
@@ -470,8 +470,16 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
         isSignedIn: Boolean(user),
       };
 
-      // Celebratory Tada Confetti & Toast Notification (interview questions remain quiet with inline page feedback)
-      if (kind !== 'interview') {
+      // Learn-page marks earn a coin; interview feedback stays inline.
+      if (kind === 'mark') {
+        // Let the state update mount the streak counter before the coin reads
+        // its destination in the navbar on the next animation frame.
+        if (typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(showUnderstoodCoin);
+        } else {
+          window.setTimeout(showUnderstoodCoin, 0);
+        }
+      } else if (kind !== 'interview') {
         const TOAST_BY_KIND: Record<AwardEvent['kind'], { title: string; icon: string }> = {
           complete: { title: 'Problem Solved!', icon: '' },
           design: { title: 'Design Completed!', icon: '' },

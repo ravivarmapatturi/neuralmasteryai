@@ -12,9 +12,11 @@ export interface ToastMessage {
 // Global event bus for triggering confetti and toasts from anywhere in the app
 type ConfettiListener = () => void;
 type ToastListener = (toast: ToastMessage) => void;
+type CoinListener = () => void;
 
 const confettiListeners: Set<ConfettiListener> = new Set();
 const toastListeners: Set<ToastListener> = new Set();
+const coinListeners: Set<CoinListener> = new Set();
 
 export function triggerConfetti() {
   confettiListeners.forEach((fn) => fn());
@@ -27,6 +29,10 @@ export function showRewardToast(toast: Omit<ToastMessage, 'id'>) {
   };
   toastListeners.forEach((fn) => fn(fullToast));
   triggerConfetti();
+}
+
+export function showUnderstoodCoin() {
+  coinListeners.forEach((fn) => fn());
 }
 
 interface Particle {
@@ -49,6 +55,8 @@ export function ConfettiCanvas() {
   const particlesRef = useRef<Particle[]>([]);
   const animFrameRef = useRef<number | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [coinSequence, setCoinSequence] = useState(0);
+  const [coinTarget, setCoinTarget] = useState({ x: 0, y: -40 });
 
   const launchConfetti = useCallback(() => {
     const canvas = canvasRef.current;
@@ -146,13 +154,25 @@ export function ConfettiCanvas() {
         setToasts((prev) => prev.filter((t) => t.id !== toast.id));
       }, 4500);
     };
+    const handleCoin = () => {
+      const target = document.getElementById('nm-xp-streak-counter');
+      if (target) {
+        const rect = target.getBoundingClientRect();
+        setCoinTarget({ x: rect.left + rect.width / 2 - window.innerWidth / 2, y: rect.top + rect.height / 2 - window.innerHeight / 2 });
+        target.classList.remove('nm-xp-pulse');
+        requestAnimationFrame(() => target.classList.add('nm-xp-pulse'));
+      }
+      setCoinSequence((sequence) => sequence + 1);
+    };
 
     confettiListeners.add(handleConfetti);
     toastListeners.add(handleToast);
+    coinListeners.add(handleCoin);
 
     return () => {
       confettiListeners.delete(handleConfetti);
       toastListeners.delete(handleToast);
+      coinListeners.delete(handleCoin);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
   }, [launchConfetti]);
@@ -215,10 +235,83 @@ export function ConfettiCanvas() {
           </div>
         ))}
       </div>
+      {coinSequence > 0 && (
+        <div
+          key={coinSequence}
+          className="nm-understood-coin-stage"
+          role="status"
+          aria-label="10 experience points earned"
+          data-testid="understood-coin"
+          style={{ '--coin-target-x': `${coinTarget.x}px`, '--coin-target-y': `${coinTarget.y}px` } as React.CSSProperties}
+        >
+          <span className="nm-understood-coin-ring" aria-hidden="true" />
+          <span className="nm-understood-coin">+10</span>
+        </div>
+      )}
       <style>{`
         @keyframes slideInUp {
           from { opacity: 0; transform: translateY(20px) scale(0.95); }
           to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+      `}</style>
+      <style>{`
+        .nm-understood-coin-stage {
+          --coin-target-x: 0px;
+          --coin-target-y: -40vh;
+          position: fixed;
+          z-index: 10001;
+          left: 50%;
+          top: 50%;
+          width: 88px;
+          height: 88px;
+          display: grid;
+          place-items: center;
+          transform: translate(-50%, -50%);
+          pointer-events: none;
+          animation: nm-coin-flight 1.5s 900ms cubic-bezier(.2,.75,.25,1) forwards;
+        }
+        .nm-understood-coin {
+          width: 68px;
+          height: 68px;
+          display: grid;
+          place-items: center;
+          border-radius: 50%;
+          border: 3px solid var(--nm-accent-warn);
+          background: var(--nm-mark-yellow);
+          color: var(--nm-text-primary);
+          box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--nm-surface) 42%, transparent), 0 5px 16px color-mix(in srgb, var(--nm-accent-warn) 28%, transparent);
+          font-family: 'Kalam', cursive;
+          font-size: 18px;
+          font-weight: 700;
+          animation: nm-coin-flip 900ms ease-in-out both;
+          backface-visibility: hidden;
+        }
+        .nm-understood-coin-ring {
+          position: absolute;
+          inset: 4px;
+          border: 2px dotted var(--nm-accent-warn);
+          border-radius: 50%;
+          animation: nm-coin-sparkle 650ms ease-out both;
+        }
+        @keyframes nm-coin-flip {
+          0% { transform: rotateY(0) scale(.6); }
+          55% { transform: rotateY(540deg) scale(1.08); }
+          100% { transform: rotateY(720deg) scale(1); }
+        }
+        @keyframes nm-coin-sparkle {
+          from { opacity: .9; transform: scale(.55) rotate(0); }
+          to { opacity: 0; transform: scale(1.6) rotate(45deg); }
+        }
+        @keyframes nm-coin-flight {
+          0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+          65% { opacity: 1; transform: translate(calc(-50% + var(--coin-target-x)), calc(-50% + var(--coin-target-y))) scale(.8); }
+          100% { opacity: 0; transform: translate(calc(-50% + var(--coin-target-x)), calc(-50% + var(--coin-target-y))) scale(.25); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .nm-understood-coin-stage { animation: nm-coin-fade 1.2s ease-out forwards; }
+          .nm-understood-coin { animation: none; }
+          .nm-understood-coin-ring { display: none; }
+          @keyframes nm-coin-fade { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
         }
       `}</style>
     </>

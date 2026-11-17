@@ -11,6 +11,8 @@
 ---
 
 |  |  |  | , Part 2 shared typography, Part 2b visual labels/guard, Part 3 Search + A7 content/evidence | Resume notebook phase 2 from existing uncommitted Part 2; complete and commit Parts 2, 2b, and 3 locally |  | Pending verification | agy runner unavailable; continuing existing tree after one availability check. No push. |
+| `2026-11-18T03:37:37+05:30` | `Codex` | `pilot/page-standard` | `AGENT_TRACKER.md`, Part 1 coin implementation, Search and Harness Learn batches, tests and rollout evidence per `docs/plans/standard-rollout-brief.md` | Continue the signed-off rollout from existing Part 1 work, complete checks and local commits per part, then proceed through Learn page batches; do not push | `IN_PROGRESS` | Tracker, notebook (17 changed pages/0 violations), math, MDX (2019/2019), links (2147 routes/0 broken), and typecheck passed; full Vitest passed; explicit-port Playwright is queued behind the shared lock | Two page batches and the Harness roadmap landing page draft are in progress. Part 1 and page work remain uncommitted until browser/evidence gates finish. A blocking flock command is waiting on `/tmp/nm-heavy.lock`. Available RAM remains below the 5 GiB build threshold. No push. |
+| `2026-11-18T02:44:00+05:30` | `Antigravity` | `pilot/page-standard` | `docs/briefs/standard-rollout-part1.md`, coin celebration components/tests | Implement Part 1 coin celebration, requested checks, report, and local commit | `BLOCKED` | Agy launch stalled for 57 seconds without tracker registration or repository changes; stopped by Codex | Targeted agent unavailable (`unknown agent Antigravity`); default agy --print did not respond. Codex taking over implementation. |
 
 ## Active & Historical Task Board
 
