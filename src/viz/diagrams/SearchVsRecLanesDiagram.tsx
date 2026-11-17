@@ -8,7 +8,7 @@ export function SearchVsRecLanesDiagram() {
   const [activeLane, setActiveLane] = useState<'both' | 'search' | 'rec'>('both');
 
   const width = 580;
-  const height = 320;
+  const height = 330;
 
   return (
     <VisualizationContainer
@@ -237,9 +237,12 @@ export function SearchVsRecLanesDiagram() {
 
         {/* Bottom notebook note */}
         <g transform="translate(20, 260)">
-          <SketchRect x={0} y={0} width={540} height={42} color={t.border} roughness={1.2} strokeWidth={1.2} />
-          <text x={14} y={26} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive">
-            Core difference: Search matches words to text. Recommendation predicts probability of interaction from past actions.
+          <SketchRect x={0} y={0} width={540} height={52} color={t.border} roughness={1.2} strokeWidth={1.2} />
+          <text x={14} y={22} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive">
+            Core difference: search matches your words to the text.
+          </text>
+          <text x={14} y={40} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive">
+            Recommendation guesses what you will click, from what you did before.
           </text>
         </g>
       </svg>

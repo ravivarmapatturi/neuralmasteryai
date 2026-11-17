@@ -37,8 +37,8 @@ export function SparseVectorBoxesDiagram() {
   ];
 
   const cells = selectedDoc === 'D1' ? VOCAB_D1 : VOCAB_D2;
-  const width = 560;
-  const height = 260;
+  const width = 680;
+  const height = 336;
 
   return (
     <VisualizationContainer
@@ -46,7 +46,7 @@ export function SparseVectorBoxesDiagram() {
       footer={
         `Sparse vector coordinate row for ${selectedDoc}. Notice that each box represents one vocabulary dimension. ` +
         `Only the query terms that appear in the document ('learning' and 'machine') hold positive non-zero weights. ` +
-        `All other vocabulary coordinates are exactly 0.0. In production catalogs with |V| > 100,000 words, over 99.5% of coordinates are zero.`
+        `All other vocabulary coordinates are exactly 0.0. In a real vocabulary of 100,000+ words, almost every coordinate is zero.`
       }
     >
       <VisualizationHeader
@@ -115,9 +115,9 @@ export function SparseVectorBoxesDiagram() {
         {/* Row of Vocabulary Boxes */}
         {cells.map((cell, idx) => {
           const boxWidth = 56;
-          const boxHeight = 65;
+          const boxHeight = 72;
           const startX = 35 + idx * (boxWidth + 6);
-          const startY = 55;
+          const startY = 78;
 
           return (
             <g key={cell.term}>
@@ -162,7 +162,7 @@ export function SparseVectorBoxesDiagram() {
               {/* Value inside box */}
               <text
                 x={startX + boxWidth / 2}
-                y={startY + 38}
+                y={startY + 32}
                 fill={cell.isHit ? t.accentPrimary : t.textMuted}
                 fontSize={cell.isHit ? 14 : 13}
                 fontFamily="'Kalam', cursive"
@@ -175,7 +175,7 @@ export function SparseVectorBoxesDiagram() {
               {/* Subtitle index */}
               <text
                 x={startX + boxWidth / 2}
-                y={startY + 54}
+                y={startY + 60}
                 fill={t.textMuted}
                 fontSize={9}
                 fontFamily="'Kalam', cursive"
@@ -188,34 +188,37 @@ export function SparseVectorBoxesDiagram() {
         })}
 
         {/* Closing bracket & ellipsis */}
-        <text x={35 + cells.length * 62} y={92} fill={t.textPrimary} fontSize={16} fontFamily="'Kalam', cursive" fontWeight={700}>
-          ... 0.0 ]^T
+        <text x={35 + cells.length * 62 + 6} y={120} fill={t.textPrimary} fontSize={16} fontFamily="'Kalam', cursive" fontWeight={700}>
+          … 0.0 ]
         </text>
 
         {/* Annotation Arrow to non-zero box */}
-        <g transform="translate(290, 155)">
-          <path d="M 40 45 C 30 25, 20 10, 0 0" fill="none" stroke={t.accentPrimary} strokeWidth={1.8} markerEnd="url(#arrow-annot)" />
-          <text x={48} y={50} fill={t.accentPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700}>
+        <g transform="translate(330, 162)">
+          <path d="M 6 48 C 6 30, 4 14, 0 0" fill="none" stroke={t.accentPrimary} strokeWidth={1.8} markerEnd="url(#arrow-annot)" />
+          <text x={10} y={62} fill={t.accentPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700}>
             Non-zero weight (matched query term)
           </text>
         </g>
 
         {/* Annotation Arrow to zero box */}
-        <g transform="translate(100, 155)">
-          <path d="M 30 45 C 20 25, 10 10, -5 0" fill="none" stroke={t.textMuted} strokeWidth={1.5} />
-          <text x={38} y={50} fill={t.textMuted} fontSize={12} fontFamily="'Kalam', cursive">
+        <g transform="translate(95, 162)">
+          <path d="M 4 26 C 4 16, 2 8, 0 0" fill="none" stroke={t.textMuted} strokeWidth={1.5} />
+          <text x={-60} y={40} fill={t.textMuted} fontSize={12} fontFamily="'Kalam', cursive">
             Absent word: coordinate is exactly 0.0
           </text>
         </g>
 
         {/* Global Vocabulary Callout */}
-        <g transform="translate(30, 195)">
-          <SketchRect x={0} y={0} width={500} height={50} color={t.border} roughness={1.2} strokeWidth={1.2} />
+        <g transform="translate(30, 248)">
+          <SketchRect x={0} y={0} width={620} height={74} color={t.border} roughness={1.2} strokeWidth={1.2} />
           <text x={12} y={22} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
             Why sparse?
           </text>
-          <text x={12} y={38} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
-            A document contains ~50–1,000 unique words out of 100,000+ total English words. We store only (term_id, weight) pairs.
+          <text x={12} y={42} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
+            A document uses ~50–1,000 different words out of 100,000+ words in English,
+          </text>
+          <text x={12} y={60} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
+            so we store only the (word, weight) pairs that are not zero.
           </text>
         </g>
       </svg>

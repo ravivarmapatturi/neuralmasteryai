@@ -10,7 +10,7 @@ export function CosineAngleDiagram() {
   const rad = (angleDeg * Math.PI) / 180;
   const cosVal = Math.cos(rad);
 
-  const width = 520;
+  const width = 640;
   const height = 300;
   const ox = 110;
   const oy = 230;
@@ -121,15 +121,15 @@ export function CosineAngleDiagram() {
         </text>
 
         {/* Formula & Live Calculation Sketch Box */}
-        <g transform="translate(290, 20)">
-          <SketchRect x={0} y={0} width={215} height={145} color={t.border} roughness={1.3} strokeWidth={1.4} />
+        <g transform="translate(410, 30)">
+          <SketchRect x={0} y={0} width={215} height={158} color={t.border} roughness={1.3} strokeWidth={1.4} />
           <text x={14} y={24} fill={t.textPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700}>
             Live Cosine Calculation:
           </text>
-          <text x={14} y={50} fill={t.accentSecondary} fontSize={22} fontFamily="'Kalam', cursive" fontWeight={800}>
+          <text x={14} y={58} fill={t.accentSecondary} fontSize={22} fontFamily="'Kalam', cursive" fontWeight={800}>
             cos({angleDeg}°) = {cosVal.toFixed(3)}
           </text>
-          <text x={14} y={75} fill={t.textSecondary} fontSize={12} fontFamily="'Kalam', cursive">
+          <text x={14} y={86} fill={t.textSecondary} fontSize={12} fontFamily="'Kalam', cursive">
             {angleDeg === 0
               ? '★ Perfect match (identical direction)'
               : angleDeg === 90
@@ -138,11 +138,11 @@ export function CosineAngleDiagram() {
               ? '✔ Strong directional overlap'
               : '▲ Weak directional overlap'}
           </text>
-          <line x1={14} y1={90} x2={200} y2={90} stroke={t.border} opacity={0.4} />
-          <text x={14} y={110} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive">
+          <line x1={14} y1={100} x2={200} y2={100} stroke={t.border} opacity={0.4} />
+          <text x={14} y={120} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive">
             Normalized dot product:
           </text>
-          <foreignObject x={14} y={115} width={185} height={25}>
+          <foreignObject x={14} y={126} width={185} height={25}>
             <div style={{ color: t.textPrimary, fontSize: 12 }}>
               <VisualizationMath latex="\cos(\theta) = \frac{\mathbf{q} \cdot \mathbf{d}}{\|\mathbf{q}\| \|\mathbf{d}\|}" display={false} />
             </div>

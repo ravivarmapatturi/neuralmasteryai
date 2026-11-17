@@ -66,7 +66,7 @@ export function VocabularyMismatchDiagram() {
           <text x={70} y={15} fill={t.textPrimary} fontSize={14} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
             User Query Words
           </text>
-          <text x={70} y={30} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
+          <text x={70} y={36} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
             &ldquo;automobile repair&rdquo;
           </text>
 
@@ -89,7 +89,7 @@ export function VocabularyMismatchDiagram() {
           <text x={70} y={15} fill={t.textPrimary} fontSize={14} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
             Document Words
           </text>
-          <text x={70} y={30} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
+          <text x={70} y={36} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
             &ldquo;how to fix a car&rdquo;
           </text>
 
@@ -110,12 +110,12 @@ export function VocabularyMismatchDiagram() {
         {/* Middle Divide: Zero Literal Overlap */}
         <g transform="translate(190, 80)">
           {/* Red X / No match badge */}
-          <SketchRect x={10} y={20} width={140} height={60} color={t.accentDanger} roughness={1.5} strokeWidth={1.8} />
-          <rect x={12} y={22} width={136} height={56} fill={t.accentDanger} opacity={0.1} rx={4} />
-          <text x={80} y={44} fill={t.accentDanger} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+          <SketchRect x={10} y={20} width={140} height={66} color={t.accentDanger} roughness={1.5} strokeWidth={1.8} />
+          <rect x={12} y={22} width={136} height={62} fill={t.accentDanger} opacity={0.1} rx={4} />
+          <text x={80} y={42} fill={t.accentDanger} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
             0 Shared Words
           </text>
-          <text x={80} y={64} fill={t.accentDanger} fontSize={15} fontFamily="'Kalam', cursive" fontWeight={800} textAnchor="middle">
+          <text x={80} y={68} fill={t.accentDanger} fontSize={15} fontFamily="'Kalam', cursive" fontWeight={800} textAnchor="middle">
             Score = 0.0000
           </text>
 

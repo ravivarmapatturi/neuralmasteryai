@@ -7,9 +7,9 @@ export function VectorSpaceArrowsDiagram() {
   const t = useVizTokens();
   const [highlighted, setHighlighted] = useState<string>('all');
 
-  const width = 540;
+  const width = 680;
   const height = 340;
-  const originX = 75;
+  const originX = 110;
   const originY = 275;
   const scaleX = 850;
   const scaleY = 750;
@@ -83,7 +83,7 @@ export function VectorSpaceArrowsDiagram() {
           return (
             <g key={val} opacity={0.35}>
               <line x1={ptX.x} y1={originY} x2={ptX.x} y2={originY - 0.35 * scaleY} stroke={t.border} strokeDasharray="3 3" />
-              <line x1={originX} y1={ptY.y} x2={originX + 0.5 * scaleX} y2={ptY.y} stroke={t.border} strokeDasharray="3 3" />
+              <line x1={originX} y1={ptY.y} x2={originX + 0.38 * scaleX} y2={ptY.y} stroke={t.border} strokeDasharray="3 3" />
               <text x={ptX.x} y={originY + 16} fill={t.textMuted} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
                 {val.toFixed(1)}
               </text>
@@ -95,29 +95,25 @@ export function VectorSpaceArrowsDiagram() {
         })}
 
         {/* Coordinate Axes */}
-        <line x1={originX} y1={originY} x2={originX + 430} y2={originY} stroke={t.textPrimary} strokeWidth={2} markerEnd="url(#arrow-axis)" />
+        <line x1={originX} y1={originY} x2={originX + 340} y2={originY} stroke={t.textPrimary} strokeWidth={2} markerEnd="url(#arrow-axis)" />
         <line x1={originX} y1={originY} x2={originX} y2={originY - 245} stroke={t.textPrimary} strokeWidth={2} markerEnd="url(#arrow-axis)" />
 
         {/* Axis Labels */}
-        <text x={originX + 415} y={originY + 28} fill={t.textPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="end">
+        <text x={originX + 340} y={originY + 48} fill={t.textPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="end">
           TF("machine", d) →
         </text>
-        <text x={originX - 10} y={originY - 240} fill={t.textPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="end">
-          ↑ TF("learning", d)
+        <text x={34} y={originY - 120} transform={`rotate(-90 34 ${originY - 120})`} fill={t.textPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+          TF("learning", d) →
         </text>
 
-        {/* Origin Label */}
-        <text x={originX - 12} y={originY + 16} fill={t.textMuted} fontSize={12} fontFamily="'Kalam', cursive">
-          (0,0)
-        </text>
 
         {/* Document Arrows */}
         {/* D4 dot at origin */}
         {(highlighted === 'all' || highlighted === 'd4') && (
           <g opacity={highlighted === 'all' || highlighted === 'd4' ? 1 : 0.2}>
             <circle cx={originX} cy={originY} r={6} fill={t.textMuted} />
-            <text x={originX + 10} y={originY + 22} fill={t.textMuted} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
-              D4 (0, 0)
+            <text x={originX + 8} y={originY + 34} fill={t.textMuted} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
+              D4 at (0, 0)
             </text>
           </g>
         )}
@@ -148,7 +144,7 @@ export function VectorSpaceArrowsDiagram() {
               <text x={pt.x + 12} y={pt.y + 4} fill={t.accentPrimary} fontSize={13} fontFamily="'Kalam', cursive" fontWeight={700}>
                 D1 &amp; D3 (0.25, 0.25)
               </text>
-              <text x={pt.x + 12} y={pt.y + 20} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
+              <text x={pt.x + 12} y={pt.y + 24} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
                 Collinear (45° diagonal)
               </text>
             </g>
@@ -156,14 +152,14 @@ export function VectorSpaceArrowsDiagram() {
         })()}
 
         {/* Diagonal 45 deg guide */}
-        <line x1={originX} y1={originY} x2={originX + 0.34 * scaleX} y2={originY - 0.34 * scaleY} stroke={t.accentWarn} strokeDasharray="4 4" strokeWidth={1} opacity={0.6} />
-        <text x={originX + 0.34 * scaleX + 6} y={originY - 0.34 * scaleY} fill={t.accentWarn} fontSize={11} fontFamily="'Kalam', cursive">
+        <line x1={originX} y1={originY} x2={originX + 0.32 * scaleX} y2={originY - 0.32 * scaleY} stroke={t.accentWarn} strokeDasharray="4 4" strokeWidth={1} opacity={0.6} />
+        <text x={originX + 0.32 * scaleX + 8} y={originY - 0.32 * scaleY + 4} fill={t.accentWarn} fontSize={11} fontFamily="'Kalam', cursive">
           45° line of balance
         </text>
 
         {/* Notes callout card in top right */}
-        <g transform="translate(320, 25)">
-          <SketchRect x={0} y={0} width={200} height={90} color={t.border} roughness={1.2} strokeWidth={1.2} />
+        <g transform="translate(470, 150)">
+          <SketchRect x={0} y={0} width={196} height={90} color={t.border} roughness={1.2} strokeWidth={1.2} />
           <text x={12} y={22} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
             Notebook observation:
           </text>
