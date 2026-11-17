@@ -9,6 +9,7 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import SearchSystemDesignExplorer from '../../../viz/diagrams/SearchSystemDesignExplorer';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Search & Recommendation System Design
 
@@ -92,16 +93,18 @@ Scoring models require three distinct categories of features:
 
 To serve these features reliably without introducing **training-serving skew** (see [ML System Design Case Studies](/docs/ml-system-design/case-studies)), the infrastructure employs a **Dual Feature Store** (e.g. Feast / Hopsworks):
 
-```
-[Raw Event Stream: Kafka] ───► [Apache Flink Stream Processor]
-                                      │
-              ┌───────────────────────┴───────────────────────┐
-              ▼                                               ▼
-     [Online Feature Store]                         [Offline Feature Store]
-    - Low-latency Redis / Aerospike                - Data Lakehouse (Apache Iceberg)
-    - Sub-millisecond point lookups                - Point-in-time correct joins
-    - Serves Request-Time Ranking Stage            - Serves Offline Model Training
-```
+<PenFlow
+  ariaLabel="Click events flow from Kafka through Flink into an online feature store for serving and an offline store for training"
+  title="One event stream, two feature stores"
+  rows={[
+    { steps: { title: 'Click and view events (Kafka)', tone: 'ink' } },
+    { arrow: 'Flink computes rolling counts', steps: { title: 'Stream processor', tone: 'orange' } },
+    { steps: [
+      { title: 'Online store (Redis / Aerospike)', lines: ['sub-millisecond lookups', 'used live by the ranker'], tone: 'blue' },
+      { title: 'Offline store (Iceberg lakehouse)', lines: ['point-in-time correct joins', 'used to train the next model'], tone: 'purple' },
+    ] },
+  ]}
+/>
 
 ### The Point-in-Time Join Invariant
 When generating training data, the offline pipeline must compute feature values exactly as they existed at the millisecond the historical prediction occurred. If today's item price or lifetime purchase count is joined with last month's impression, the model learns future leakage, failing catastrophically in production. The offline feature store guarantees time-travel point-in-time correctness.
@@ -157,30 +160,16 @@ With HNSW graph overhead and inverted index postings, the candidate cluster requ
 
 A distributed system with dozens of microservices must expect component timeouts and hardware failures. Production platforms must never return an HTTP 500 or blank white screen to users. Instead, the serving layer implements a **4-Level Resilience Degradation Ladder**:
 
-```
-[Level 1: Full High-Precision Pipeline (Normal)]
-  - All services healthy (p99 latency < 90 ms)
-  - Full Neural/GBDT Ranker + Real-Time Features
-  - Quality: 100% (NDCG@10 = 0.85) | Latency: 84 ms p99
-         │
-         ▼ (Trigger: Heavy Ranker p99 > 40 ms or queue saturation)
-[Level 2: Degraded Ranking (Lightweight Scoring)]
-  - Bypass Cross-Features & Deep GBDT
-  - Score via Fast Linear Model or Vector Dot-Product in Redis
-  - Quality: ~85% (NDCG@10 = 0.72) | Latency: 38 ms p99
-         │
-         ▼ (Trigger: Candidate Gen timeout > 25 ms or Redis connection drop)
-[Level 3: Cached Precomputed Recommendations]
-  - Bypass live retrieval & scoring
-  - Fetch precomputed hourly recommendation slate from local Redis cache
-  - Quality: ~76% (NDCG@10 = 0.65) | Latency: 12 ms p99
-         │
-         ▼ (Trigger: Catastrophic Redis / Network Partition)
-[Level 4: In-Memory Static Popularity Fallback]
-  - Zero network RPCs; served directly from API gateway process memory
-  - Global or regional top-selling catalog items
-  - Quality: ~47% (NDCG@10 = 0.40) | Latency: 2 ms p99
-```
+<PenFlow
+  ariaLabel="Four fallback levels from full ranking at 84 ms to a static popularity list at 2 ms, each triggered by a failure"
+  title="When things break, step down one level (toy numbers)"
+  rows={[
+    { steps: { title: 'Level 1: full pipeline (normal)', lines: ['neural/GBDT ranker + live features', 'NDCG@10 = 0.85 · 84 ms p99'], tone: 'green' } },
+    { arrow: 'heavy ranker p99 > 40 ms, or queues full', steps: { title: 'Level 2: light scoring', lines: ['skip cross-features, score with a linear model or dot product', 'NDCG@10 = 0.72 (~85%) · 38 ms p99'], tone: 'blue' } },
+    { arrow: 'candidate generation > 25 ms, or Redis drops', steps: { title: 'Level 3: cached lists', lines: ['serve the hourly pre-computed list from local cache', 'NDCG@10 = 0.65 (~76%) · 12 ms p99'], tone: 'orange' } },
+    { arrow: 'Redis or network fully down', steps: { title: 'Level 4: popular items from memory', lines: ['no network calls at all, top sellers by region', 'NDCG@10 = 0.40 (~47%) · 2 ms p99'], tone: 'red' } },
+  ]}
+/>
 
 Circuit breakers (e.g. Resilience4j / Envoy) monitor downstream error rates and latencies. If the heavy ranking service fails more than 2% of calls over a 10-second window, the circuit breaker opens, automatically downgrading incoming requests to Level 2 without waiting for timeouts.
 

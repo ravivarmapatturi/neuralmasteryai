@@ -9,6 +9,7 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import LearningToRankDiagram from '../../../viz/diagrams/LearningToRankDiagram';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Learning to Rank
 
@@ -32,21 +33,17 @@ To build models that optimize the slate as an ordered list, Information Retrieva
 
 LTR algorithms are categorized into three paradigms based on their loss function formulation:
 
-```
-                            Learning to Rank Paradigms
-                                        │
-     ┌──────────────────────────────────┼──────────────────────────────────┐
-     ▼                                  ▼                                  ▼
-┌─────────────────────────┐ ┌─────────────────────────┐ ┌─────────────────────────┐
-│       Pointwise         │ │        Pairwise         │ │        Listwise         │
-│  (Regression/Classif.)  │ │  (Preference Pairs)     │ │  (Full Permutations)    │
-└────────────┬────────────┘ └────────────┬────────────┘ └────────────┬────────────┘
-             │                           │                           │
-             ▼                           ▼                           ▼
-  • Loss on single doc (x_i)  • Loss on pairs (x_i, x_j)  • Loss on entire slate
-  • MSE / Ordinal Logistic    • RankNet / LambdaRank      • LambdaMART / ListNet
-  • Ignores slate competition • Optimizes relative order  • Direct NDCG optimization
-```
+<PenFlow
+  ariaLabel="Three families of learning to rank: pointwise, pairwise and listwise"
+  title="Three ways to teach a model to rank"
+  rows={[
+    { steps: [
+      { title: 'Pointwise', lines: ['looks at one document at a time', 'loss: MSE or ordinal logistic', 'ignores the other documents in the list'], tone: 'blue' },
+      { title: 'Pairwise', lines: ['looks at two documents at a time', 'loss: RankNet, LambdaRank', 'learns which of the two should be higher'], tone: 'purple' },
+      { title: 'Listwise', lines: ['looks at the whole list', 'loss: LambdaMART, ListNet', 'aims straight at NDCG'], tone: 'green' },
+    ] },
+  ]}
+/>
 
 ### 1. The Pointwise Approach
 The pointwise paradigm reduces ranking to standard regression or ordinal classification. Each document feature vector $\mathbf{x}_{q, d}$ is mapped to its relevance grade $y_{q, d} \in \{0, 1, \dots, K\}$ in isolation:
@@ -139,13 +136,13 @@ Burges et al. (NeurIPS 2006) proposed **LambdaRank** based on a foundational ins
 LambdaRank constructs the virtual gradient by scaling RankNet's pairwise logistic gradient directly by the change in target metric ($\Delta\text{NDCG}$) that would result from swapping the two documents in the current ranked list:
 
 $$
-\lambda_{ij}^{\text{LambdaRank}} = \lambda_{ij}^{\text{RankNet}} \times |\Delta\text{NDCG}_{ij}| = \frac{-1}{1 + e^{s_i - s_j}} \cdot |\Delta\text{NDCG}_{ij}|
+\lambda_{ij}^{\text{LambdaRank}} = \lambda_{ij}^{\text{RankNet}} \times \lvert\Delta\text{NDCG}_{ij}\rvert = \frac{-1}{1 + e^{s_i - s_j}} \cdot \lvert\Delta\text{NDCG}_{ij}\rvert
 $$
 
 Where $|\Delta\text{NDCG}_{ij}|$ is the absolute change in NDCG observed if document $i$ and document $j$ swap positions in the current ranking:
 
 $$
-|\Delta\text{NDCG}_{ij}| = \left| \frac{2^{y_i} - 2^{y_j}}{\text{IDCG}} \cdot \left( \frac{1}{\log_2(1 + \text{rank}_i)} - \frac{1}{\log_2(1 + \text{rank}_j)} \right) \right|
+\lvert\Delta\text{NDCG}_{ij}\rvert = \left\lvert \frac{2^{y_i} - 2^{y_j}}{\text{IDCG}} \cdot \left( \frac{1}{\log_2(1 + \text{rank}_i)} - \frac{1}{\log_2(1 + \text{rank}_j)} \right) \right\rvert
 $$
 
 **Why LambdaRank Works**:
@@ -159,33 +156,19 @@ While LambdaRank was initially formulated for neural networks, neural architectu
 
 Wu et al. (2010) unified LambdaRank gradients with **Multiple Additive Regression Trees (MART)**, creating **LambdaMART**. The LambdaMART framework emerged as a winning approach in major industry benchmarks (such as the Yahoo! Learning to Rank Challenge; Chapelle & Chang, 2011) and forms the foundation for gradient-boosted ranking implementations in engines like LightGBM and XGBoost.
 
-```
-                           LambdaMART Training Loop
-                                       │
-     ┌─────────────────────────────────┴─────────────────────────────────┐
-     ▼                                                                   ▼
-1. Compute Scores s_i                                           2. Sort & Rank Slates
-   Forward pass current ensemble:                                  Order documents by score s_i
-   s_i = Σ η * T_m(x_i)                                            Compute NDCG for each query
-     │                                                                   │
-     └─────────────────────────────────┬─────────────────────────────────┘
-                                       │
-                                       ▼
-                       3. Calculate Lambda Forces (λ_i)
-                          λ_i = Σ λ_ij * |ΔNDCG_ij|
-                          Acts as virtual target gradient
-                                       │
-                                       ▼
-                       4. Fit Regression Tree T_m(x)
-                          Fit CART split on tabular features x
-                          Leaves predict pseudo-residuals λ_i
-                                       │
-                                       ▼
-                       5. Compute Leaf Step Sizes
-                          Newton: γ_km = Σ λ_i / Σ w_i
-                          (First-order mean: γ_km = Σ λ_i / |R|)
-                          Update ensemble: s_i ← s_i + η * γ_km
-```
+<PenFlow
+  ariaLabel="One round of LambdaMART training: score, sort, compute lambdas, fit a tree, take a step"
+  title="One round of LambdaMART training (repeat M times)"
+  rows={[
+    { steps: [
+      { title: '1. Score every document', lines: ['s_i = sum of all trees so far'], tone: 'blue' },
+      { title: '2. Sort and measure', lines: ['rank by s_i, compute NDCG per query'], tone: 'blue' },
+    ] },
+    { steps: { title: '3. Compute the pull on each document (λ_i)', lines: ['λ_i = Σ λ_ij · |ΔNDCG_ij|', 'big when a swap would change NDCG a lot'], tone: 'orange' } },
+    { steps: { title: '4. Fit a regression tree to the λ values', lines: ['ordinary CART splits on the features'], tone: 'purple' } },
+    { steps: { title: '5. Set each leaf’s step and add the tree', lines: ['γ = Σ λ_i / Σ w_i (Newton step)', 's_i ← s_i + η · γ'], tone: 'green' } },
+  ]}
+/>
 
 ### The LambdaMART Algorithm
 1. Initialize ensemble scores to zero: $s_i^{(0)} = 0$.

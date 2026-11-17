@@ -9,6 +9,7 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import SemanticHybridSearchDiagram from '../../../viz/diagrams/SemanticHybridSearchDiagram';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Semantic & Hybrid Search
 
@@ -33,36 +34,20 @@ Production search engines resolve this dichotomy by deploying **hybrid retrieval
 
 The production hybrid funnel executes two distinct retrieval channels against independent indexes, blends candidate sets using rank-based fusion, and finishes with a selective cross-encoder reranker.
 
-```
-                         ┌───────────────────────────────┐
-                         │      User Query String        │
-                         └──────────────┬────────────────┘
-                                        │
-                   ┌────────────────────┴────────────────────┐
-                   ▼                                         ▼
-        ┌─────────────────────┐                   ┌─────────────────────┐
-        │  Inverted Index     │                   │  Dense Vector Index │
-        │  (BM25 Lexical)     │                   │  (HNSW / IVF-PQ)    │
-        └──────────┬──────────┘                   └──────────┬──────────┘
-                   │ Top-K Candidates                        │ Top-K Candidates
-                   │ [Doc A: #1, Doc B: #2...]               │ [Doc B: #1, Doc C: #2...]
-                   └────────────────────┬────────────────────┘
-                                        │
-                                        ▼
-                         ┌───────────────────────────────┐
-                         │ Reciprocal Rank Fusion (RRF)  │
-                         │    Score = Σ w_m / (k + r_m)  │
-                         └──────────────┬────────────────┘
-                                        │ Top-N Fused Pool (illustrative: ~50-100)
-                                        ▼
-                         ┌───────────────────────────────┐
-                         │    Cross-Encoder Reranker     │
-                         │    Full Token Cross-Attention │
-                         └──────────────┬────────────────┘
-                                        │ Final Slate (illustrative: ~10)
-                                        ▼
-                                Served Results
-```
+<PenFlow
+  ariaLabel="Hybrid retrieval: the query goes to a keyword index and a vector index in parallel, results are fused with RRF, then reranked"
+  title="One query, two searches, one final list"
+  rows={[
+    { steps: { title: 'User query', lines: ['"wireless noise cancelling headphones"'], tone: 'ink' } },
+    { arrow: 'sent to both at the same time', steps: [
+      { title: 'Keyword search (BM25)', lines: ['inverted index', 'top-K: Doc A #1, Doc B #2, …'], tone: 'blue' },
+      { title: 'Meaning search (vectors)', lines: ['HNSW / IVF-PQ index', 'top-K: Doc B #1, Doc C #2, …'], tone: 'purple' },
+    ] },
+    { arrow: 'merge the two ranked lists', steps: { title: 'Reciprocal Rank Fusion', lines: ['score = Σ w / (k + rank)', 'keeps roughly the top 50–100'], tone: 'orange' } },
+    { arrow: 'read query and document together', steps: { title: 'Cross-encoder reranker', lines: ['slow but sharp: only on the short list'], tone: 'green' } },
+    { arrow: 'about 10 results', steps: { title: 'Results shown to the user', tone: 'ink' } },
+  ]}
+/>
 
 ### 1. Sparse Lexical Channel
 An inverted index maps normalized terms to posting lists. Queries generate BM25 scores via efficient posting list intersections. This channel acts as a precision safeguard for literal terms, model numbers, and exact quotes.

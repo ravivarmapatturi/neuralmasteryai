@@ -10,6 +10,7 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Context & Instruction Architecture
 
@@ -97,9 +98,9 @@ Frontier provider APIs (such as Anthropic Claude and OpenAI) employ prefix cachi
 - **1,024-Token Minimum Checkpoints**: Cache breakpoints require at least 1,024 tokens to activate. If your base `AGENTS.md` and tool schemas total only 800 tokens, the provider cannot cache the block. Augment the static prefix with standard library signatures or system definitions to clear the threshold.
 - **Cache Eviction on Byte Shifts**: Changing even a single character, timestamp, or dynamic session ID inside the early prefix invalidates all subsequent cached tokens across every following turn. Keep the prefix strictly static. Dynamic session values, clock times, and scratchpad outputs must always reside at the absolute tail of the payload.
 
-## Production `AGENTS.md` Specification
+## A Real `AGENTS.md` You Can Copy
 
-Below is an authoritative reference configuration for an `AGENTS.md` file designed for autonomous code editing:
+Here is a complete `AGENTS.md` for a coding agent. It is short on purpose: what the project runs on, the checks to run in order, and the things the agent must never do.
 
 ```markdown
 # AGENTS.md — Repository Operating Contract
@@ -130,20 +131,15 @@ Below is an authoritative reference configuration for an `AGENTS.md` file design
 
 Instead of feeding thousands of raw source lines into the prompt, a production harness parses source files using Python's standard library `ast` module. It extracts class signatures, method parameters, and docstrings while stripping implementation bodies.
 
-```
-   Raw Python File (1,394 bytes)
-   [ Full method logic, loops, internal variables ]
-                          │
-                          ▼
-             Python AST Parser (`ast.parse`)
-                          │
-                          ▼
-   AST-Extracted Map (364 bytes)
-   • class MultiHeadAttention(d_model, n_heads)
-   • def forward(q, k, v)
-   • class TransformerBlock(d_model)
-   [ 73.9% token reduction while preserving spatial index ]
-```
+<PenFlow
+  ariaLabel="A 1,394-byte Python file is parsed with ast into a 364-byte map of classes and function signatures, 73.9 percent smaller"
+  title="Give the agent a map, not the whole file"
+  rows={[
+    { steps: { title: 'Raw Python file: 1,394 bytes', lines: ['every line of code, loops, local variables'], tone: 'ink' } },
+    { arrow: 'ast.parse, keep only names and signatures', steps: { title: 'Map: 364 bytes', lines: ['class MultiHeadAttention(d_model, n_heads)', 'def forward(q, k, v)', 'class TransformerBlock(d_model)'], tone: 'green' } },
+  ]}
+  caption="73.9% fewer bytes, and the agent still knows where everything is."
+/>
 
 ### Run It Yourself
 

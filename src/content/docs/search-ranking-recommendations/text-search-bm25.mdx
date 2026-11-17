@@ -9,6 +9,7 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import InvertedIndexVisualizer from '../../../viz/diagrams/InvertedIndexVisualizer';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Text Search & Inverted Indexes
 
@@ -30,21 +31,17 @@ The foundation of production search engines—powering Apache Lucene, Elasticsea
 
 Before text can be indexed or searched, raw document strings pass through a deterministic text normalization pipeline:
 
-```
-[Raw Document Text]
-        │
-        ▼ (Stage 1: Tokenization)
-["Search,", "ranking", "&", "recs!"]
-        │
-        ▼ (Stage 2: Case Normalization)
-["search,", "ranking", "&", "recs!"]
-        │
-        ▼ (Stage 3: Punctuation & Character Filtering)
-["search", "ranking", "recs"]
-        │
-        ▼ (Stage 4: Stemming / Lemmatization)
-["search", "rank", "rec"]
-```
+<PenFlow
+  ariaLabel="Text normalization pipeline: raw text is tokenized, lower-cased, filtered and stemmed"
+  title={'"Search, ranking & recs!" on its way into the index'}
+  rows={[
+    { steps: { title: 'Raw text', lines: ['"Search, ranking & recs!"'], tone: 'ink' } },
+    { arrow: '1. split into words', steps: { title: 'Tokens', lines: ['"Search,"  "ranking"  "&"  "recs!"'] } },
+    { arrow: '2. lower-case', steps: { title: 'Lower-case', lines: ['"search,"  "ranking"  "&"  "recs!"'] } },
+    { arrow: '3. drop punctuation', steps: { title: 'Clean words', lines: ['"search"  "ranking"  "recs"'] } },
+    { arrow: '4. cut to the root', steps: { title: 'Stems (what gets stored)', lines: ['"search"  "rank"  "rec"'], tone: 'green' } },
+  ]}
+/>
 
 1. **Tokenization**: Splitting continuous character streams into discrete term tokens (e.g. `"Search, ranking & recs"` $\to$ `["search,", "ranking", "&", "recs!"]`). Language-specific rules handle hyphenated words, URLs, and compound nouns.
 2. **Case Normalization (Case Folding)**: Converting all tokens to lowercase so that `"Search"`, `"SEARCH"`, and `"search"` map to the same dictionary entry.
@@ -62,15 +59,14 @@ Evaluating a search query like `"engine"` against a forward index requires scann
 
 An **inverted index** flips this relationship. It builds a dictionary of all distinct vocabulary terms across the corpus. Each term points to a **posting list** containing every document ID where that term appears, alongside metadata such as the term frequency ($\text{tf}$) within that document:
 
-```
-Term Dictionary          Posting Lists
-"engine"         ───►   [ (D1, tf=1) ]
-"learning"       ───►   [ (D4, tf=1) ]
-"neural"         ───►   [ (D2, tf=1), (D3, tf=1) ]
-"ranking"        ───►   [ (D1, tf=1), (D2, tf=2) ]
-"recommendation" ───►   [ (D3, tf=1), (D4, tf=1) ]
-"search"         ───►   [ (D1, tf=1), (D2, tf=1), (D3, tf=1) ]
-```
+| Word (term) | Posting list: (document, how many times) |
+| :--- | :--- |
+| "engine" | (D1, tf=1) |
+| "learning" | (D4, tf=1) |
+| "neural" | (D2, tf=1), (D3, tf=1) |
+| "ranking" | (D1, tf=1), (D2, tf=2) |
+| "recommendation" | (D3, tf=1), (D4, tf=1) |
+| "search" | (D1, tf=1), (D2, tf=1), (D3, tf=1) |
 
 When a user submits a query, the search engine does not touch document text. It performs $O(1)$ dictionary lookups to retrieve the posting lists for each query word, then intersects or merges the posting lists.
 
@@ -87,21 +83,16 @@ Boolean retrieval evaluates logical queries using set operations over sorted pos
 ### 1. Boolean AND (List Intersection)
 To evaluate `"search AND ranking"`, we fetch the posting list for `"search"` ($[D1, D2, D3]$) and the posting list for `"ranking"` ($[D1, D2]$). Because postings are stored in strictly ascending order of document ID, we find matching documents using a two-pointer merge algorithm in $O(L_1 + L_2)$ time:
 
-```
-Pointer 1 on "search":   [ D1,  D2,  D3 ]
-                           ▲
-Pointer 2 on "ranking":  [ D1,  D2 ]
-                           ▲
-Match found: D1. Advance both pointers.
-
-Pointer 1 on "search":   [ D1,  D2,  D3 ]
-                                ▲
-Pointer 2 on "ranking":  [ D1,  D2 ]
-                                ▲
-Match found: D2. Advance both pointers.
-
-Pointer 2 reaches end. Intersection result: [ D1, D2 ].
-```
+<PenFlow
+  ariaLabel="Two-pointer intersection of the posting lists for search and ranking"
+  title={'"search" = [D1, D2, D3]   and   "ranking" = [D1, D2]'}
+  rows={[
+    { steps: { title: 'Both pointers on D1', lines: ['Same document: keep D1, move both pointers'], tone: 'green' } },
+    { steps: { title: 'Both pointers on D2', lines: ['Same document: keep D2, move both pointers'], tone: 'green' } },
+    { steps: { title: '"ranking" list has ended', lines: ['Nothing left to match: stop'], tone: 'ink' } },
+  ]}
+  caption="Answer: D1 and D2. Each list is read once, front to back."
+/>
 
 <GoDeeper title="Accelerating Intersections with Skip Pointers">
 For long posting lists with millions of entries, linear scanning remains bottlenecked by sequential memory reads. Search engines augment posting lists with **skip pointers** placed at regular intervals of $\sqrt{L}$ elements.

@@ -9,6 +9,8 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import PageRankVisualizer from '../../../viz/diagrams/PageRankVisualizer';
+import PenFlow from '../../../components/notebook/PenFlow';
+import PageRankToyGraph from '../../../viz/diagrams/PageRankToyGraph';
 
 # Ranking Fundamentals & Link Analysis
 
@@ -38,22 +40,18 @@ The scalar output $s \in \mathbb{R}$ represents the predicted utility, expected 
 
 High-performance ranking systems decompose feature engineering into five complementary families to capture both static item authority and dynamic query-context interactions:
 
-```
-                            Feature Space x(q, d, u, c)
-                                        │
-     ┌──────────────────┬───────────────┴───────────────┬──────────────────┐
-     ▼                  ▼                               ▼                  ▼
-┌───────────┐    ┌─────────────┐                 ┌─────────────┐    ┌─────────────┐
-│  Query    │    │  Document   │                 │ Interaction │    │ User/Context│
-│  Features │    │  Features   │                 │ (q ⨯ d)     │    │ Features    │
-└─────┬─────┘    └──────┬──────┘                 └──────┬──────┘    └──────┬──────┘
-      │                 │                               │                  │
-      ▼                 ▼                               ▼                  ▼
-• Length/Tokens   • Static Quality                • BM25 Score       • Dwell History
-• Intent Category • PageRank Authority            • Cosine Sim       • Geohash Match
-• Click Entropy   • Document Age / Half-Life      • Exact Title Match• Device Class
-• Historical CTR  • In-Stock Inventory Ratio     • Entity Overlap   • Time of Day
-```
+<PenFlow
+  ariaLabel="Ranking features split into query, document, query-document interaction and user-context families"
+  title="Where ranking features come from: x(query, document, user, context)"
+  rows={[
+    { steps: [
+      { title: 'Query', lines: ['length, intent category', 'click entropy, past CTR'], tone: 'blue' },
+      { title: 'Document', lines: ['quality, PageRank', 'age, in-stock ratio'], tone: 'purple' },
+      { title: 'Query × document', lines: ['BM25, cosine similarity', 'exact title match, shared entities'], tone: 'orange' },
+      { title: 'User and context', lines: ['dwell history, location match', 'device, time of day'], tone: 'green' },
+    ] },
+  ]}
+/>
 
 ### 1. Query Features
 Static and historical properties of the query string itself:
@@ -201,24 +199,7 @@ This theoretical upper bound on iteration count is determined by damping factor 
 
 Let us trace PageRank power iteration on a concrete 4-node directed graph $\{A, B, C, D\}$ with identical numbers across prose, visualizer, and code:
 
-```
-         ┌────────────────────────┐
-   1/2   │                        ▼
- ┌───────┴──────┐      1/2      ┌──────────────┐
- │    Node A    ├──────────────►│    Node B    │
- └───────▲──────┘               └──────┬───────┘
-         │                             │
-         │ 1                           │ 1
-         │ (curved back)               │
- ┌───────┴──────┐               ┌──────▼───────┐
- │    Node C    │◄──────────────┤    Node D    │
- └───────▲──────┘       1       └──────────────┘
-         │
-         │ 1
- ┌───────┴──────┐
- │    Node D    │ (Wait: D -> C is edge; D has in-degree 0)
- └──────────────┘
-```
+<PageRankToyGraph />
 
 **Graph Specifications**:
 - Nodes: $N = 4$ ($A, B, C, D$)

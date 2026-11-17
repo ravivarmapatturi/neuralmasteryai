@@ -6,6 +6,7 @@ const ROUTES = [
   'docs/search-ranking-recommendations/tf-idf',
   'docs/search-ranking-recommendations/bm25',
   'docs/search-ranking-recommendations/recommendation-foundations',
+  'docs/search-ranking-recommendations/ranking-fundamentals',
 ];
 const WIDTHS = [1440, 768, 375];
 

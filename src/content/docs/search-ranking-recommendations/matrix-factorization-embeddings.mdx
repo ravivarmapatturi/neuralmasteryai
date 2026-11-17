@@ -9,6 +9,7 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import MatrixFactorizationExplorer from '../../../viz/diagrams/MatrixFactorizationExplorer';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Matrix Factorization & Latent Factor Embeddings
 
@@ -26,16 +27,38 @@ Neighborhood collaborative filtering operates directly on raw rows and columns o
 
 Matrix factorization resolves sparsity by projecting both users and items into a shared, low-dimensional latent space of rank $k \ll \min(m, n)$ (Koren, Bell, & Volinsky, 2009).
 
-```
-Sparse Interaction Matrix R (m × n)       Latent Matrices: U (m × k) and V (n × k)
-   Items: i1  i2  i3  i4                         Dim 1  Dim 2              Dim 1  Dim 2
-u1 ┌   5   4   ·   1   ┐                  u1 ┌  0.84   0.12 ┐        i1 ┌  0.88   0.10 ┐
-u2 │   4   5   2   ·   │    ══════════►   u2 │  0.78   0.24 │        i2 │  0.82   0.21 │
-u3 │   ·   2   5   4   │                  u3 │  0.22   0.81 │        i3 │  0.24   0.79 │
-u4 └   1   ·   4   5   ┘                  u4 └  0.11   0.89 ┘        i4 └  0.12   0.88 ┘
-                                                 User Factors              Item Factors
-                                                     (U)                       (V)
-```
+<PenFlow
+  ariaLabel="Matrix factorization: a ratings table with gaps is split into a user table and an item table, which multiply back to fill the gaps"
+  title="The idea in three steps"
+  rows={[
+    { steps: { title: 'Ratings table R (users × items)', lines: ['most cells are empty: nobody rates everything'], tone: 'ink' } },
+    { arrow: 'learn k numbers per user and per item', steps: [
+      { title: 'User table U', lines: ['one row of k numbers per user', '"how much this user likes each hidden taste"'], tone: 'blue' },
+      { title: 'Item table V', lines: ['one row of k numbers per item', '"how much this item has each hidden taste"'], tone: 'purple' },
+    ] },
+    { arrow: 'multiply back: U × Vᵀ', steps: { title: 'Every cell gets a predicted rating', lines: ['the empty cells become recommendations'], tone: 'green' } },
+  ]}
+/>
+
+**The ratings we have** (R, 4 users × 4 items; a dot means "not rated yet"):
+
+| | i1 | i2 | i3 | i4 |
+| :--- | :--- | :--- | :--- | :--- |
+| **u1** | 5 | 4 | · | 1 |
+| **u2** | 4 | 5 | 2 | · |
+| **u3** | · | 2 | 5 | 4 |
+| **u4** | 1 | · | 4 | 5 |
+
+**What factorization learns** (k = 2 numbers per user and per item):
+
+| User | dim 1 | dim 2 | | Item | dim 1 | dim 2 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| u1 | 0.84 | 0.12 | | i1 | 0.88 | 0.10 |
+| u2 | 0.78 | 0.24 | | i2 | 0.82 | 0.21 |
+| u3 | 0.22 | 0.81 | | i3 | 0.24 | 0.79 |
+| u4 | 0.11 | 0.89 | | i4 | 0.12 | 0.88 |
+
+Users u1 and u2 are high on dim 1, and so are items i1 and i2: that is why they rated those items highly.
 
 Each user $u$ is represented by a dense embedding vector $u_u \in \mathbb{R}^k$. Each item $i$ is represented by a dense embedding vector $v_i \in \mathbb{R}^k$. The predicted rating $\hat{r}_{ui}$ is their inner product:
 
@@ -76,6 +99,17 @@ The optimization problem $\min_{U, V} \mathcal{L}(U, V)$ is non-convex when opti
 However, if we **fix the item matrix $V$**, the objective decouples into $m$ completely independent linear ridge regression sub-problems, one for each user $u$. Conversely, if we **fix the user matrix $U$**, the objective decouples into $n$ independent linear ridge regression sub-problems for each item $i$.
 
 This alternation between two convex sub-problems is **Alternating Least Squares (ALS)**.
+
+<PenFlow
+  ariaLabel="ALS loop: freeze items and solve each user, then freeze users and solve each item, repeat until the error stops falling"
+  title="ALS: take turns, so each half is an easy problem"
+  rows={[
+    { steps: { title: 'Start: random user table U and item table V', tone: 'ink' } },
+    { arrow: 'freeze V', steps: { title: 'Solve every user row', lines: ['one small ridge regression per user', 'all users can run in parallel'], tone: 'blue' } },
+    { arrow: 'freeze U', steps: { title: 'Solve every item row', lines: ['one small ridge regression per item', 'all items can run in parallel'], tone: 'purple' } },
+    { arrow: 'error still falling? go back up', steps: { title: 'Stop when the error stops improving', tone: 'green' } },
+  ]}
+/>
 
 ### 1. Deriving the User Update Rule
 

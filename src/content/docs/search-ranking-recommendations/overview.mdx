@@ -8,6 +8,7 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import SearchRecommendationPipelineDiagram from '../../../viz/diagrams/SearchRecommendationPipelineDiagram';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Search & Recommendation Pipelines
 
@@ -159,20 +160,16 @@ This asymmetric risk profile dictates the engineering trade-off at each stage:
 
 Data representations evolve fundamentally as candidates advance through the funnel:
 
-```
-[Catalog Level]      ──► Static Precomputed Embeddings, Inverted Postings, Taxonomy
-                           (Read-only, sub-linear indices, updated daily/hourly)
-
-[Retrieval Level]    ──► Bi-Encoder Vector Dot Products, BM25 Scores, Graph Proximity
-                           (Decoupled representations, <1ms lookups)
-
-[Ranking Level]      ──► Dynamic Feature Joins: User Profiling, Real-time Interaction Logs,
-                           Cross-Attention Features, GBDT Trees
-                           (High dimensionality, compute intensive)
-
-[Re-Ranking Level]   ──► Slate-Level Features: Category Dispersion, Brand Coverage, Novelty
-                           (Operates over sets of items rather than isolated items)
-```
+<PenFlow
+  ariaLabel="What data each stage of the funnel works with, from catalog to re-ranking"
+  title="Each stage sees richer data about fewer items"
+  rows={[
+    { steps: { title: 'Catalog', lines: ['ready-made embeddings, inverted index, categories', 'read-only, rebuilt daily or hourly'], tone: 'ink' } },
+    { steps: { title: 'Retrieval', lines: ['vector dot products, BM25 scores, graph links', 'under 1 ms per lookup'], tone: 'blue' } },
+    { steps: { title: 'Ranking', lines: ['joins the user profile, live clicks, cross-attention features', 'many features, heavy compute'], tone: 'purple' } },
+    { steps: { title: 'Re-ranking', lines: ['looks at the whole list: variety, brands, freshness', 'judges sets of items, not single items'], tone: 'green' } },
+  ]}
+/>
 
 ### 1. Static vs. Dynamic Features
 - **Static Document Features**: Precomputed properties that do not depend on the user or immediate query. Examples include document length, item category, brand ID, historical quality score, and precomputed text embeddings. These are stored directly in index postings or memory-mapped arrays.
@@ -186,19 +183,16 @@ When training offline ranking models, logged training examples must reconstruct 
 
 A central architectural pattern across search and recommendation is the division between **Two-Tower Bi-Encoders** (used in candidate generation) and **Cross-Encoders** (used in ranking):
 
-```
-Two-Tower Architecture (Candidate Generation)
-
-Query / User Context ──► [ Tower 1: f_θ ] ──► Vector u ──┐
-                                                           ├──► Dot Product ⟨u, v⟩ ──► ANN Score
-Item Document        ──► [ Tower 2: g_ϕ ] ──► Vector v ──┘
-                          (Precomputed)
-
-
-Cross-Encoder Architecture (Ranking / Scoring)
-
-[ Query Tokens + Item Tokens ] ──► [ Full Multi-Head Cross Attention ] ──► Calibrated P(click)
-```
+<PenFlow
+  ariaLabel="Two-tower model encodes query and item separately and compares vectors; cross-encoder reads query and item together"
+  title="Two ways to score a (query, item) pair"
+  rows={[
+    { steps: [
+      { title: 'Two-tower (retrieval)', lines: ['query → tower 1 → vector u', 'item → tower 2 → vector v (made ahead of time)', 'score = u · v, so millions of items are cheap'], tone: 'blue' },
+      { title: 'Cross-encoder (ranking)', lines: ['query words + item words go in together', 'every word attends to every other word', 'score = P(click), sharp but only for hundreds of items'], tone: 'purple' },
+    ] },
+  ]}
+/>
 
 | Dimension | Two-Tower Bi-Encoder | Cross-Encoder Ranker |
 | :--- | :--- | :--- |
@@ -217,36 +211,18 @@ A user submits the search query `"wireless noise cancelling headphones"`. Simult
 
 Here is how candidate item **H1** (a pair of high-end noise-cancelling headphones) moves through the funnel:
 
-```
-[Entire Catalog: 2,000,000 Products (Illustrative Toy Example)]
-        │
-        ▼ (Stage 1: Candidate Generation via Sparse BM25 + Vector ANN)
-[Candidate Pool: ~1,200 Products]
-  - Item H1 is retrieved: BM25 score 14.2 (exact title match)
-  - Item H3 (competitor headphones) is retrieved via vector cosine similarity 0.84
-  - Cable C4 (replacement audio cable) is retrieved via keyword match
-        │
-        ▼ (Stage 2: Deterministic Filtering)
-[Filtered Candidates: ~450 Products]
-  - Item H1 passes: in-stock at Chicago regional fulfillment center
-  - Cable C4 is discarded: out-of-stock across Midwest region
-        │
-        ▼ (Stage 3: GBDT / Cross-Encoder Ranking)
-[Scored Pool: Top 50 Ordered by P(click) * P(conversion)]
-  - Item H1: Score = 0.94 (Rank 1)
-  - Item H3: Score = 0.88 (Rank 2)
-  - Earbuds E2: Score = 0.82 (Rank 3)
-  - Speaker S5: Score = 0.71 (Rank 4)
-        │
-        ▼ (Stage 4: Re-Ranking & Business Logic)
-[Adjusted Top 10 Slate]
-  - Rank 1: Item H1 (Retained top slot)
-  - Rank 2: Earbuds E2 (Promoted ahead of H3 to avoid consecutive listings from same brand)
-  - Rank 3: Item H3
-        │
-        ▼ (Stage 5: Client Serving Payload)
-[Illustrative JSON response returned to client]
-```
+<PenFlow
+  ariaLabel="Headphones H1 moving from a 2,000,000-item catalog to a top-10 slate through five stages"
+  title="Following headphones H1 through the funnel (toy numbers)"
+  rows={[
+    { steps: { title: 'Whole catalog: 2,000,000 products', tone: 'ink' } },
+    { arrow: '1. BM25 + vector search', steps: { title: 'Candidate pool: ~1,200', lines: ['H1 found by keywords (BM25 = 14.2, exact title)', 'H3 found by meaning (cosine = 0.84)', 'cable C4 found by keywords'], tone: 'blue' } },
+    { arrow: '2. hard filters', steps: { title: 'After filters: ~450', lines: ['H1 stays: in stock in Chicago', 'C4 removed: out of stock in the Midwest'], tone: 'orange' } },
+    { arrow: '3. ranking model', steps: { title: 'Top 50 by P(click) × P(buy)', lines: ['H1 0.94 · H3 0.88 · E2 0.82 · S5 0.71'], tone: 'purple' } },
+    { arrow: '4. re-ranking rules', steps: { title: 'Final top 10', lines: ['1. H1   2. earbuds E2 (moved up: not two of the same brand in a row)   3. H3'], tone: 'green' } },
+    { arrow: '5. send to the app', steps: { title: 'JSON response to the phone or browser', tone: 'ink' } },
+  ]}
+/>
 
 At each transition, the candidate pool contracts while feature richness expands. Candidate generation operates over static document embeddings; ranking operates over real-time feature joins; re-ranking operates over list-level properties.
 

@@ -44,14 +44,16 @@ function isProgramCode(code) {
   const prose = lines.filter((line) => proseLine.test(line)).length;
   return !(data >= Math.max(1, Math.ceil(lines.length * 0.6)) || (prose >= Math.ceil(lines.length * 0.65) && !lines.some((line) => codeTokens.test(line))));
 }
+// Text containers are not pictures; they must not count toward rule 5.
+const TEXT_ONLY_COMPONENTS = new Set(['ELI5', 'GoDeeper', 'NotebookCallout', 'RunnableCode', 'Remember', 'Key', 'Mark', 'SketchBox', 'MDXLink', 'Link', 'Callout', 'Tabs', 'TabItem', 'Details']);
 function countVisuals(source) {
   const code = source.replace(/```[\s\S]*?```/g, '');
-  const imported = new Set([...code.matchAll(/^import\s+(?:\{[^}]*\}\s+from\s+)?['"][^'"]+['"];?\s*$/gm)].map((m) => {
+  const imported = new Set([...code.matchAll(/^import\s+(?:(?:[\w$]+|\{[^}]*\})\s+from\s+)?['"][^'"]+['"];?\s*$/gm)].map((m) => {
     const named = m[0].match(/^import\s+\{([^}]*)\}/);
     if (named) return named[1].split(',').map((x) => x.trim().split(/\s+as\s+/)[0]);
     const def = m[0].match(/^import\s+([\w$]+)/);
     return def ? [def[1]] : [];
-  }).flat());
+  }).flat().filter((name) => !TEXT_ONLY_COMPONENTS.has(name)));
   const uses = [...imported].reduce((n, name) => n + [...code.matchAll(new RegExp(`<${name}\\b`, 'g'))].length, 0);
   const imgs = [...code.matchAll(/<img\b|<ThemedImage\b|<video\b|<Video\b/g)].length;
   return uses + imgs;

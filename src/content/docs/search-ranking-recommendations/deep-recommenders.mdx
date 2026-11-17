@@ -9,6 +9,7 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import DeepRecommendersArchitectureExplorer from '../../../viz/diagrams/DeepRecommendersArchitectureExplorer';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Deep Recommenders: Two-Tower to Sequential Models
 
@@ -24,26 +25,16 @@ For architectural coverage of end-to-end production pipelines and sampled softma
 
 Production recommender systems partition latency and computational complexity across two distinct stages: candidate retrieval and candidate ranking (Covington, Adams, & Sargin, 2016).
 
-```
-Catalog: 10^7 - 10^8 Items
-          │
-          ▼  [Stage 1: Candidate Retrieval]
-             • Two-Tower Bi-Encoders / Matrix Factorization
-             • Offline precomputed item index
-             • Approximate Nearest Neighbor (ScaNN, HNSW)
-             • Budget: 5 - 15 ms
-          │
-          ▼  Candidates: 500 - 1,000 Items
-             │
-             ▼  [Stage 2: Scoring & Ranking]
-                • Wide & Deep / DLRM / DeepFM
-                • Rich user-item cross-features (user_zip == merchant_zip)
-                • Heavy non-linear interactions
-                • Budget: 20 - 40 ms
-             │
-             ▼
-Final Slate: Top 10 - 20 Items Displayed
-```
+<PenFlow
+  ariaLabel="Recommendation funnel: tens of millions of items narrowed by fast retrieval to about a thousand, then scored by a heavy ranker to a top 10 to 20"
+  title="From 10 million items to the 10 you see"
+  rows={[
+    { steps: { title: 'Catalog: 10⁷ to 10⁸ items', tone: 'ink' } },
+    { arrow: 'stage 1: retrieval, 5–15 ms', steps: { title: 'Candidates: 500 to 1,000', lines: ['two-tower or matrix factorization', 'item vectors made ahead of time, ANN search (ScaNN, HNSW)'], tone: 'blue' } },
+    { arrow: 'stage 2: ranking, 20–40 ms', steps: { title: 'Scored list', lines: ['Wide & Deep, DLRM, DeepFM', 'rich user × item features, e.g. same zip code'], tone: 'purple' } },
+    { arrow: 'keep the best', steps: { title: 'Top 10–20 shown to the user', tone: 'green' } },
+  ]}
+/>
 
 These stages demand fundamentally different architectural trade-offs:
 
@@ -59,24 +50,21 @@ The **Two-Tower Architecture** (also known as a dual-encoder) parameterizes cand
 1. **User Tower $f(x_u) \in \mathbb{R}^d$**: Ingests user context features $x_u$ (user ID, demographic embeddings, historical click sequences, device, time, locale) through multi-layer perceptrons (MLP) to output an $L_2$-normalized user embedding $\mathbf{u} \in \mathbb{R}^d$.
 2. **Item Tower $g(x_i) \in \mathbb{R}^d$**: Ingests item features $x_i$ (item ID, title tokens, category embeddings, price, engagement counts) through a separate MLP to output an $L_2$-normalized item embedding $\mathbf{v} \in \mathbb{R}^d$.
 
-```
-User Features (x_u)                         Item Features (x_i)
-[ID, History, Device, Hour]                 [ID, Title, Category, Length]
-         │                                               │
-         ▼                                               ▼
-┌──────────────────┐                            ┌──────────────────┐
-│    User Tower    │                            │    Item Tower    │
-│  MLP: 512 → 128  │                            │  MLP: 512 → 128  │
-└────────┬─────────┘                            └────────┬─────────┘
-         │                                               │
-         ▼                                               ▼
-User Embedding u ∈ ℝ^d                         Item Embedding v ∈ ℝ^d
-         │                                               │
-         └───────────────────────┬───────────────────────┘
-                                 │
-                                 ▼
-                     Inner Product: s(u, v) = ⟨u, v⟩
-```
+<PenFlow
+  ariaLabel="Two-tower model: user features go through a user tower, item features through an item tower, and the two vectors are compared with a dot product"
+  title="Two towers that never see each other until the last step"
+  rows={[
+    { steps: [
+      { title: 'User features', lines: ['id, history, device, hour'], tone: 'blue' },
+      { title: 'Item features', lines: ['id, title, category, length'], tone: 'purple' },
+    ] },
+    { steps: [
+      { title: 'User tower (MLP 512 → 128)', lines: ['→ user vector u'], tone: 'blue' },
+      { title: 'Item tower (MLP 512 → 128)', lines: ['→ item vector v (stored ahead of time)'], tone: 'purple' },
+    ] },
+    { arrow: 'compare', steps: { title: 'score = u · v', lines: ['one dot product per item: fast enough for millions'], tone: 'green' } },
+  ]}
+/>
 
 The predicted retrieval score is the inner product (or cosine similarity when vectors are $L_2$-normalized):
 
@@ -135,33 +123,17 @@ This limitation is precisely why modern systems deploy **ranking models** downst
 
 To bridge the gap between simple linear models (which excel at memorizing specific feature interactions) and deep neural networks (which generalize to unseen feature combinations), Cheng et al. (Google, 2016) proposed **Wide & Deep Learning**.
 
-```
-                           Output: P(y = 1 | x)
-                                    ▲
-                                    │
-                                 ┌──┴──┐
-                                 │  σ  │  (Logistic Sigmoid)
-                                 └──┬──┘
-                                    │
-                  ┌─────────────────┴─────────────────┐
-                  │                                   │
-                  ▼                                   ▼
-          Wide Component                      Deep Component
-     (Linear Cross-Products)             (Feedforward Dense MLP)
-                  │                                   │
-          w^T · [x, ϕ(x)]                       w_deep^T · a^(L)
-                  │                                   │
-      ┌───────────┴───────────┐                       ▼
-      │                       │                 Hidden Layer 2
-User Device               Item Category               ▲
- [Mobile]                  [AI Books]                 │
-      │                       │                 Hidden Layer 1
-      └───────────┬───────────┘                       ▲
-                  │                                   │
-                  ▼                                   ▼
-           Cross Product:                    Dense Embeddings
-    (Mobile × AI Books) = 1                  [User ID, Item ID, Tags]
-```
+<PenFlow
+  ariaLabel="Wide and Deep: a wide linear part memorizes feature crosses, a deep MLP part generalizes from embeddings, and both feed one sigmoid"
+  title="Wide & Deep: memorize and generalize, then add"
+  rows={[
+    { steps: [
+      { title: 'Wide part (memorize)', lines: ['hand-picked feature crosses', 'e.g. device = mobile × category = AI books → 1', 'w · [x, crosses]'], tone: 'blue' },
+      { title: 'Deep part (generalize)', lines: ['embeddings for user id, item id, tags', '→ hidden layer 1 → hidden layer 2', 'w_deep · a(L)'], tone: 'purple' },
+    ] },
+    { arrow: 'add the two scores', steps: { title: 'σ (sigmoid)', lines: ['→ P(click)'], tone: 'green' } },
+  ]}
+/>
 
 Wide & Deep combines two distinct pathways into a single objective:
 
@@ -190,40 +162,18 @@ In 2019, Naumov et al. (Meta) introduced **DLRM (Deep Learning Recommendation Mo
 
 Earlier deep models simply concatenated all sparse embeddings and passed them directly into an MLP, forcing the dense layers to learn basic multiplicative interactions implicitly. DLRM recognized that categorical features interact predominantly through pairwise inner products.
 
-```
-Dense Features (Cont.)                      Sparse Categorical IDs
-[Hour, Duration, Price]                     [User ID, Item ID, Category, Locale]
-         │                                                    │
-         ▼                                                    ▼
-┌──────────────────┐                               ┌──────────────────────┐
-│    Bottom MLP    │                               │   Embedding Tables   │
-│  Dense Projection│                               │  Lookups: E_1 ... E_S│
-└────────┬─────────┘                               └──────────┬───────────┘
-         │                                                    │
-         ▼                                                    ▼
-  Vector v_0 ∈ ℝ^d                                    Vectors v_1 ... v_S ∈ ℝ^d
-         │                                                    │
-         └──────────────────────────┬─────────────────────────┘
-                                    │
-                                    ▼
-                     ┌──────────────────────────────┐
-                     │ Pairwise Dot Products (⊙)   │
-                     │ All pairs: ⟨v_i, v_j⟩        │
-                     │ S(S+1)/2 Interaction Scalars │
-                     └──────────────┬───────────────┘
-                                    │
-                                    ▼
-       Concat: [v_0, ⟨v_0,v_1⟩, ⟨v_0,v_2⟩, ..., ⟨v_(S-1),v_S⟩]
-                                    │
-                                    ▼
-                     ┌──────────────────────────────┐
-                     │           Top MLP            │
-                     │     Final CTR Prediction     │
-                     └──────────────┬───────────────┘
-                                    │
-                                    ▼
-                            P(Click | Context)
-```
+<PenFlow
+  ariaLabel="DLRM: dense features go through a bottom MLP, categorical ids through embedding tables, all vectors are dotted pairwise, then a top MLP predicts click rate"
+  title="DLRM in four steps"
+  rows={[
+    { steps: [
+      { title: 'Numbers (hour, duration, price)', lines: ['→ bottom MLP → vector v₀'], tone: 'blue' },
+      { title: 'IDs (user, item, category, locale)', lines: ['→ embedding tables → vectors v₁ … v_S'], tone: 'purple' },
+    ] },
+    { arrow: 'every pair', steps: { title: 'Pairwise dot products ⟨vᵢ, vⱼ⟩', lines: ['one number per pair of vectors'], tone: 'orange' } },
+    { arrow: 'join with v₀', steps: { title: 'Top MLP', lines: ['→ predicted click rate'], tone: 'green' } },
+  ]}
+/>
 
 The DLRM computational sequence:
 
@@ -251,27 +201,16 @@ Traditional recommenders treat user history as an unordered bag of items. Howeve
 
 In 2018, Kang and McAuley introduced **SASRec (Self-Attentive Sequential Recommendation)**, adapting the Transformer architecture (Vaswani et al., 2017) to interaction traces.
 
-```
-User Action History: [Item 1, Item 3]
-         │
-         ▼
-[Item Embeddings E] + [Positional Embeddings P]
-         │
-         ▼
-┌────────────────────────────────────────────────────────┐
-│             Causal Self-Attention Block                │
-│                                                        │
-│   Attention(Q, K, V) = softmax( (QK^T / √d) + M ) V    │
-│   (M is causal mask: position t cannot attend to t+1)  │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-                           ▼
-            Updated User State at Step t: s_t ∈ ℝ^d
-                           │
-                           ▼
-        Inner Product with Candidate Item Embedding e_i:
-                   Score = ⟨s_t, e_candidate⟩
-```
+<PenFlow
+  ariaLabel="Sequential recommender: past items plus positions go through causal self-attention to a user state, which is dotted with each candidate item"
+  title="Reading your history like a sentence"
+  rows={[
+    { steps: { title: 'What you did, in order', lines: ['item 1, then item 3'], tone: 'ink' } },
+    { arrow: 'item vector + position vector', steps: { title: 'Causal self-attention', lines: ['softmax(QKᵀ/√d + M) V', 'M hides the future: step t cannot look at t+1'], tone: 'purple' } },
+    { steps: { title: 'Your state right now: s_t', tone: 'blue' } },
+    { arrow: 'compare with each candidate', steps: { title: 'score = s_t · e_candidate', tone: 'green' } },
+  ]}
+/>
 
 Given a user interaction sequence $S = (i_1, i_2, \dots, i_t)$, SASRec projects each item ID into embedding $\mathbf{e}_i \in \mathbb{R}^d$ and adds learnable positional embedding $\mathbf{p}_t \in \mathbb{R}^d$:
 
@@ -424,18 +363,16 @@ Evaluating the denominator requires computing $N$ item tower forward passes per 
 
 Modern two-tower models employ **in-batch negative sampling** (Yi et al., 2019):
 
-```
-Batch of B (User, Positive Item) pairs:
-[(u_1, i_1), (u_2, i_2), ..., (u_B, i_B)]
+Take a batch of B (user, item they liked) pairs and score every user against every item in the batch:
 
-Similarity Matrix S (B × B):
-         i_1       i_2       i_3       i_B
-u_1 ┌   ⟨u1,i1⟩+  ⟨u1,i2⟩-  ⟨u1,i3⟩-  ⟨u1,iB⟩- ┐
-u_2 │   ⟨u2,i1⟩-  ⟨u2,i2⟩+  ⟨u2,i3⟩-  ⟨u2,iB⟩- │
-u_3 │   ⟨u3,i1⟩-  ⟨u3,i2⟩-  ⟨u3,i3⟩+  ⟨u3,iB⟩- │
-u_B └   ⟨uB,i1⟩-  ⟨uB,i2⟩-  ⟨uB,i3⟩-  ⟨uB,iB⟩+ ┘
-        (Diagonal = Positive Pairs; Off-Diagonal = In-Batch Negatives)
-```
+| | i₁ | i₂ | i₃ | … | i_B |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **u₁** | ✔ ⟨u₁,i₁⟩ | ✘ | ✘ | … | ✘ |
+| **u₂** | ✘ | ✔ ⟨u₂,i₂⟩ | ✘ | … | ✘ |
+| **u₃** | ✘ | ✘ | ✔ ⟨u₃,i₃⟩ | … | ✘ |
+| **u_B** | ✘ | ✘ | ✘ | … | ✔ ⟨u_B,i_B⟩ |
+
+The diagonal (✔) holds the real pairs. Everything else (✘) is another user's item, used as a free "not this one" example.
 
 In a mini-batch of size $B$, the items consumed by the other $B-1$ users serve as sampled negatives for user $u$. The batch loss is evaluated using standard cross-entropy along the rows:
 
