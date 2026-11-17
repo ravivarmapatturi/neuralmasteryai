@@ -13,10 +13,10 @@ describe('TfidfSearchExplorer', () => {
     render(<TfidfSearchExplorer />);
 
     expect(screen.getByRole('group', { name: /Interactive TF-IDF Search Engine/i })).toBeInTheDocument();
-    expect(screen.getByText(/Explore TF-IDF Term Weighting & Document Ranking/i)).toBeInTheDocument();
+    expect(screen.getByText(/Score the four documents for a search/i)).toBeInTheDocument();
 
     // Query terms IDF in Step A
-    expect(screen.getByText(/Step A: Per-Term Inverse Document Frequency/i)).toBeInTheDocument();
+    expect(screen.getByText(/Step 1: how rare is each word/i)).toBeInTheDocument();
     // '0.2877' in IDF column
     const idfElements = screen.getAllByText('0.2877');
     expect(idfElements.length).toBeGreaterThanOrEqual(2);
@@ -28,7 +28,7 @@ describe('TfidfSearchExplorer', () => {
     expect(screen.getByText(/Score: 0.0000/i)).toBeInTheDocument();
 
     // Tie indicator badge
-    expect(screen.getByText(/Exact Mathematical Tie at Rank #1/i)).toBeInTheDocument();
+    expect(screen.getByText(/D1 and D3 tie exactly/i)).toBeInTheDocument();
   });
 
   it('updates rankings when switching to query "deep learning"', () => {

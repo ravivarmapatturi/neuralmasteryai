@@ -54,18 +54,18 @@ function Grid({ grid, color, reveal }: { grid: WsGridProps; color: WsColor; reve
   const cell = { border: `1.5px solid ${t.textPrimary}`, padding: '0.35rem 0.6rem', textAlign: 'center' as const, minWidth: 64, whiteSpace: 'nowrap' as const };
   return (
     <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
-      <table className="nm-ws-grid" style={{ borderCollapse: 'collapse', fontFamily: "'Kalam', cursive", fontSize: 16, margin: 0, display: 'table', border: 'none', background: 'transparent' }}>
+      <table className="nm-ws-grid" style={{ borderCollapse: 'collapse', fontFamily: "'Kalam', cursive", fontSize: 'var(--nm-type-td-size)', margin: 0, display: 'table', border: 'none', background: 'transparent' }}>
         <thead>
           <tr>
             {grid.head.map((h, i) => (
-              <th key={i} style={{ ...cell, border: i === 0 ? 'none' : cell.border, background: i === 0 ? 'transparent' : fill[color], color: ink[color], fontWeight: 700 }}>{h}</th>
+              <th key={i} style={{ ...cell, border: i === 0 ? 'none' : cell.border, background: i === 0 ? 'transparent' : fill[color], color: ink[color], fontWeight: 'var(--nm-type-th-weight)' }}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {grid.rows.map((row, r) => (
             <tr key={r}>
-              <th scope="row" style={{ ...cell, border: 'none', textAlign: 'right', fontWeight: 700, color: t.textPrimary, background: 'transparent' }}>{row.label}</th>
+              <th scope="row" style={{ ...cell, border: 'none', textAlign: 'right', fontWeight: 'var(--nm-type-th-weight)', color: t.textPrimary, background: 'transparent' }}>{row.label}</th>
               {row.cells.map((c, ci) => (
                 <td key={ci} style={{ ...cell, background: hidden(r, ci) ? 'transparent' : t.surface, color: t.textPrimary }}>
                   {hidden(r, ci) ? <span style={{ color: t.textMuted }}>?</span> : c}

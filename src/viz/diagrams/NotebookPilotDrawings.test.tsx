@@ -17,25 +17,25 @@ describe('Notebook Phase 1 Pilot Diagrams', () => {
   it('renders VectorSpaceArrowsDiagram without crashing', () => {
     const { container } = render(<VectorSpaceArrowsDiagram />);
     expect(container.querySelector('svg')).toBeDefined();
-    expect(container.textContent).toContain('Vector Space Model');
+    expect(container.textContent).toContain('Each document is an arrow');
   });
 
   it('renders CosineAngleDiagram without crashing', () => {
     const { container } = render(<CosineAngleDiagram />);
     expect(container.querySelector('svg')).toBeDefined();
-    expect(container.textContent).toContain('cosine similarity');
+    expect(container.textContent).toContain('The angle between two arrows');
   });
 
   it('renders SparseVectorBoxesDiagram without crashing', () => {
     const { container } = render(<SparseVectorBoxesDiagram />);
     expect(container.querySelector('svg')).toBeDefined();
-    expect(container.textContent).toContain('Sparse Vector');
+    expect(container.textContent).toContain('One box per dictionary word');
   });
 
   it('renders VocabularyMismatchDiagram without crashing', () => {
     const { container } = render(<VocabularyMismatchDiagram />);
     expect(container.querySelector('svg')).toBeDefined();
-    expect(container.textContent).toContain('Vocabulary Mismatch');
+    expect(container.textContent).toContain('Same meaning, no shared words');
   });
 
   it('renders SearchVsRecLanesDiagram without crashing', () => {
