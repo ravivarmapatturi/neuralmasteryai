@@ -31,13 +31,16 @@ for (const width of WIDTHS) {
             .filter((o) => o.r.width > 0);
           for (let i = 0; i < ts.length; i++) {
             const a = ts[i].r;
-            if (a.left < sr.left - 1 || a.right > sr.right + 1 || a.top < sr.top - 1 || a.bottom > sr.bottom + 1) {
+            if (a.left < sr.left - 1 || a.right > sr.right + 1 || a.top + a.height * 0.2 < sr.top - 1 || a.bottom - a.height * 0.2 > sr.bottom + 1) {
               out.push(`clipped in "${name}": ${ts[i].t}`);
             }
             for (let j = i + 1; j < ts.length; j++) {
               const b = ts[j].r;
+              // Text boxes include the font's line gap (Kalam's is large), so
+              // compare the inner 60% of each box height: the ink, not the gap.
+              const ia = a.height * 0.2, ib = b.height * 0.2;
               const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-              const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+              const oy = Math.min(a.bottom - ia, b.bottom - ib) - Math.max(a.top + ia, b.top + ib);
               if (ox > 1 && oy > 1) out.push(`overlap in "${name}": "${ts[i].t}" / "${ts[j].t}"`);
             }
           }

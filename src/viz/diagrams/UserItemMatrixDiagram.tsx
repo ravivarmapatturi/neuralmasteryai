@@ -178,7 +178,7 @@ export function UserItemMatrixDiagram() {
 
         {/* Annotations below */}
         {showNeighborhood ? (
-          <g transform="translate(140, 260)">
+          <g transform="translate(140, 256)">
             <SketchRect x={0} y={0} width={380} height={50} color={t.accentPrimary} roughness={1.3} strokeWidth={1.5} />
             <text x={14} y={22} fill={t.accentPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
               High-overlap neighborhood:
@@ -188,13 +188,16 @@ export function UserItemMatrixDiagram() {
             </text>
           </g>
         ) : (
-          <g transform="translate(140, 260)">
-            <SketchRect x={0} y={0} width={380} height={50} color={t.border} roughness={1.2} strokeWidth={1.2} />
-            <text x={14} y={22} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
-              Notebook invariant:
+          <g transform="translate(140, 256)">
+            <SketchRect x={0} y={0} width={380} height={64} color={t.border} roughness={1.2} strokeWidth={1.2} />
+            <text x={14} y={18} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700}>
+              Remember:
             </text>
             <text x={14} y={38} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
-              &bull; rating = observed preference (1 to 5). &bull; dot (·) = unobserved item (NOT a zero!).
+              &bull; a number = a rating the user gave (1 to 5)
+            </text>
+            <text x={14} y={56} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive">
+              &bull; a dot (·) = not rated yet, which is NOT a zero
             </text>
           </g>
         )}

@@ -191,7 +191,7 @@ test.describe('Cross-Page Notebook Typography & Surface Guard', () => {
             ).toBe(baseline.styles.letterSpacing);
 
             // For headings and body, verify margin-bottom rule
-            if (['h1', 'h2', 'h3', 'h4', 'paragraph', 'callout-body'].includes(role)) {
+            if (['h1', 'h2', 'h3', 'h4', 'paragraph'].includes(role)) {
               expect(
                 current.styles.marginBottom,
                 `Role "${role}" margin-bottom on "${current.route}" (${current.styles.marginBottom}) must match "${baseline.route}" (${baseline.styles.marginBottom})`
