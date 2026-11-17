@@ -35,7 +35,7 @@ describe('ELI5', () => {
 
   it('shows the "Simple Explanation" label, not the raw "ELI5" jargon', () => {
     render(<ELI5>content</ELI5>)
-    expect(screen.getByText('Simple Explanation')).toBeInTheDocument()
+    expect(screen.getByText('Simple explanation')).toBeInTheDocument()
     expect(screen.queryByText(/^ELI5$/)).not.toBeInTheDocument()
   })
 

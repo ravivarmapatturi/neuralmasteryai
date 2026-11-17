@@ -25,6 +25,30 @@ const ROUTES = [
   { path: '/blog/agent-skills-explained', name: 'blog-agent-skills-explained' },
 ];
 
+async function waitForArticle(page, routeName) {
+  await page.waitForFunction(() => {
+    const main = document.querySelector('main');
+    const heading = main?.querySelector('h1')?.textContent?.trim();
+    const article = main?.querySelector('article.prose');
+    const body = article?.innerText?.trim() ?? '';
+    return Boolean(heading && body.length > 150 && !/^Loading[.…]*$/m.test(body));
+  }, undefined, { timeout: 45000 });
+
+  const state = await page.evaluate(() => {
+    const main = document.querySelector('main');
+    const article = main?.querySelector('article.prose');
+    return {
+      heading: main?.querySelector('h1')?.textContent?.trim() ?? '',
+      articleTextLength: article?.innerText?.trim().length ?? 0,
+      loadingVisible: /Loading[.…]*/.test(article?.innerText ?? ''),
+    };
+  });
+  if (!state.heading || state.articleTextLength <= 150 || state.loadingVisible) {
+    throw new Error(`${routeName} article did not become ready: ${JSON.stringify(state)}`);
+  }
+  return state;
+}
+
 async function waitForServer(url, timeoutMs = 30000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -48,6 +72,8 @@ async function run() {
 
   const overflowResults = [];
   const consoleErrors = [];
+  const pageErrors = [];
+  const captureFailures = [];
 
   try {
     await waitForServer(BASE_URL);
@@ -69,6 +95,9 @@ async function run() {
             consoleErrors.push({ theme, vp: vp.name, text: msg.text() });
           }
         });
+        page.on('pageerror', (err) => {
+          pageErrors.push({ theme, vp: vp.name, text: err.message });
+        });
 
         // Set theme in localStorage
         await page.addInitScript((th) => {
@@ -79,12 +108,15 @@ async function run() {
           const url = `${BASE_URL}${route.path}`;
           console.log(`[${theme}][${vp.name}] Navigating to ${url}...`);
           try {
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+            const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            if (!response || !response.ok()) {
+              throw new Error(`Navigation failed: HTTP ${response?.status() ?? 'no response'}`);
+            }
             await page.evaluate((th) => {
               document.documentElement.setAttribute('data-theme', th);
               document.documentElement.setAttribute('data-page-theme', th);
             }, theme);
-            await page.waitForTimeout(800);
+            const ready = await waitForArticle(page, route.name);
 
             // Check horizontal overflow on phones
             const overflow = await page.evaluate(() => {
@@ -101,9 +133,10 @@ async function run() {
             const filename = `${route.name}-${theme}-${vp.name}.png`;
             const filepath = path.join(OUT_DIR, filename);
             await page.screenshot({ path: filepath });
-            console.log(`Saved screenshot: ${filename} (size: ${fs.statSync(filepath).size} bytes)`);
+            console.log(`Saved screenshot: ${filename} (size: ${fs.statSync(filepath).size} bytes; ${JSON.stringify(ready)})`);
           } catch (err) {
             console.error(`Error capturing ${route.name} (${theme}, ${vp.name}):`, err.message);
+            captureFailures.push({ route: route.name, theme, viewport: vp.name, error: err.message });
           }
         }
         await page.close();
@@ -121,6 +154,11 @@ async function run() {
       console.log(`Captured ${consoleErrors.length} console error(s).`);
     } else {
       console.log('Zero console errors captured.');
+    }
+    console.log(`Page errors: ${JSON.stringify(pageErrors)}`);
+    console.log(`Capture failures: ${JSON.stringify(captureFailures)}`);
+    if (captureFailures.length > 0 || overflowResults.length > 0 || pageErrors.length > 0 || consoleErrors.length > 0) {
+      process.exitCode = 1;
     }
   } finally {
     console.log('Stopping dev server...');

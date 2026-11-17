@@ -1,4 +1,7 @@
-import { defineConfig } from 'vite'
+import path from 'node:path'
+import { realpathSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { defineConfig, searchForWorkspaceRoot } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import mdx from '@mdx-js/rollup'
@@ -7,6 +10,9 @@ import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import remarkFrontmatter from 'remark-frontmatter'
 import remarkMdxFrontmatter from 'remark-mdx-frontmatter'
+
+const require = createRequire(import.meta.url)
+const katexPackageRoot = path.dirname(realpathSync(require.resolve('katex/package.json')))
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -31,7 +37,10 @@ export default defineConfig({
     format: 'es',
   },
   // Nested agent worktrees are separate apps and can exhaust OS file watchers.
-  server: { watch: { ignored: ['**/.claude/**', '**/scratch/**'] } },
+  server: {
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), katexPackageRoot] },
+    watch: { ignored: ['**/.claude/**', '**/scratch/**'] },
+  },
   plugins: [
     // MDX must run before the React plugin's JSX transform sees .mdx files
     mdx({
