@@ -28,7 +28,7 @@ export function showRewardToast(toast: Omit<ToastMessage, 'id'>) {
     id: Math.random().toString(36).substring(2, 9),
   };
   toastListeners.forEach((fn) => fn(fullToast));
-  triggerConfetti();
+  // No confetti over the page text (owner, 18 Nov); the notebook card is the celebration.
 }
 
 export function showUnderstoodCoin() {
@@ -205,32 +205,33 @@ export function ConfettiCanvas() {
             key={t.id}
             style={{
               pointerEvents: 'auto',
-              background: 'rgba(17, 24, 39, 0.95)',
-              backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(99, 102, 241, 0.3)',
-              borderRadius: 12,
+              // Notebook card (owner, 18 Nov): paper, pen border, handwriting -- not a dark dashboard toast.
+              background: 'var(--nm-surface)',
+              border: '2px solid var(--nm-hl-4-ink)',
+              boxShadow: '0 8px 22px rgba(30, 41, 90, 0.16)',
+              borderRadius: '255px 15px 225px 15px/15px 225px 15px 255px',
+              fontFamily: "'Kalam', cursive",
               padding: '12px 18px',
               display: 'flex',
               alignItems: 'center',
               gap: 12,
               minWidth: 280,
               maxWidth: 360,
-              color: '#fff',
+              color: 'var(--nm-text-primary)',
               animation: 'slideInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           >
             {t.icon && <div style={{ fontSize: 28 }}>{t.icon}</div>}
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: '#f3f4f6', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--nm-hl-4-ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 {t.title}
                 {t.xp && (
-                  <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 6, background: 'rgba(99, 102, 241, 0.3)', color: '#818cf8', fontWeight: 600 }}>
+                  <span style={{ fontSize: 14, padding: '1px 8px', borderRadius: 3, background: 'var(--nm-hl-1)', color: 'var(--nm-hl-1-ink)', fontWeight: 700 }}>
                     +{t.xp} XP
                   </span>
                 )}
               </div>
-              {t.subtitle && <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>{t.subtitle}</div>}
+              {t.subtitle && <div style={{ fontSize: 15, color: 'var(--nm-text-secondary)', marginTop: 2 }}>{t.subtitle}</div>}
             </div>
           </div>
         ))}
@@ -262,8 +263,8 @@ export function ConfettiCanvas() {
           z-index: 10001;
           left: 50%;
           top: 50%;
-          width: 88px;
-          height: 88px;
+          width: 120px;
+          height: 120px;
           display: grid;
           place-items: center;
           transform: translate(-50%, -50%);
@@ -271,8 +272,8 @@ export function ConfettiCanvas() {
           animation: nm-coin-flight 1.5s 900ms cubic-bezier(.2,.75,.25,1) forwards;
         }
         .nm-understood-coin {
-          width: 68px;
-          height: 68px;
+          width: 92px;
+          height: 92px;
           display: grid;
           place-items: center;
           border-radius: 50%;
@@ -281,10 +282,10 @@ export function ConfettiCanvas() {
           color: var(--nm-text-primary);
           box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--nm-surface) 42%, transparent), 0 5px 16px color-mix(in srgb, var(--nm-accent-warn) 28%, transparent);
           font-family: 'Kalam', cursive;
-          font-size: 18px;
+          font-size: 26px;
           font-weight: 700;
           animation: nm-coin-flip 900ms ease-in-out both;
-          backface-visibility: hidden;
+          backface-visibility: visible;
         }
         .nm-understood-coin-ring {
           position: absolute;

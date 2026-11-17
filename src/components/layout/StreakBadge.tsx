@@ -54,7 +54,8 @@ export default function StreakBadge() {
       }}
       className={`nm-xp-streak-counter${pulse ? ' nm-xp-pulse' : ''}`}
     >
-      {streak > 0 ? streak : 'XP'}
+      <span aria-hidden="true">🔥</span>
+      {streak}
       <style>{`
         .nm-xp-pulse { animation: nm-xp-counter-pulse 650ms ease-out; }
         @keyframes nm-xp-counter-pulse { 50% { transform: scale(1.12); box-shadow: 0 0 0 5px color-mix(in srgb, var(--nm-accent-warn) 28%, transparent); } }
