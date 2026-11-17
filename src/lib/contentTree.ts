@@ -1,4 +1,5 @@
-import { lazy, type ComponentType } from 'react';
+import { type ComponentType } from 'react';
+import { lazyWithRetry } from './lazyWithRetry';
 import pageMeta from '../data/pageMeta.generated.json';
 import lastUpdatedMap from '../data/lastUpdated.generated.json';
 import practiceSlugs from '../data/practiceSlugs.generated.json';
@@ -205,7 +206,7 @@ function buildPages(): DocPage[] {
       sidebarPosition: meta.sidebarPosition ?? 999,
       section: meta.section,
       lastUpdated: (lastUpdatedMap as Record<string, string>)[docsRoute],
-      Component: lazy(() => loader() as Promise<{ default: ComponentType }>),
+      Component: lazyWithRetry(() => loader() as Promise<{ default: ComponentType }>),
       difficulty: meta.difficulty ?? undefined,
       topic: meta.topic ?? undefined,
       placeholder: meta.placeholder ?? false,

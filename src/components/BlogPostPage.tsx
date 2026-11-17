@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import BrandMark from './brand/BrandMark';
+import ErrorBoundary from './ErrorBoundary';
 import { Link, useParams } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import NotFoundPage from './NotFoundPage';
@@ -122,22 +123,24 @@ export default function BlogPostPage() {
             <article className="prose" ref={articleRef}>
               <BlogMechanism key={slug} slug={slug} />
               {Component ? (
-                <Suspense
-                  fallback={
-                    <div
-                      style={{
-                        padding: '3rem 0',
-                        textAlign: 'center',
-                        color: 'var(--nm-text-muted)',
-                        fontSize: 14,
-                      }}
-                    >
-                      Loading…
-                    </div>
-                  }
-                >
-                  <Component />
-                </Suspense>
+                <ErrorBoundary level="route">
+                  <Suspense
+                    fallback={
+                      <div
+                        style={{
+                          padding: '3rem 0',
+                          textAlign: 'center',
+                          color: 'var(--nm-text-muted)',
+                          fontSize: 14,
+                        }}
+                      >
+                        Loading…
+                      </div>
+                    }
+                  >
+                    <Component />
+                  </Suspense>
+                </ErrorBoundary>
               ) : (
                 <>
                   <h1>{stored!.title}</h1>

@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useLocation } from 'react-router-dom';
+import ErrorBoundary from '../ErrorBoundary';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 import TableOfContents from './TableOfContents';
@@ -116,9 +117,11 @@ export default function DocLayout() {
           </header>
           <article className="prose">
             {page.route.endsWith('/roadmap') && <RoadmapProgressBanner section={page.section} />}
-            <Suspense fallback={<div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 14 }}>Loading…</div>}>
-              <Component />
-            </Suspense>
+            <ErrorBoundary level="route">
+              <Suspense fallback={<div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 14 }}>Loading…</div>}>
+                <Component />
+              </Suspense>
+            </ErrorBoundary>
           </article>
           <PageFeedback page={page} />
           <MarkUnderstoodButton />

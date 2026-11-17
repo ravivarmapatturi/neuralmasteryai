@@ -1,4 +1,5 @@
-import { lazy, type ComponentType } from 'react';
+import { type ComponentType } from 'react';
+import { lazyWithRetry } from './lazyWithRetry';
 import blogMeta from '../data/blogMeta.generated.json';
 
 /** One blog post's metadata, from src/data/blogMeta.generated.json (written
@@ -33,7 +34,7 @@ const components = new Map<string, ComponentType>();
 export function getBlogComponent(slug: string): ComponentType | undefined {
   const loader = loaders[`/src/content/blog/${slug}.mdx`];
   if (!loader) return undefined;
-  if (!components.has(slug)) components.set(slug, lazy(loader));
+  if (!components.has(slug)) components.set(slug, lazyWithRetry(loader));
   return components.get(slug);
 }
 
