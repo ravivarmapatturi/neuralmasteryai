@@ -109,10 +109,10 @@ export function SearchVsRecLanesDiagram() {
           {/* Step 1: Query */}
           <g transform="translate(20, 42)">
             <SketchRect x={0} y={0} width={115} height={60} color={t.accentSecondary} roughness={1.3} strokeWidth={1.5} />
-            <text x={57} y={24} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+            <text x={57} y={21} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
               User Query
             </text>
-            <text x={57} y={42} fill={t.accentSecondary} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={57} y={44} fill={t.accentSecondary} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
               &ldquo;vector index&rdquo;
             </text>
           </g>
@@ -123,10 +123,10 @@ export function SearchVsRecLanesDiagram() {
           {/* Step 2: Match */}
           <g transform="translate(170, 42)">
             <SketchRect x={0} y={0} width={120} height={60} color={t.accentSecondary} roughness={1.3} strokeWidth={1.5} />
-            <text x={60} y={24} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+            <text x={60} y={21} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
               Lexical / Dense
             </text>
-            <text x={60} y={42} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={60} y={44} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
               BM25 + HNSW
             </text>
           </g>
@@ -137,10 +137,10 @@ export function SearchVsRecLanesDiagram() {
           {/* Step 3: Candidate pool */}
           <g transform="translate(325, 42)">
             <SketchRect x={0} y={0} width={110} height={60} color={t.accentSecondary} roughness={1.3} strokeWidth={1.5} />
-            <text x={55} y={24} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+            <text x={55} y={21} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
               Top 1,000
             </text>
-            <text x={55} y={42} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={55} y={44} fill={t.textSecondary} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
               Candidates
             </text>
           </g>
@@ -151,10 +151,10 @@ export function SearchVsRecLanesDiagram() {
           {/* Step 4: Reranker */}
           <g transform="translate(470, 42)">
             <SketchRect x={0} y={0} width={95} height={60} color={t.accentSecondary} roughness={1.4} strokeWidth={1.8} />
-            <text x={47} y={24} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+            <text x={47} y={21} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
               LTR Rerank
             </text>
-            <text x={47} y={42} fill={t.accentSecondary} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={47} y={44} fill={t.accentSecondary} fontSize={11} fontFamily="'Kalam', cursive" textAnchor="middle">
               Final Top 10
             </text>
           </g>
@@ -171,14 +171,14 @@ export function SearchVsRecLanesDiagram() {
 
           {/* Step 1: User Context */}
           <g transform="translate(20, 172)">
-            <SketchRect x={0} y={0} width={115} height={65} color={t.accentPrimary} roughness={1.3} strokeWidth={1.5} />
-            <text x={57} y={24} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+            <SketchRect x={0} y={0} width={115} height={72} color={t.accentPrimary} roughness={1.3} strokeWidth={1.5} />
+            <text x={57} y={18} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
               User History
             </text>
-            <text x={57} y={40} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={57} y={38} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
               Clicks, Reads, Time
             </text>
-            <text x={57} y={54} fill={t.accentPrimary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={57} y={58} fill={t.accentPrimary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
               (No typed query!)
             </text>
           </g>
@@ -188,14 +188,14 @@ export function SearchVsRecLanesDiagram() {
 
           {/* Step 2: Collaborative / Matrix */}
           <g transform="translate(170, 172)">
-            <SketchRect x={0} y={0} width={120} height={65} color={t.accentPrimary} roughness={1.3} strokeWidth={1.5} />
-            <text x={60} y={24} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+            <SketchRect x={0} y={0} width={120} height={72} color={t.accentPrimary} roughness={1.3} strokeWidth={1.5} />
+            <text x={60} y={18} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
               Collaborative
             </text>
-            <text x={60} y={40} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={60} y={38} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
               Neighborhoods
             </text>
-            <text x={60} y={54} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={60} y={58} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
               &amp; Content Filters
             </text>
           </g>
@@ -205,14 +205,14 @@ export function SearchVsRecLanesDiagram() {
 
           {/* Step 3: Candidate pool */}
           <g transform="translate(325, 172)">
-            <SketchRect x={0} y={0} width={110} height={65} color={t.accentPrimary} roughness={1.3} strokeWidth={1.5} />
-            <text x={55} y={24} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+            <SketchRect x={0} y={0} width={110} height={72} color={t.accentPrimary} roughness={1.3} strokeWidth={1.5} />
+            <text x={55} y={18} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
               Candidate Pool
             </text>
-            <text x={55} y={40} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={55} y={38} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
               Top 2,000 Items
             </text>
-            <text x={55} y={54} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={55} y={58} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
               From catalog
             </text>
           </g>
@@ -222,14 +222,14 @@ export function SearchVsRecLanesDiagram() {
 
           {/* Step 4: CTR Ranker */}
           <g transform="translate(470, 172)">
-            <SketchRect x={0} y={0} width={95} height={65} color={t.accentPrimary} roughness={1.4} strokeWidth={1.8} />
-            <text x={47} y={24} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
+            <SketchRect x={0} y={0} width={95} height={72} color={t.accentPrimary} roughness={1.4} strokeWidth={1.8} />
+            <text x={47} y={18} fill={t.textPrimary} fontSize={12} fontFamily="'Kalam', cursive" fontWeight={700} textAnchor="middle">
               Deep CTR
             </text>
-            <text x={47} y={40} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={47} y={38} fill={t.textSecondary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
               Cross-network
             </text>
-            <text x={47} y={54} fill={t.accentPrimary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
+            <text x={47} y={58} fill={t.accentPrimary} fontSize={10} fontFamily="'Kalam', cursive" textAnchor="middle">
               Personalized
             </text>
           </g>
