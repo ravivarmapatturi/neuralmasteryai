@@ -1,12 +1,17 @@
+import fs from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
+
+const hasDist = fs.existsSync('dist/index.html');
+const serverPort = process.env.TEST_PORT || (hasDist ? '4173' : '5173');
+const defaultUrl = `http://127.0.0.1:${serverPort}/`;
+const defaultCommand = hasDist
+  ? 'node scripts/static-server.cjs'
+  : 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173';
 
 /**
  * CI/PR smoke suite -- fast critical-path checks against the actual
  * production build (dist/, served through scripts/static-server.cjs, which
- * reproduces GitHub Pages' base-path + 404-fallback behavior). Not a
- * replacement for the full 14-component regression pass in
- * .verify-scripts/verify.cjs (run manually / before major merges, not on
- * every PR) -- see CI_CD.md.
+ * reproduces GitHub Pages' base-path + 404-fallback behavior) or dev server when dist is not built.
  */
 export default defineConfig({
   testDir: './tests',
@@ -16,16 +21,14 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
-    baseURL: 'http://localhost:4173/',
+    baseURL: defaultUrl,
     trace: 'retain-on-failure',
   },
   webServer: {
-    // Serves the already-built dist/ -- run `npm run build` first (CI does
-    // this as an earlier, separate stage; see .github/workflows/ci.yml).
-    command: 'node scripts/static-server.cjs',
-    url: 'http://localhost:4173/',
+    command: process.env.PLAYWRIGHT_SERVER_CMD || defaultCommand,
+    url: defaultUrl,
     reuseExistingServer: !process.env.CI,
-    timeout: 15000,
+    timeout: 30000,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

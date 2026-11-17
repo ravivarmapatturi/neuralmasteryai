@@ -1,6 +1,6 @@
 ---
 name: notebook-page
-description: MANDATORY for every agent touching any Learn page, blog post, lab or visual (src/content/**, src/viz/**, src/components/notebook/**). Every page must look and feel like a handwritten notebook page: ruled paper, pen writing, pen-drawn boxes and diagrams, highlighter. Strict rules, enforced by `npm run check:notebook` in CI. Load this before writing a single line of page content.
+description: MANDATORY for every agent touching any Learn page, blog post, lab or visual (src/content/**, src/viz/**, src/components/notebook/**). Every page must look and feel like a handwritten notebook page: plain white paper in light theme (dark counterpart in dark theme), vertical red side ruler retained, no horizontal ruled lines, pen writing, pen-drawn boxes and diagrams, highlighter. Strict rules, enforced by `npm run check:notebook` in CI. Load this before writing a single line of page content.
 ---
 
 # The notebook page (strict rules, owner-mandated 16 Nov 2026)
@@ -11,7 +11,7 @@ These rules are not suggestions. `npm run check:notebook` fails CI on rule viola
 
 ## The look (what the reader must feel)
 
-- A white ruled page with a red margin line; "Neural Mastery" and the date at the top like a diary entry.
+- A plain white notebook page in light theme (dark counterpart in dark theme) with the vertical red side ruler/margin line retained, and no horizontal ruled lines; "Neural Mastery" and the date at the top like a diary entry.
 - Everything is written by hand (Kalam). Only real program code and maths are exempt.
 - Boxes, tables, callouts and widgets are **drawn by pen**: sketchy irregular borders (`SketchBox`, `RoughShape`), never perfect rectangles.
 - Key terms get a pen underline (`<Key>`); key results get a yellow highlighter (`<Mark>`); important numbers are circled or boxed.

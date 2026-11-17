@@ -139,17 +139,10 @@
   background: #0d1713;
 }
 
-/* Faint ruled-paper lines, like the reference image's notebook sheet --
-   a background-image gradient, not DOM elements, so it never interferes
-   with layout or screen readers. */
+/* Plain notebook surface: horizontal ruled lines removed per owner specification.
+   Vertical red margin line is retained. */
 .nb-ruled {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent,
-    transparent 31px,
-    var(--nb-rule) 31px,
-    var(--nb-rule) 32px
-  );
+  background-image: none;
 }
 
 .nb-eyebrow {
@@ -163,11 +156,10 @@
 }
 
 .nb-heading {
-  color: var(--nm-heading-1, var(--nb-ink));
+  color: var(--nm-type-h1-color, var(--nm-heading-1));
   font-family: var(--nb-font-display);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--nb-ink);
+  font-weight: var(--nm-type-h1-weight, 800);
+  letter-spacing: var(--nm-type-h1-letter-spacing, -0.02em);
 }
 
 .nb-hand {
@@ -176,8 +168,11 @@
 
 .nb-body {
   font-family: var(--nb-font-body);
-  color: var(--nb-ink-soft);
-  line-height: 1.7;
+  color: var(--nm-type-body-color, var(--nb-ink-soft));
+  font-size: var(--nm-type-body-size, 17px);
+  font-weight: var(--nm-type-body-weight, 400);
+  line-height: var(--nm-type-body-line-height, 1.85);
+  letter-spacing: var(--nm-type-body-letter-spacing, normal);
 }
 
 /* Reusable semantic color classes, so components can pick a palette slot
@@ -205,6 +200,12 @@
 }
 .nb-callout-body {
   position: relative;
+  font-family: var(--nb-font-hand);
+  font-size: var(--nm-type-callout-size, 17px);
+  font-weight: var(--nm-type-callout-weight, 400);
+  line-height: var(--nm-type-callout-line-height, 1.85);
+  letter-spacing: var(--nm-type-callout-letter-spacing, normal);
+  color: var(--nm-type-callout-color, var(--nm-text-primary));
 }
 .nb-callout-title {
   display: flex;
@@ -213,21 +214,17 @@
   margin: 0 0 0.35rem;
   font-family: var(--nb-font-hand);
   font-size: 1.1rem;
+  font-weight: 700;
   color: var(--nb-accent);
 }
 .nb-callout-body p {
-  margin: 0 0 0.6rem;
-  color: var(--nb-ink-soft);
-  /* Hand font here too, not just the title -- these boxes hold short
-     (1-3 sentence) annotations, not long-form reading, so the "use
-     handwritten type sparingly" readability concern doesn't apply the
-     way it does to actual page prose (which stays in --font-body
-     everywhere else). Safe now that the title is a <div>, not a <p> --
-     see NotebookCallout.tsx's comment for the specificity bug this
-     selector caused when it could still match the title element. */
+  margin: var(--nm-type-callout-margin, 0 0 0.6rem);
+  color: var(--nm-type-callout-color, var(--nm-text-primary));
   font-family: var(--nb-font-hand);
-  font-size: 1.05rem;
-  line-height: 1.6;
+  font-size: var(--nm-type-callout-size, 17px);
+  font-weight: var(--nm-type-callout-weight, 400);
+  line-height: var(--nm-type-callout-line-height, 1.85);
+  letter-spacing: var(--nm-type-callout-letter-spacing, normal);
 }
 .nb-callout-body p:last-child { margin-bottom: 0; }
 
