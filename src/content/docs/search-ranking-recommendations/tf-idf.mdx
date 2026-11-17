@@ -9,6 +9,7 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 import { TfidfSearchExplorer } from '../../../viz/diagrams/TfidfSearchExplorer';
 import { VectorSpaceArrowsDiagram } from '../../../viz/diagrams/VectorSpaceArrowsDiagram';
 import { CosineAngleDiagram } from '../../../viz/diagrams/CosineAngleDiagram';
@@ -44,16 +45,40 @@ To put results in order we need a **score** for each document. TF-IDF is the fir
   caption="Two small numbers per word, multiplied and added. That is the whole method."
 />
 
-We will use the same four documents all the way through this page:
+Here is the whole method worked by hand on four short documents. We use these same numbers on the rest of the page. Try the last row yourself before you show the answers.
 
-| Document | Text | Words |
-| :--- | :--- | :--- |
-| **D1** | "machine learning is powerful" | 4 |
-| **D2** | "deep learning is part of machine learning" | 7 |
-| **D3** | "machine learning improves search" | 4 |
-| **D4** | "cooking food is fun" | 4 |
-
-The search is **"machine learning"**.
+<Worksheet
+  title="TF-IDF by hand: search “machine learning”"
+  ariaLabel="TF-IDF worksheet: four documents, word counts, TF, IDF and final scores"
+  stages={[
+    { tag: 'Documents', color: 'yellow', note: 'Four short documents. Count the words in each.',
+      grid: { head: ['', 'text', 'words'], rows: [
+        { label: 'D1', cells: ['machine learning is powerful', '4'] },
+        { label: 'D2', cells: ['deep learning is part of machine learning', '7'] },
+        { label: 'D3', cells: ['machine learning improves search', '4'] },
+        { label: 'D4', cells: ['cooking food is fun', '4'] },
+      ] } },
+    { tag: 'Count', color: 'orange', note: 'How many times each search word appears.',
+      grid: { head: ['', 'machine', 'learning'], rows: [
+        { label: 'D1', cells: ['1', '1'] }, { label: 'D2', cells: ['1', '2'] },
+        { label: 'D3', cells: ['1', '1'] }, { label: 'D4', cells: ['0', '0'] },
+      ] } },
+    { tag: 'TF', color: 'blue', note: 'Count ÷ words in the document.',
+      grid: { head: ['', 'machine', 'learning'], rows: [
+        { label: 'D1', cells: ['1/4 = 0.2500', '1/4 = 0.2500'] }, { label: 'D2', cells: ['1/7 = 0.1429', '2/7 = 0.2857'] },
+        { label: 'D3', cells: ['1/4 = 0.2500', '1/4 = 0.2500'] }, { label: 'D4', cells: ['0', '0'] },
+      ] } },
+    { tag: 'IDF', color: 'purple', note: 'ln(4 documents ÷ documents with the word). Each word is in 3 of the 4, so ln(4/3).',
+      grid: { head: ['', 'machine', 'learning'], rows: [
+        { label: 'IDF', cells: ['0.2877', '0.2877'] },
+      ] } },
+    { tag: 'Score', color: 'green', note: 'TF × IDF for each word, added up. Highest score ranks first.',
+      grid: { head: ['', 'score', 'rank'], rows: [
+        { label: 'D1', cells: ['0.1438', '1 (tie)'] }, { label: 'D2', cells: ['0.1233', '3'] },
+        { label: 'D3', cells: ['0.1438', '1 (tie)'] }, { label: 'D4', cells: ['0', '4'] },
+      ], hide: [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[3,0],[3,1]] } },
+  ]}
+/>
 
 ## Term frequency
 

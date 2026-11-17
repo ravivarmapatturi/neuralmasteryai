@@ -127,6 +127,15 @@ All widgets use one frame, `NotebookWidget` (new), with:
 
 The harness-engineering roadmap's architecture widget is the first one to convert.
 
+### 2.10 Worksheet (our own "worked by hand" style)
+
+Every page with numbers to work through opens its big picture with a `Worksheet` (`src/components/notebook/Worksheet.tsx`):
+- One sheet with the whole method, top to bottom.
+- Each stage has a tilted highlighter tag on the left (yellow, orange, blue, purple, green, pink). The stage's grid headings use the same colour.
+- Every real number is written in a grid cell, and they are the same numbers as the page's worked example.
+- The final stage's cells start as "?" with a "Work it out, then show answers" button, so reading becomes practice.
+- It is built from HTML grids, so nothing overlaps. On phones a wide grid scrolls inside its own row.
+
 ---
 
 ## Part 3. Words
