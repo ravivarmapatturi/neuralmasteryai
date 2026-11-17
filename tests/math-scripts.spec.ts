@@ -86,6 +86,108 @@ test.describe('scripts/fix-display-math.mjs and scripts/check-math.mjs', () => {
     expect(violations).toHaveLength(0);
   });
 
+  test('handles lines with trailing whitespace while preserving leading indentation', () => {
+    const input = '  $$E = mc^2$$   ';
+    const { content, count } = transformMdx(input);
+    expect(count).toBe(1);
+    expect(content).toBe('  $$\n  E = mc^2\n  $$');
+
+    const violations = findSingleLineMath(input, 'trailing.mdx');
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatchObject({
+      file: 'trailing.mdx',
+      line: 1,
+      column: 3,
+      body: 'E = mc^2',
+    });
+  });
+
+  test('ignores Markdown indented code blocks outside lists', () => {
+    const input = [
+      'Normal paragraph text explaining syntax.',
+      '',
+      '    $$x = \\text{indented_code}$$',
+      '    $$\\text{still_code}$$',
+      '',
+      'Back to paragraph text.',
+    ].join('\n');
+
+    const { content, count } = transformMdx(input);
+    expect(count).toBe(0);
+    expect(content).toBe(input);
+
+    const violations = findSingleLineMath(input, 'code.mdx');
+    expect(violations).toHaveLength(0);
+  });
+
+  test('transforms display math in list items with 4-space indent without treating it as code', () => {
+    const input = [
+      '- First item:',
+      '    $$\\text{Score} = \\frac{A}{B}$$',
+      '',
+      '- Second item:',
+      '',
+      '    $$\\text{Loose} = \\sum x_i$$',
+      '',
+      'Unindented paragraph ends the list.',
+    ].join('\n');
+
+    const { content, count } = transformMdx(input);
+    expect(count).toBe(2);
+    expect(content).toBe([
+      '- First item:',
+      '    $$',
+      '    \\text{Score} = \\frac{A}{B}',
+      '    $$',
+      '',
+      '- Second item:',
+      '',
+      '    $$',
+      '    \\text{Loose} = \\sum x_i',
+      '    $$',
+      '',
+      'Unindented paragraph ends the list.',
+    ].join('\n'));
+
+    const violations = findSingleLineMath(input, 'list.mdx');
+    expect(violations).toHaveLength(2);
+    expect(violations[0].body).toBe('\\text{Score} = \\frac{A}{B}');
+    expect(violations[1].body).toBe('\\text{Loose} = \\sum x_i');
+  });
+
+  test('respects list code indentation threshold based on marker content column + 4 spaces', () => {
+    const input = [
+      '- Unordered item (col 2):',
+      '    $$\\text{Math at 4 spaces}$$',
+      '      $$\\text{Code at 6 spaces (2+4)}$$',
+      '',
+      '1.  Ordered item (col 4):',
+      '    $$\\text{Math at 4 spaces}$$',
+      '        $$\\text{Code at 8 spaces (4+4)}$$',
+    ].join('\n');
+
+    const { content, count } = transformMdx(input);
+    expect(count).toBe(2);
+    expect(content).toBe([
+      '- Unordered item (col 2):',
+      '    $$',
+      '    \\text{Math at 4 spaces}',
+      '    $$',
+      '      $$\\text{Code at 6 spaces (2+4)}$$',
+      '',
+      '1.  Ordered item (col 4):',
+      '    $$',
+      '    \\text{Math at 4 spaces}',
+      '    $$',
+      '        $$\\text{Code at 8 spaces (4+4)}$$',
+    ].join('\n'));
+
+    const violations = findSingleLineMath(input, 'list-code-threshold.mdx');
+    expect(violations).toHaveLength(2);
+    expect(violations[0].body).toBe('\\text{Math at 4 spaces}');
+    expect(violations[1].body).toBe('\\text{Math at 4 spaces}');
+  });
+
   test('detects violations and reports file/line/column in check-math', () => {
     const input = [
       '# Heading',

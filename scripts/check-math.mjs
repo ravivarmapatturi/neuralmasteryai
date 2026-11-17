@@ -37,6 +37,9 @@ export function findSingleLineMath(content, filePath = '<unknown>') {
   let inRunnable = false;
   let inJsxTag = false;
 
+  let inList = false;
+  let listBaseIndent = 0;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
@@ -79,19 +82,35 @@ export function findSingleLineMath(content, filePath = '<unknown>') {
       continue;
     }
 
-    // 4. Standalone single-line display math check
-    const match = line.match(/^(\s*)\$\$(.+)\$\$$/);
-    if (match) {
-      const body = match[2];
-      // Ignore if body contains internal $$ (inline math within sentence)
-      if (!body.includes('$$') && body.trim().length > 0) {
-        violations.push({
-          file: filePath,
-          line: lineNum,
-          column: match[1].length + 1,
-          raw: line,
-          body: body.trim(),
-        });
+    // 4. Markdown list item tracking
+    const listMarkerMatch = line.match(/^(\s*(?:[*+-]|\d+[.)])\s+)/);
+    if (listMarkerMatch) {
+      inList = true;
+      listBaseIndent = listMarkerMatch[1].replace(/\t/g, '    ').length;
+    } else if (trimmed !== '' && !line.startsWith(' ') && !line.startsWith('\t')) {
+      inList = false;
+      listBaseIndent = 0;
+    }
+
+    // 5. Standalone single-line display math check
+    if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
+      const inner = trimmed.slice(2, -2);
+      if (!inner.includes('$$') && inner.trim().length > 0) {
+        const indent = line.slice(0, line.indexOf('$$'));
+        const indentWidth = indent.replace(/\t/g, '    ').length;
+        // Outside a list: >= 4 spaces is an indented code block.
+        // Inside a list: >= list marker content column + 4 spaces is an indented code block.
+        const isIndentedCode = !inList ? indentWidth >= 4 : indentWidth >= listBaseIndent + 4;
+
+        if (!isIndentedCode) {
+          violations.push({
+            file: filePath,
+            line: lineNum,
+            column: indent.length + 1,
+            raw: line,
+            body: inner.trim(),
+          });
+        }
       }
     }
   }

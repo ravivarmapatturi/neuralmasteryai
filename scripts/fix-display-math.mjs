@@ -40,6 +40,9 @@ export function transformMdx(content) {
   let inJsxTag = false;
   let transformedCount = 0;
 
+  let inList = false;
+  let listBaseIndent = 0;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
@@ -86,20 +89,38 @@ export function transformMdx(content) {
       continue;
     }
 
-    // 4. Standalone single-line display math check
-    // Matches: indentation, opening $$, body, closing $$
-    const match = line.match(/^(\s*)\$\$(.+)\$\$$/);
-    if (match) {
-      const indent = match[1];
-      const body = match[2];
+    // 4. Markdown list item tracking
+    const listMarkerMatch = line.match(/^(\s*(?:[*+-]|\d+[.)])\s+)/);
+    if (listMarkerMatch) {
+      inList = true;
+      listBaseIndent = listMarkerMatch[1].replace(/\t/g, '    ').length;
+    } else if (trimmed !== '' && !line.startsWith(' ') && !line.startsWith('\t')) {
+      inList = false;
+      listBaseIndent = 0;
+    }
+
+    // 5. Standalone single-line display math check
+    // Matches when trimmed content is exactly $$...$$ with non-empty body
+    if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
+      const inner = trimmed.slice(2, -2);
 
       // If body contains internal $$ (e.g. "$$a$$ and $$b$$"), it's inline math in a sentence
-      if (!body.includes('$$') && body.trim().length > 0) {
-        result.push(`${indent}$$`);
-        result.push(`${indent}${body.trim()}`);
-        result.push(`${indent}$$`);
-        transformedCount++;
-        continue;
+      if (!inner.includes('$$') && inner.trim().length > 0) {
+        const indent = line.slice(0, line.indexOf('$$'));
+        const indentWidth = indent.replace(/\t/g, '    ').length;
+
+        // Indented code blocks:
+        // Outside a list, 4 or more leading spaces (or tab) defines an indented code block.
+        // Inside a list, indented code requires 4 spaces beyond the list marker's content column.
+        const isIndentedCode = !inList ? indentWidth >= 4 : indentWidth >= listBaseIndent + 4;
+
+        if (!isIndentedCode) {
+          result.push(`${indent}$$`);
+          result.push(`${indent}${inner.trim()}`);
+          result.push(`${indent}$$`);
+          transformedCount++;
+          continue;
+        }
       }
     }
 

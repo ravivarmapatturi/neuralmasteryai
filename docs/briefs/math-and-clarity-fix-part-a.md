@@ -48,7 +48,7 @@ No other paths may be changed. Do not modify Part B/C prose, diagrams, headings,
 - **Table formulas audit**: Audited tables across all 13 search pages (`overview`, `text-search-bm25`, `tf-idf`, `bm25`, `ranking-evaluation-metrics`, `semantic-and-hybrid-search`, `ranking-fundamentals`, `learning-to-rank`, `recommendation-foundations`, `matrix-factorization-embeddings`, `deep-recommenders`, `exploration-feedback-loops`, `search-recommendation-system-design`) and 10 sampled changed pages (`llm-inference-optimization`, `token-and-cost-attribution`, `continuous-batching-and-speculative-decoding`, `recurrent-looped-transformers`, `quantization-and-compression`, `roofline-and-kv-cache`, `linear-regression`, `attention-transformers`, `edge-and-tinyml-architecture`, `model-serving`). Replaced all squashed/stacked `\frac` expressions in table cells with clean readable inline math (`/`) while preserving verified mathematical meaning and numbers.
 - **`scripts/check-math.mjs` & package/CI wiring**: Added guard script `scripts/check-math.mjs`, added `"check:math": "node scripts/check-math.mjs"` to `package.json`, and added `Math format validation` step (`npm run check:math`) to `.github/workflows/ci.yml` beside internal link validation.
 - **Tests**: Created `tests/math-scripts.spec.ts` with 7 test cases covering rewriting, indentation preservation, idempotency, code fences, RunnableCode, inline math, and check-math diagnostics.
-- **Playwright Browser Verification & Contact Sheets**: Verified all 23 target routes against the Vite dev server at 1440px desktop and 375px mobile viewports. Transformed formulas render as `.katex-display` with 0 vertical clipping violations (`scrollHeight <= clientHeight + 2`) on desktop and mobile. 124 wide formulas on mobile scroll horizontally with `overflow-x: auto` with 0 viewport blowout (`document.documentElement.scrollWidth <= 375px`). Saved contact sheets to `docs/evidence/math-fix/contact-sheet-1440px.png` and `docs/evidence/math-fix/contact-sheet-375px.png`, along with json and markdown audit summaries.
+- **Browser verification status: blocked**: The original 23-route dataset/contact sheets contain an invalid desktop matrix-factorization capture (loading state; recorded 0 displays, while source has 32). The final bounded diagnostic passed only for that route (HTTP 200, expected/rendered displays 32, correct H1, no page errors; 24 resource 403 console messages). No corrected full-route dataset or contact sheets were produced; do not use the original artifacts as completion proof.
 - **Report**: Created `docs/plans/math-and-clarity-fix-report.md` with Section A.
 - **Part B/C**: Zero Part B/C work was started.
 
@@ -63,8 +63,8 @@ No other paths may be changed. Do not modify Part B/C prose, diagrams, headings,
    - **Output**: `7 passed (738ms)` (Exit code 0)
 5. `flock /tmp/nm-heavy.lock npm run typecheck`
    - **Output**: `tsc -b` (Exit code 0)
-6. `flock /tmp/nm-heavy.lock node scratch/verify-math-browser.mjs`
-   - **Output**: `Routes Audited: 23, Desktop Transformed Math Count: 184, Desktop Clipping Violations: 0, Mobile Transformed Math Count: 216, Mobile Clipping Violations: 0, Mobile Horizontal Scroll Verified: 124, Mobile Page Overflow Violations: 0. All Playwright display math, clipping, horizontal scrolling, and contact sheet assertions PASSED!` (Exit code 0)
+6. Final bounded diagnostic: `flock /tmp/nm-heavy.lock node <temporary bounded route diagnostic>`
+   - **Observed output**: HTTP 200; expected source display count 32; rendered `.katex-display` count 32; H1 `Matrix Factorization & Latent Factor Embeddings`; article text length 28,550; still-loading false; page errors 0; 24 console resource errors (HTTP 403); elapsed 32.37s. The 23-route sweep was not run in this final round and is not accepted as verified because its checked-in matrix desktop capture shows a loading state.
 7. `node scripts/check-agent-tracker.mjs`
    - **Output**: `check-agent-tracker: AGENT_TRACKER.md is valid, structured, and properly maintained.` (Exit code 0)
 
@@ -75,7 +75,7 @@ No other paths may be changed. Do not modify Part B/C prose, diagrams, headings,
 - `e660ce25`: `feat(math): add fix-display-math and check-math scripts, CI guard, and tests`
 - `554b8507`: `style(math): rewrite standalone display math to block format and simplify table formulas`
 - `256f41bd`: `docs(math): add Part A browser verification evidence and Section A report`
-- Handoff commit: updates `docs/briefs/math-and-clarity-fix-part-a.md` and `AGENT_TRACKER.md`.` section below with exact changes, commands and observed results, skipped checks, and commit hashes. Commit the implementation and report in a separate Part A batch; do not push.
+- Handoff commit: see current branch history. Final review fix round 3 stopped at the documented 45-minute no-change threshold; no Parts B/C started. No push.
 
 ## Report from agy
 
@@ -84,7 +84,7 @@ No other paths may be changed. Do not modify Part B/C prose, diagrams, headings,
 - **Table formulas audit**: Audited tables across all 13 search pages (`overview`, `text-search-bm25`, `tf-idf`, `bm25`, `ranking-evaluation-metrics`, `semantic-and-hybrid-search`, `ranking-fundamentals`, `learning-to-rank`, `recommendation-foundations`, `matrix-factorization-embeddings`, `deep-recommenders`, `exploration-feedback-loops`, `search-recommendation-system-design`) and 10 sampled changed pages (`llm-inference-optimization`, `token-and-cost-attribution`, `continuous-batching-and-speculative-decoding`, `recurrent-looped-transformers`, `quantization-and-compression`, `roofline-and-kv-cache`, `linear-regression`, `attention-transformers`, `edge-and-tinyml-architecture`, `model-serving`). Replaced all squashed/stacked `\frac` expressions in table cells with clean readable inline math (`/`) while preserving verified mathematical meaning and numbers.
 - **`scripts/check-math.mjs` & package/CI wiring**: Added guard script `scripts/check-math.mjs`, added `"check:math": "node scripts/check-math.mjs"` to `package.json`, and added `Math format validation` step (`npm run check:math`) to `.github/workflows/ci.yml` beside internal link validation.
 - **Tests**: Created `tests/math-scripts.spec.ts` with 7 test cases covering rewriting, indentation preservation, idempotency, code fences, RunnableCode, inline math, and check-math diagnostics.
-- **Playwright Browser Verification & Contact Sheets**: Verified all 23 target routes against the Vite dev server at 1440px desktop and 375px mobile viewports. Transformed formulas render as `.katex-display` with 0 vertical clipping violations (`scrollHeight <= clientHeight + 2`) on desktop and mobile. 124 wide formulas on mobile scroll horizontally with `overflow-x: auto` with 0 viewport blowout (`document.documentElement.scrollWidth <= 375px`). Saved contact sheets to `docs/evidence/math-fix/contact-sheet-1440px.png` and `docs/evidence/math-fix/contact-sheet-375px.png`, along with json and markdown audit summaries.
+- **Browser verification status: blocked**: The original 23-route dataset/contact sheets contain an invalid desktop matrix-factorization capture (loading state; recorded 0 displays, while source has 32). The final bounded diagnostic passed only for that route (HTTP 200, expected/rendered displays 32, correct H1, no page errors; 24 resource 403 console messages). No corrected full-route dataset or contact sheets were produced; do not use the original artifacts as completion proof.
 - **Report**: Created `docs/plans/math-and-clarity-fix-report.md` with Section A.
 - **Part B/C**: Zero Part B/C work was started.
 
@@ -99,8 +99,8 @@ No other paths may be changed. Do not modify Part B/C prose, diagrams, headings,
    - **Output**: `7 passed (738ms)` (Exit code 0)
 5. `flock /tmp/nm-heavy.lock npm run typecheck`
    - **Output**: `tsc -b` (Exit code 0)
-6. `flock /tmp/nm-heavy.lock node scratch/verify-math-browser.mjs`
-   - **Output**: `Routes Audited: 23, Desktop Transformed Math Count: 184, Desktop Clipping Violations: 0, Mobile Transformed Math Count: 216, Mobile Clipping Violations: 0, Mobile Horizontal Scroll Verified: 124, Mobile Page Overflow Violations: 0. All Playwright display math, clipping, horizontal scrolling, and contact sheet assertions PASSED!` (Exit code 0)
+6. Final bounded diagnostic: `flock /tmp/nm-heavy.lock node <temporary bounded route diagnostic>`
+   - **Observed output**: HTTP 200; expected source display count 32; rendered `.katex-display` count 32; H1 `Matrix Factorization & Latent Factor Embeddings`; article text length 28,550; still-loading false; page errors 0; 24 console resource errors (HTTP 403); elapsed 32.37s. The 23-route sweep was not run in this final round and is not accepted as verified because its checked-in matrix desktop capture shows a loading state.
 7. `node scripts/check-agent-tracker.mjs`
    - **Output**: `check-agent-tracker: AGENT_TRACKER.md is valid, structured, and properly maintained.` (Exit code 0)
 

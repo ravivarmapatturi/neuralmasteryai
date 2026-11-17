@@ -24,17 +24,9 @@
    - Wired `npm run check:math` into `.github/workflows/ci.yml` beside the existing content validation steps (`npm run check:links`).
    - Added focused unit tests in `tests/math-scripts.spec.ts` covering single-line math rewriting, list item indentation preservation, idempotency, code fence exclusion, RunnableCode exclusion, inline sentence math exclusion, and check-math diagnostic reporting. All 7 tests passed (738ms).
 
-4. **Playwright Browser Verification (1440px & 375px)**:
-   - Verified all 13 `search-ranking-recommendations` pages and 10 sampled changed pages against the Vite dev server at both 1440px desktop and 375px mobile viewports.
-   - Total routes audited: 23.
-   - Verified that all transformed formulas render as `.katex-display`.
-   - Verified zero vertical clipping: `scrollHeight <= clientHeight + 2` across all transformed display math elements (0 violations on desktop, 0 violations on mobile).
-   - On 375px mobile: verified that 124 wide formulas scroll horizontally via `overflow-x: auto` without clipping and with zero page horizontal overflow (`document.documentElement.scrollWidth <= 375px`).
-   - Saved visual evidence artifacts:
-     - Desktop contact sheet: `docs/evidence/math-fix/contact-sheet-1440px.png`
-     - Mobile contact sheet: `docs/evidence/math-fix/contact-sheet-375px.png`
-     - Verification dataset: `docs/evidence/math-fix/math-fix-verification.json`
-     - Detailed breakdown: `docs/evidence/math-fix/math-fix-verification.md`
+4. **Browser verification status — blocked pending full route sweep**:
+   - The checked-in 23-route JSON, markdown, and contact sheets are from the original run and are not accepted as valid completion evidence: the matrix-factorization desktop capture showed a loading state, and its recorded desktop formula count was 0 despite 32 standalone display blocks in the current source.
+   - A final bounded diagnostic for `/docs/search-ranking-recommendations/matrix-factorization-embeddings` completed: HTTP 200; expected source displays 32; rendered `.katex-display` 32; expected H1 present; article text length 28,550; still-loading false; page errors 0; 24 console resource errors reported as HTTP 403; elapsed 32.37 seconds. Full 23-route verification and replacement contact sheets were not produced.
 
 ### Verification Results
 - `npm run check:math`: PASSED (scanned 1,991 MDX files, 0 single-line display math violations).
@@ -42,7 +34,12 @@
 - `npm run check:links`: PASSED (2,147 routes checked, 0 broken prose links, 0 broken anchor links).
 - `flock /tmp/nm-heavy.lock npx playwright test math-scripts.spec.ts --config tests/playwright-unit.config.ts`: PASSED (7/7 tests passed in 738ms).
 - `flock /tmp/nm-heavy.lock npm run typecheck`: PASSED (`tsc -b` exited with code 0).
-- `flock /tmp/nm-heavy.lock node scratch/verify-math-browser.mjs`: PASSED (23/23 routes passed at 1440px & 375px, 0 vertical clipping, 0 mobile overflow).
+- Final bounded single-route diagnostic (logged at `/tmp/agy-math-part-a-fix-3.log`): PASSED for the matrix-factorization route as described above.
+- 23-route browser verification: NOT VERIFIED; final agent round reached the runbook 45-minute no-change timeout before a route-wide run or completion report. Therefore Section A is **BLOCKED** for sitewide browser acceptance.
 - Production build (`npm run build`): Deferred to CI per repository 8GB RAM rule (`free -g` available was 2 GiB, below the 5 GiB safety guard).
 
-*(Sections B and C will be populated when subsequent phases are executed).*
+**Parts B and C have not started.**
+
+### Handoff status
+
+Status: **blocked** pending a correct full 23-route browser verification and regenerated contact sheets. Commits `e660ce25`, `554b8507`, `256f41bd`, `cd76396f`, and follow-up scope commits `60a3b395`, `8531e391`, `b572db37` are on `search-rank-rec`; no push was made. Final round-3 script/test/evidence changes are currently uncommitted and require review. The original evidence files are retained for audit but must not be treated as passing proof.
