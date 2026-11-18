@@ -5,6 +5,8 @@ description: "Start with user promises, estimate the resources they require, and
 ---
 import { ELI5 } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # System Design Foundations
 
 <ELI5>
@@ -45,18 +47,33 @@ The [failure-reserve calculation](/docs/software-system-design/capacity-estimati
 
 [The design approach](/docs/software-system-design/design-approach) follows revocation from an owner's request to the public redirect path. A correct durable write does not by itself clear an old cache entry.
 
-## Common Problems and Fixes
+## Why it exists
 
-Follow the operation before choosing components, test the assumption that changes capacity, and measure outcomes at the boundary users depend on. Each chapter names the failures its example does and does not cover.
+A design needs a precise user promise, a resource estimate, and a failure envelope. These foundation chapters connect those parts before a system diagram is drawn.
 
-## When Not to Use a Distributed Architecture
+## The big picture
 
-Start with the smallest topology that satisfies measured demand and the agreed failure envelope. The [design decision record](/docs/software-system-design/design-approach#make-the-decision-reversible-where-it-can-be) identifies evidence that would justify adding distributed ownership.
+<PenFlow ariaLabel="software system design foundations overview" rows={[{ steps: { title: 'Requirements', lines: ['actors, invariants and SLOs'], tone: 'blue' } }, { steps: { title: 'Capacity', lines: ['traffic and failure reserve'], tone: 'purple' } }, { steps: { title: 'Latency', lines: ['end-to-end path and tails'], tone: 'orange' } }, { steps: { title: 'Review', lines: ['trace user action and failure'], tone: 'green' } }]} caption="actors, invariants and SLOs." />
 
-## Remember
+## Worked example
 
-Requirements determine promises; estimates constrain resources; latency and availability define observable outcomes. Apply them together in the [URL shortener case study](/docs/software-system-design/url-shortener), then continue to [Scaling](/docs/software-system-design/scaling).
+The foundation track links requirements, capacity estimation, latency, availability and design approach.
 
-## Sources
+## Try it yourself
 
-Primary references and calculations appear beside each topic in the linked chapters.
+# Try it: pick one architecture decision and trace the requirement and estimate behind it.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Choosing components before requirements | The diagram can hide a missing promise | Start from the user action |
+| Treating estimates as guarantees | Assumptions can differ from production | Measure decision-sensitive inputs |
+| Ignoring failures | Healthy capacity hides failure behavior | Trace a named loss |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| One host meets the measured workload | Keep a simpler topology |
+| Requirements are unresolved | Agree on the user promise first |

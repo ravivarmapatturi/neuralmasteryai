@@ -5,6 +5,8 @@ description: "Choose how capacity grows, route requests to ready replicas, cache
 ---
 import { ELI5 } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Scaling and Traffic Management
 
 <ELI5>
@@ -43,13 +45,30 @@ Read these seven chapters in order. Each carries one mechanism through its own n
 
 [Rate limiting](/docs/software-system-design/rate-limiting) separates burst permission from waiting queues and active concurrency. A five-token bucket refilling two/s behaves differently from fixed windows or independently duplicated per-instance quotas.
 
-## Common Problems and Fixes
+## Common mistakes
 
 Measure the constrained resource, verify recoverable state ownership, and test the cold or failed state before counting healthy replicas. The chapters include concrete counterexamples for connection imbalance, forged metadata, origin overload, delayed scaling, and quota multiplication.
 
-## When Not to Add More Instances
+## When not to use it
 
 A shared lock, inefficient query, or exhausted downstream quota needs a change at that constraint. Use the [bottleneck experiment](/docs/software-system-design/vertical-vs-horizontal-scaling#locate-the-resource-that-limits-completion) before expanding the application fleet.
+
+
+## Why it exists
+
+Scaling changes capacity, routing and admission at different points in a request path. More replicas help only when the application is constrained and dependencies can serve the added work.
+
+## The big picture
+
+<PenFlow ariaLabel="software system design scaling overview" rows={[{ steps: { title: 'Find limit', lines: ['application, store or network'], tone: 'blue' } }, { steps: { title: 'Add capacity', lines: ['vertical or independent replicas'], tone: 'purple' } }, { steps: { title: 'Route safely', lines: ['health, proxy and edge'], tone: 'orange' } }, { steps: { title: 'Control demand', lines: ['autoscaling and admission'], tone: 'green' } }]} caption="application, store or network." />
+
+## Worked example
+
+This section connects vertical/horizontal growth, state ownership, routing, proxies, CDNs, autoscaling and rate limiting.
+
+## Try it yourself
+
+# Try it: identify the bottleneck in a real request path before selecting a scaling mechanism.
 
 ## Remember
 

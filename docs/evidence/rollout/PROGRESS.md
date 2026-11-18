@@ -299,3 +299,12 @@ Static checks passed: notebook (39 combined changed pages/0 violations), MDX (2,
 Standardized the AI Engineering Track, main Roadmap and Suggested Paths; Research Engineering overview/roadmap/paper reading/timeline; Guides and Open Source AI Resources; and Getting Started. These navigation and decision pages use qualitative flow diagrams and specific paths, without invented output values.
 
 Static checks passed: notebook (49 current changed pages/0 violations), math, MDX (2,019/2,019), links (2,147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Browser, full Vitest, and build deferred under low-memory constraints. See `rest-8/scorecard.md`. No push.
+
+## Gap list after first full pass (Claude review, 18 Nov 11:20)
+Content pages that still lack `## Remember` and `## Sources` (they never had them): mathematics-for-ai (linear-algebra, calculus-optimization, probability-statistics, algorithms-data-structures), interpretability (classical, deep-learning-and-llm), graph-ml-fundamentals, reinforcement-learning (advanced-rl, rl-environments-and-reward-engineering), frameworks (core-ml-dl, llm-agent, serving-mlops), domain-applications (healthcare-ai, other-domain-applications), cs-fundamentals/software-engineering-practices, research-engineering/how-to-read-ai-papers, and context-engineering (dynamic-tool-discovery, external-memory-and-persistence, token-budgeting-and-compaction: Remember only). Atlas pages are interactive references and are exempt. Second pass: add Remember from each page's own sections, and Sources only from links the page already cites or verified primary papers.
+
+## Rest batch 9 — eight Software System Design pages
+
+Standardized the software-system-design roadmap, foundations, requirements, design approach, capacity estimation, scaling overview, vertical/horizontal scaling, and stateless services. Worksheets use the source's 99.900% vs 99.895% denominator comparison, 60-second revocation/300-second cache, 14-instance failure model, shared-store capacity, and local/shared session behavior.
+
+Static checks passed: notebook (8 pages/0 violations), math, MDX (2,019/2,019), links (2,147 valid routes/0 broken anchors), typecheck, tracker and diff check. Browser checks, full Vitest and build deferred under low-memory constraints. See `rest-9/scorecard.md`. No push.

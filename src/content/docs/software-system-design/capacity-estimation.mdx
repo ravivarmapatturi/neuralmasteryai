@@ -8,6 +8,9 @@ import RunnableCode from '../../../components/content/RunnableCode';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import SoftwareCapacityExplorer from '../../../viz/diagrams/SoftwareCapacityExplorer';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Back-of-Envelope Capacity Estimation
 
 <ELI5>
@@ -110,13 +113,13 @@ Measure safe capacity at the required latency, error rate, and failure state. In
 
 Sensitivity analysis can remain simple. Double one uncertain quantity while keeping the rest fixed and identify what changes. Doubling payload size affects network and buffer demand; doubling retention affects stored data; doubling peak arrivals affects serving and downstream concurrency. If every change leads to “add instances,” the model has probably omitted state or a shared limit.
 
-## Common Problems and Fixes
+## Common mistakes
 
 Daily totals conceal bursts. Preserve interval-specific peaks and an explicit burst duration. Applying one average to writes and reads conceals different costs; split operations by resource demand. Multiplying every logical byte by a replication factor conceals logs and backups; budget them as separate lifecycle components.
 
 A healthy-load estimate conceals failure reserve. Remove the largest promised failure domain and recalculate actual survivors. A cold-start estimate conceals backlog; calculate net accumulation during detection and startup. A nominal benchmark conceals workload drift; compare current request mixes and dependency latency with the test that justified the original number.
 
-## When Not to Trust the Envelope
+## When not to use it
 
 | Situation | Better evidence |
 | --- | --- |
@@ -124,6 +127,25 @@ A healthy-load estimate conceals failure reserve. Remove the largest promised fa
 | Cache locality dominates storage access | A representative key distribution and cold-cache run |
 | Strict tail-latency promise | End-to-end latency observations under realistic arrivals |
 | Migration changes record layout | Measured storage and write amplification on sample data |
+
+
+## Why it exists
+
+Capacity estimates rule out designs and identify which assumption needs measurement. Keep requests, bytes, concurrency and failure reserve separate, with units attached.
+
+## The big picture
+
+<PenFlow ariaLabel="software system design capacity-estimation overview" rows={[{ steps: { title: 'Convert activity', lines: ['daily actions to requests/s'], tone: 'blue' } }, { steps: { title: 'Budget resources', lines: ['storage and network separately'], tone: 'purple' } }, { steps: { title: 'Remove failure group', lines: ['count surviving instances'], tone: 'orange' } }, { steps: { title: 'Calculate backlog', lines: ['arrivals minus completions'], tone: 'green' } }]} caption="daily actions to requests/s." />
+
+<Worksheet title="Capacity source outputs" ariaLabel="Capacity source outputs" stages={[{ tag: "Inputs", color: "yellow", note: "The page’s RunnableCode values are copied from its stated inputs.", grid: { head: ['', 'output'], rows: [{ label: 'average redirects', cells: ['1,157.41 / s'] }, { label: 'average creates', cells: ['11.57 / s'] }, { label: 'annual logical storage', cells: ['182.5 GB'] }, { label: 'minimum instances', cells: ['14'] }, { label: 'survivors / utilization', cells: ['9 / 66.67%'] }, { label: 'mean in-flight', cells: ['480'] }, { label: '90 s backlog', cells: ['180,000'] }] } }]} />
+
+## Worked example
+
+The source code computes 14 instances, nine survivors at 66.67%, 480 mean in-flight requests and a 180,000-job transient backlog.
+
+## Try it yourself
+
+# Try it: set per_instance to 800 and recompute the surviving instance requirement.
 
 ## Remember
 

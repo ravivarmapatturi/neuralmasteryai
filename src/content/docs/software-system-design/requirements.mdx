@@ -8,6 +8,9 @@ import RunnableCode from '../../../components/content/RunnableCode';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import RequirementBoundaryExplorer from '../../../viz/diagrams/RequirementBoundaryExplorer';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Requirements and System Boundaries
 
 <ELI5>
@@ -105,40 +108,35 @@ An assumption is a condition we have not yet established. “Traffic peaks at 6,
 
 Requirements also need versioning. A new promise that revocation must take effect within 5 seconds invalidates a design justified by a 60-second freshness window. Review dependent cache, replication, and recovery decisions together. Changing only the number in a product document does not change deployed behavior.
 
-## Common Problems and Fixes
+## Why it exists
 
-“Always available” omits a failure envelope. Name the failures the service must survive and the operations that can degrade. A multi-zone promise does not imply region-loss recovery, and a backup does not imply uninterrupted serving. Test each promise against its own observation point.
+A service promise needs an actor, action, success condition and measurement boundary. Otherwise the same request can count as success under one interpretation and failure under another.
 
-“Exactly once” omits the effect being counted. Specify whether the requirement concerns an API response, a durable record, a notification, or a monetary movement. One request can be transmitted twice while producing one durable business effect, or transmitted once while failing before any effect. Communication requirements should identify the business invariant first.
+## The big picture
 
-“Secure” omits an actor and an action. Name who may perform each transition and what evidence is retained. Include negative tests such as one tenant guessing another tenant's code. Do not treat possession of a public identifier as proof of authority to modify its target.
+<PenFlow ariaLabel="software system design requirements overview" rows={[{ steps: { title: 'Define action', lines: ['actor and expected outcome'], tone: 'blue' } }, { steps: { title: 'Set boundary', lines: ['eligible requests and observation point'], tone: 'purple' } }, { steps: { title: 'Check conflict', lines: ['correctness, latency and availability'], tone: 'orange' } }, { steps: { title: 'Make testable', lines: ['acceptance model and invariant'], tone: 'green' } }]} caption="actor and expected outcome." />
 
-## When Not to Add Another Requirement
+<Worksheet title="Two denominators, one 99.9% target" ariaLabel="Two denominators, one 99.9% target" stages={[{ tag: "Inputs", color: "yellow", note: "Source values: 9,490 valid successes, 10 failures, and 500 correct rejections.", grid: { head: ['', 'rate'], rows: [{ label: 'all handled', cells: ['99.900%'] }, { label: 'valid actions', cells: ['99.895%'] }, { label: 'objective', cells: ['99.9%'] }, { label: 'valid-action target', cells: ['missed'] }] } }]} />
 
-| Situation | Better action |
+## Worked example
+
+The same 10,000 attempts meet 99.9% handling success when correct rejections count, while valid-action success is 9,490/9,500 = 99.895%.
+
+## Try it yourself
+
+# Try it: double correct_rejection and verify the valid-action metric remains unchanged.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Choosing components before requirements | The diagram can hide a missing promise | Start from the user action |
+| Treating estimates as guarantees | Assumptions can differ from production | Measure decision-sensitive inputs |
+| Ignoring failures | Healthy capacity hides failure behavior | Trace a named loss |
+
+## When not to use it
+
+| Situation | Better choice |
 | --- | --- |
-| The statement names a vendor without a constraint | Describe the capability or operating limit needed |
-| Two promises conflict during the same failure | Choose and document a priority |
-| A metric excludes every failed attempt | Define eligibility independently of the outcome |
-| A target has no user or business consequence | Establish why meeting it is worth the cost |
-
-## Remember
-
-| Requirement element | What to write |
-| --- | --- |
-| Actor and action | Who performs which transition |
-| Invariant | The state or result that must remain impossible |
-| Objective | Population, threshold, window, observation point |
-| Failure envelope | Conditions under which the promise still applies |
-| Exclusion | Deferred behavior and the consequence of deferral |
-| Assumption | Owner, validation step, and affected decisions |
-
-You can now distinguish a product promise from an implementation preference and turn that promise into a test. Use the [Foundations roadmap](/docs/software-system-design/foundations) to continue, or see the contract applied to [payments](/docs/software-system-design/payment-system), where ambiguous outcomes matter immediately.
-
-## Sources
-
-- [Google SRE, Service Level Objectives (2016)](https://sre.google/sre-book/service-level-objectives/): indicators, objectives, and agreements.
-- [Google SRE Workbook, Implementing SLOs (2018)](https://sre.google/workbook/implementing-slos/): defining user-focused objectives.
-- [Google SRE, Embracing Risk (2016)](https://sre.google/sre-book/embracing-risk/): reliability as a product and cost decision.
-- [AWS Builders' Library, Making Retries Safe With Idempotent APIs (2021)](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/): expressing caller intent across retries.
-- [RFC 9110, HTTP Semantics (2022)](https://www.rfc-editor.org/rfc/rfc9110): request methods, responses, and repeatability semantics.
+| One host meets the measured workload | Keep a simpler topology |
+| Requirements are unresolved | Agree on the user promise first |

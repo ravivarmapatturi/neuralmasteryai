@@ -8,6 +8,9 @@ import RunnableCode from '../../../components/content/RunnableCode';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import DesignDecisionExplorer from '../../../viz/diagrams/DesignDecisionExplorer';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # How to Approach a System Design
 
 <ELI5>
@@ -105,7 +108,7 @@ assert first_violation(60) is None
 
 A test without a stated boundary can hide disagreement. We define the deadline as inclusive: at second 60 the revoked link must already stop redirecting. The diagram uses second 61 to make the breach visually unmistakable. Both tests reject a 300-second cache, but the exact boundary matters when an implementation and a client interpret “within a minute” differently.
 
-## Common Problems and Fixes
+## Common mistakes
 
 A component catalogue omits causal reasoning. Repair it by attaching every component to one operation, state owner, or measured limit. If removing a component does not break a requirement or an operational need, start without it. Complexity has an ongoing cost in deployments, permissions, telemetry, and incident response.
 
@@ -113,7 +116,7 @@ A happy-path diagram omits ambiguous outcomes. Add one lost response after a dur
 
 An estimate with no decision attached becomes decorative arithmetic. State which choice changes if the estimate doubles, then test the sensitive assumption. A design that looks identical under a hundredfold traffic increase has probably omitted a resource limit; a design that needs twenty components for a hundred daily requests has probably omitted operational cost.
 
-## When Not to Start a New Architecture
+## When not to use it
 
 | Situation | Better next step |
 | --- | --- |
@@ -121,6 +124,25 @@ An estimate with no decision attached becomes decorative arithmetic. State which
 | Product behavior is disputed | Resolve the user-visible contract first |
 | A known defect violates an existing invariant | Fix and test that boundary before expanding topology |
 | The proposal only replaces vendor names | Identify a measurable constraint the change removes |
+
+
+## Why it exists
+
+A system design traces one user action to its outcome under load and failure. Tracing authoritative state and derived copies exposes whether choices preserve the promise.
+
+## The big picture
+
+<PenFlow ariaLabel="software system design design-approach overview" rows={[{ steps: { title: 'State promise', lines: ['revoke within 60 seconds'], tone: 'blue' } }, { steps: { title: 'Trace write', lines: ['authorize, commit, invalidate'], tone: 'purple' } }, { steps: { title: 'Trace read', lines: ['cache then origin'], tone: 'orange' } }, { steps: { title: 'Test deadline', lines: ['300-second cache violates the promise'], tone: 'green' } }]} caption="revoke within 60 seconds." />
+
+<Worksheet title="Revocation cache timeline" ariaLabel="Revocation cache timeline" stages={[{ tag: "Inputs", color: "yellow", note: "The code checks a 60-second promise against a 300-second cache.", grid: { head: ['', 'value'], rows: [{ label: 'cache expiry', cells: ['300 s'] }, { label: 'promise deadline', cells: ['60 s'] }, { label: 'at second 61', cells: ['cached; violation'] }, { label: 'cache expiry 60 s', cells: ['no breach'] }] } }]} />
+
+## Worked example
+
+At second 61 the 300-second cached redirect is still served after the 60-second promise; a 60-second cache removes the violation in the simplified model.
+
+## Try it yourself
+
+# Try it: set cache expiry to 60 seconds and inspect behavior at the inclusive deadline.
 
 ## Remember
 

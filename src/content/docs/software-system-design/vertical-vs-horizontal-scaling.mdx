@@ -8,6 +8,9 @@ import RunnableCode from '../../../components/content/RunnableCode';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import ScalingBottleneckExplorer from '../../../viz/diagrams/ScalingBottleneckExplorer';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Vertical vs Horizontal Scaling
 
 <ELI5>
@@ -100,7 +103,7 @@ for replicas in (10, 14):
 
 The first calculation describes an idealized parallel computation, while the second describes fleet placement. They are related constraints, not interchangeable formulas. A fleet may provide enough surviving processors yet fail to increase throughput because the application still serializes on one record. Keep algorithmic independence and infrastructure redundancy as separate review questions.
 
-## Common Problems and Fixes
+## Common mistakes
 
 Processor saturation suggests adding compute only after confirming that the work is useful and parallelizable. A slow query scan may need an index rather than another application replica. A memory shortage may need a larger working-set budget or less retained state rather than more request concurrency. Match the remedy to the measured resource.
 
@@ -108,7 +111,7 @@ More application replicas can multiply database connections until the store spen
 
 One large tenant can prevent even distribution. Measure per-key and per-tenant demand before assuming a balanced hash or round-robin router balances work. A hot owner may require a different data model, request coalescing, or explicit admission policy. More total machines do not divide an indivisible hot operation automatically.
 
-## When Not to Scale the Application Fleet
+## When not to use it
 
 | Situation | Better change |
 | --- | --- |
@@ -116,6 +119,39 @@ One large tenant can prevent even distribution. Measure per-key and per-tenant d
 | Work is serialized by one lock | Reduce the critical section or partition ownership safely |
 | Current load is comfortably served with redundancy | Keep the simpler measured deployment |
 | The workload has no immediate deadline | Schedule bounded asynchronous work instead of peak-sized serving |
+
+## Why it exists
+
+A larger machine and additional replicas solve different capacity limits. A shared store, serial fraction or failure domain can prevent application capacity from becoming useful throughput.
+
+## The big picture
+
+<PenFlow ariaLabel="software system design vertical-vs-horizontal-scaling overview" rows={[{ steps: { title: 'Measure bottleneck', lines: ['CPU, store, memory or lock'], tone: 'blue' } }, { steps: { title: 'Scale chosen stage', lines: ['vertical or horizontal'], tone: 'purple' } }, { steps: { title: 'Check shared limit', lines: ['end-to-end ceiling is minimum'], tone: 'orange' } }, { steps: { title: 'Test failure placement', lines: ['surviving capacity after loss'], tone: 'green' } }]} caption="CPU, store, memory or lock." />
+
+<Worksheet title="Application replicas and shared store" ariaLabel="Application replicas and shared store" stages={[{ tag: "Inputs", color: "yellow", note: "Each request uses one store operation, with shared-store capacity fixed at 3,000/s.", grid: { head: ['', 'application', 'end-to-end'], rows: [{ label: '1 × 1,000', cells: ['1,000', '1,000'] }, { label: '3 × 1,000', cells: ['3,000', '3,000'] }, { label: '6 × 1,000', cells: ['6,000', '3,000'] }] } }]} />
+
+## Worked example
+
+With six replicas at 1,000 requests/s each, application capacity is 6,000/s, but the shared store limits end-to-end completions to 3,000/s.
+
+## Try it yourself
+
+# Try it: raise store_capacity to 10,000 and observe when adding replicas raises useful capacity again.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Equating replica count with throughput | Shared resources can cap the path | Model each stage capacity |
+| Ignoring serial work | Parallel workers cannot remove it | Estimate the serial fraction |
+| Assuming replicas survive every failure | Placement can put them in one domain | Count survivors after named failure |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The workload fits one machine and local state matters | Scale vertically first |
+| A shared dependency is saturated | Fix that dependency before adding app replicas |
 
 ## Remember
 
