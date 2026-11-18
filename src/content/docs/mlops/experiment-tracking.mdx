@@ -99,6 +99,67 @@ Since MLflow 3 there is one more first-class object: the **logged model**. A mod
 
 The reason this structure works is that params are the axes you search along and metrics are the values you rank by. A query like "every run in `fraud-detection` with `batch_size = 64`, sorted by `val_auc`" is cheap because both live in indexed database columns. The next section produces exactly such a set of runs and queries it.
 
+## 4. Logging a Real Run
+
+Here is a complete, runnable sweep. It trains a logistic-regression classifier on scikit-learn's breast-cancer dataset at four regularization strengths and logs each as a run. It uses MLflow 3.17 and a local SQLite file as the tracking store, so it needs no server:
+
+```python
+import mlflow
+from sklearn.datasets import load_breast_cancer
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, roc_auc_score
+
+mlflow.set_tracking_uri("sqlite:///mlflow.db")
+mlflow.set_experiment("breast-cancer-logreg")
+
+X, y = load_breast_cancer(return_X_y=True, as_frame=True)
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.25, random_state=0, stratify=y)
+
+for C in [0.01, 0.1, 1.0, 10.0]:
+    with mlflow.start_run(run_name=f"C={C}"):
+        mlflow.log_params({"C": C, "max_iter": 1000, "seed": 0})
+        mlflow.log_input(mlflow.data.from_pandas(X_train, name="breast-cancer-train"), context="training")
+
+        model = make_pipeline(StandardScaler(), LogisticRegression(C=C, max_iter=1000))
+        model.fit(X_train, y_train)
+
+        mlflow.log_metrics({
+            "val_accuracy": accuracy_score(y_val, model.predict(X_val)),
+            "val_auc": roc_auc_score(y_val, model.predict_proba(X_val)[:, 1]),
+        })
+        mlflow.sklearn.log_model(model, name="model", input_example=X_val.head(2))
+
+runs = mlflow.search_runs(order_by=["metrics.val_auc DESC"])
+print(runs[["tags.mlflow.runName", "params.C", "metrics.val_accuracy", "metrics.val_auc"]].round(4).to_string(index=False))
+```
+
+Running it prints:
+
+```output
+tags.mlflow.runName params.C  metrics.val_accuracy  metrics.val_auc
+              C=1.0      1.0                 0.958           0.9952
+             C=10.0     10.0                 0.951           0.9943
+              C=0.1      0.1                 0.958           0.9929
+             C=0.01     0.01                 0.951           0.9849
+```
+
+A few details are doing more work than they look:
+
+- **`with mlflow.start_run()`** opens a run and closes it when the block ends. If training raises an exception, the run is marked failed rather than left open, so crashed runs are visible instead of silently missing.
+- **`log_input`** stores a digest of the training frame. If someone later trains on a modified copy of the data with the same name, the digests differ and the two runs are visibly not comparable.
+- **`log_model` with `input_example`** saves the model along with a *signature*: the column names and types it expects. A deployment can then reject a request with the wrong columns instead of returning nonsense.
+- **`search_runs`** returns an ordinary pandas DataFrame, so the comparison is code, not a screenshot of a UI.
+
+Each param is recorded once; each metric is a series. In a neural network you would call `mlflow.log_metric("val_loss", value, step=epoch)` inside the training loop, and the UI (`mlflow ui`, or `mlflow server` for a shared team instance) draws the curves:
+
+<RunComparisonChartDiagram />
+
+For the most common frameworks you can skip most of the logging calls: `mlflow.autolog()` patches scikit-learn, PyTorch Lightning, XGBoost, LightGBM and others to log their parameters, metrics and model automatically. Autologging is a good default, as long as you check once what it records for your framework and add the data input and anything else it misses.
+
+The output table invites an obvious next step: pick the top row. That step has a trap in it.
 
 ## 5. Comparing Runs Without Fooling Yourself
 
@@ -131,12 +192,12 @@ for k in [1, 10, 100, 1000]:
     print(f"best of {k:>4}: mean reported accuracy {best.mean():.3f}")
 ```
 
-| Configurations searched | Mean best reported accuracy |
-| ---: | ---: |
-| 1 | 0.900 |
-| 10 | 0.920 |
-| 100 | 0.932 |
-| 1000 | 0.941 |
+```output
+best of    1: mean reported accuracy 0.900
+best of   10: mean reported accuracy 0.920
+best of  100: mean reported accuracy 0.932
+best of 1000: mean reported accuracy 0.941
+```
 
 None of the 1,000 configurations is better than any other, yet the "winner" reports 94.1%. The extra 4 points are pure selection. (Real runs share one validation set, which correlates their errors and shrinks the effect somewhat, but it doesn't remove it.)
 
@@ -210,12 +271,11 @@ mv = client.get_model_version_by_alias("breast-cancer-classifier", "champion")
 print("version:", mv.version, "| from run:", mv.run_id == best.run_id, "| C =", champion[-1].C)
 ```
 
-| Registry output | Value |
-| --- | --- |
-| Registered model | breast-cancer-classifier |
-| Version | 1 |
-| Source run matched | True |
-| Regularization C | 1.0 |
+```output
+Successfully registered model 'breast-cancer-classifier'.
+Created version '1' of model 'breast-cancer-classifier'.
+version: 1 | from run: True | C = 1.0
+```
 
 The serving code loads `models:/breast-cancer-classifier@champion` and never mentions a version number. Promoting version 2 means moving the alias, and rolling back means moving it back. Both are a single API call, recorded with who made it and when.
 

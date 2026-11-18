@@ -107,7 +107,8 @@ All visible text is handwritten (Kalam). Only real program code uses the mono fo
 - Only real, runnable or copyable code goes in a code box, and it names its language.
 - Code boxes are **light paper, not black**, with a pen border, the language written in hand at the top, and the mono font at 15 px.
 - 25 lines at most per box; longer code goes in `RunnableCode` with a "show all" fold.
-- Values, file trees, outputs and parameter lists are written on the page, not put in code boxes.
+- Values, file trees and parameter lists are written on the page, not put in code boxes.
+- Real program output (what a command prints) goes in an ```output box, which shows as plain text labelled "output". Never turn output into a bullet list.
 
 **Checks:** check:notebook rule 1; a style test that fenced code renders on a light background in the light theme.
 

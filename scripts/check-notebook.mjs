@@ -75,7 +75,7 @@ function scan(file) {
     if (open && !fence) { fence = { marker: open[1][0], lang: open[2].toLowerCase() }; fenceStart = start; fenceContent = []; offset += line.length + 1; continue; }
     if (fence && new RegExp(`^\\s*${fence.marker}{3,}\\s*$`).test(line)) {
       const content = fenceContent.join('\n');
-      if (!inRanges(fenceStart, ranges) && (!fence.lang || ['text', 'txt', 'plain'].includes(fence.lang) || !isProgramCode(content))) add(violations, file, source, fenceStart, 1, `Fence is not named runnable program code (${fence.lang || 'no language'}).`);
+      if (!inRanges(fenceStart, ranges) && (!fence.lang || ['text', 'txt', 'plain'].includes(fence.lang) || (fence.lang !== 'output' && !isProgramCode(content)))) add(violations, file, source, fenceStart, 1, `Fence is not named runnable program code (${fence.lang || 'no language'}).`);
       fence = null; fenceContent = []; offset += line.length + 1; continue;
     }
     if (fence) { fenceContent.push(line); offset += line.length + 1; continue; }

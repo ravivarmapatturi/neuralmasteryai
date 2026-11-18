@@ -67,6 +67,8 @@ export default function VisualizationCode({
 
   useEffect(() => {
     let cancelled = false;
+    // Program output (```output) is shown as plain text, never syntax-coloured.
+    if (lang === 'output') { setHtml(null); return () => { cancelled = true; }; }
     const safeLang: Lang = (LANGS as readonly string[]).includes(lang) ? (lang as Lang) : 'python';
     getHighlighter().then((highlighter) => {
       if (cancelled) return;

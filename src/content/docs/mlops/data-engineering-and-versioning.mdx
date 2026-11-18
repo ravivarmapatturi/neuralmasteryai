@@ -108,12 +108,13 @@ except pa.errors.SchemaErrors as err:
     print(err.failure_cases[["column", "check", "failure_case", "index"]].to_string(index=False))
 ```
 
-| Column | Failed rule | Value | Row |
-| --- | --- | --- | ---: |
-| transaction_id | Unique | `t3` | 2 |
-| transaction_id | Unique | `t3` | 3 |
-| amount | In allowed range | `-5.0` | 2 |
-| currency | One of INR, USD, GBP | `usd` | 2 |
+```output
+        column                       check failure_case  index
+transaction_id            field_uniqueness           t3      2
+transaction_id            field_uniqueness           t3      3
+        amount       in_range(0.01, 50000)         -5.0      2
+      currency isin(['INR', 'USD', 'GBP'])          usd      2
+```
 
 Every problem is reported, with the column, the rule it broke, the bad value and the row. A pipeline step that runs this and fails stops the batch from reaching training or features.
 
@@ -166,11 +167,11 @@ timed("duckdb", lambda: duckdb.sql("""
 
 On a shared 12-core laptop (pandas 2.3, Polars 2.0, DuckDB 2.0; exact times vary with machine load):
 
-| Engine | Time | Output groups |
-| --- | ---: | ---: |
-| pandas | 20.34 s | 3,392,259 |
-| Polars | 1.37 s | 3,392,259 |
-| DuckDB | 1.71 s | 3,392,259 |
+```output
+pandas  20.34 s   rows out: 3,392,259
+polars   1.37 s   rows out: 3,392,259
+duckdb   1.71 s   rows out: 3,392,259
+```
 
 All three produce the same 3.39 million groups. The order-of-magnitude gap comes from how they execute:
 
@@ -218,13 +219,20 @@ wc -l < data/train.csv
 cat data/train.csv.dvc | grep md5
 ```
 
-| Git/DVC evidence | Value |
-| --- | --- |
-| Current CSV line count | 4 |
-| `data-v1` line count | 3 |
-| Current content hash | `90eb2340927a54bba57cbf4e0ccae8d7` |
-| Earlier content hash | `fb1feeefc9465ac0e388686cac195ac7` |
-| Git stores | A small pointer to versioned data |
+```output
+--- what git stores: the pointer file
+outs:
+- md5: 90eb2340927a54bba57cbf4e0ccae8d7
+  size: 38
+  hash: md5
+  path: train.csv
+--- current data
+4
+--- after checking out data-v1
+3
+- md5: fb1feeefc9465ac0e388686cac195ac7
+  hash: md5
+```
 
 Git versions only the five-line pointer file. Checking out the `data-v1` tag restores the old pointer, and `dvc checkout` fetches the matching content from the cache or remote: the file goes back to its 3 lines (a header and two rows). The pair "git commit plus DVC hash" now names the code and the data together, which is exactly what [Experiment Tracking](/docs/mlops/experiment-tracking) needs a run to record.
 
@@ -274,14 +282,20 @@ print("now:\n", table.to_pandas().sort_values("user_id").to_string(index=False))
 print("as of version 0:\n", DeltaTable(path, version=0).to_pandas().sort_values("user_id").to_string(index=False))
 ```
 
-| Version | Operation | user_id | avg_7d |
-| ---: | --- | ---: | ---: |
-| 0 | Initial write | 42 | 31.0 |
-| 0 | Initial write | 7 | 12.0 |
-| 1 | Append | 9 | 250.0 |
-| 2 | Overwrite, current value | 42 | 48.5 |
-| 2 | Overwrite, current value | 7 | 12.0 |
-| 2 | Overwrite, current value | 9 | 250.0 |
+```output
+2 WRITE Overwrite
+1 WRITE Append
+0 WRITE ErrorIfExists
+now:
+  user_id  avg_7d
+       7    12.0
+       9   250.0
+      42    48.5
+as of version 0:
+  user_id  avg_7d
+       7    12.0
+      42    31.0
+```
 
 The overwrite at version 2 didn't destroy version 0: reading `version=0` returns the original two rows. A training run that records "features_table at version 0" can be reproduced exactly, months later, as long as old versions are retained.
 

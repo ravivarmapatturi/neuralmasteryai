@@ -57,11 +57,17 @@ Keep exploration flexible, then make each repeated step explicit: package the co
 
 A minimal, conventional layout for an ML project:
 
-<PenFlow ariaLabel="ML project package structure separating configuration, source code, tests, and environment files" rows={[
-  { steps: { title: 'Project metadata', lines: ['pyproject.toml · uv.lock'], tone: 'blue' } },
-  { steps: [{ title: 'src/fraud_model', lines: ['config · features · scoring · train'], tone: 'green' }, { title: 'tests', lines: ['one test file per module'], tone: 'purple' }] },
-  { steps: { title: 'configs', lines: ['per-environment overrides'], tone: 'orange' } },
-]} caption="The source package owns reusable behavior; tests and configuration stay easy to find." />
+- `fraud-model/`
+  - `pyproject.toml`: metadata, dependencies, tool settings
+  - `uv.lock`: exact versions of everything installed
+  - `src/fraud_model/`
+    - `__init__.py`
+    - `config.py`: typed settings
+    - `features.py`: pure feature functions
+    - `scoring.py`: glue: fetch features, call the model
+    - `train.py`: training entry point
+  - `tests/`: one test file per module
+  - `configs/`: per-environment overrides
 
 The **`src/` layout** means tests import the *installed* package rather than files that happen to be on the path, which catches packaging mistakes before anyone else does.
 
@@ -130,11 +136,11 @@ dev = [
 
 2. **A lock file** recording the exact version and hash of every package, including transitive dependencies, resolved from those ranges. `uv add scikit-learn` updates both files; the lock entry it wrote for scikit-learn begins:
 
-| Lock entry | Recorded value |
-| --- | --- |
-| Package | `scikit-learn` |
-| Version | `1.9.1` |
-| Source | Python package index |
+```toml
+name = "scikit-learn"
+version = "1.9.1"
+source = { registry = "https://pypi.org/simple" }
+```
 
 `uv sync` installs exactly what the lock file says, on any machine, in CI and in the Docker build. Upgrades become a deliberate, reviewable change: `uv lock --upgrade` (or `--upgrade-package numpy`), run the tests and the [model gate](/docs/mlops/cicd-and-ml-cicd#4-a-model-gate-that-accounts-for-noise), commit the new lock file.
 
@@ -214,11 +220,11 @@ def test_risk_band_never_silently_accepts_out_of_range(score):
 
 The third test earns its place. An earlier version of `risk_band` had no range check, and returned `"high"` for any score above 0.8, including impossible ones like 2.0 that only appear when something upstream is broken. Running the property test against that version, Hypothesis finds a counterexample and shrinks it to a simple one:
 
-| Test result | Value |
-| --- | --- |
-| Failure | Expected `ValueError`, but no exception was raised |
-| Counterexample | `score = 2.0` |
-| Failing test | `test_risk_band_never_silently_accepts_out_of_range` |
+```output
+E           Failed: DID NOT RAISE ValueError
+E               score=2.0,
+FAILED tests/test_features.py::test_risk_band_never_silently_accepts_out_of_range
+```
 
 **Mocks** replace slow or external dependencies (a feature store, a database, an LLM API) with stand-ins, so tests are fast, deterministic and runnable without network access. Because `score_user` receives its dependencies as arguments (section 2), the test simply passes fakes in and checks how they were used:
 
@@ -241,11 +247,11 @@ def test_score_user_uses_feature_store_and_model():
 
 The full suite, including a test that an environment variable overrides the config default, runs in under two seconds:
 
-| Test run | Result |
-| --- | --- |
-| Command | `uv run pytest -q` |
-| Tests passed | 8 |
-| Runtime | 1.75 seconds |
+```output
+$ uv run pytest -q
+........                                                                 [100%]
+8 passed in 1.75s
+```
 
 The usual shape is a **test pyramid**: many fast unit tests like these, fewer integration tests that run real components together (the preprocessing pipeline producing the model's expected input shape, the API with a real small model), and a handful of end-to-end tests that run the whole pipeline on a small fixture dataset. Mocks are for unit tests; an integration test that mocks everything tests nothing.
 
@@ -278,7 +284,10 @@ class ModelApiUser(HttpUser):
 
 Run headless for 30 seconds against the FastAPI service from [APIs & Model Serving](/docs/mlops/model-serving#3-a-production-shaped-service-with-fastapi), with two Uvicorn workers on a laptop, ramping to 50 users (Locust 2.47):
 
-Run Locust headless for 30 seconds with 50 users, ramping by 10 users per second:
+```output
+$ locust -f locustfile.py --headless --host http://127.0.0.1:8799 -u 50 -r 10 -t 30s --only-summary
+Type     Name           # reqs      # fails |    Avg     Min     Max    Med |   req/s  failures/s
+POST     /v1/predict      7347     0(0.00%) |     10       1     375      6 |  331.59        0.00
 
 ```bash
 locust -f locustfile.py --headless --host http://127.0.0.1:8799 -u 50 -r 10 -t 30s --only-summary

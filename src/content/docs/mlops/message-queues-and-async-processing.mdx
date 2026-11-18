@@ -114,12 +114,10 @@ for r in results:
     r.forget()
 ```
 
-| Measurement | Result |
-| --- | --- |
-| Enqueue time for 16 tasks | 13 ms |
-| Completion time with 4 workers | 2.0 s |
-| Total sequential work | 8 s |
-| Example result | Document 1 labeled `invoice` |
+```output
+16 tasks enqueued in 13 ms
+all 16 done after 2.0 s with 4 worker processes (16 x 0.5 s = 8 s of work); e.g. {'document_id': 1, 'label': 'invoice'}
+```
 
 The API would have answered in 13 milliseconds instead of 8 seconds, and four workers finished eight seconds of work in two. Adding workers adds throughput without touching the producer.
 
@@ -208,15 +206,18 @@ print("documents embedded:", sorted(map(int, r.smembers("embedded"))),
       "| pending now:", r.xpending("docs-to-embed", "embedders")["pending"])
 ```
 
-| Recovery event | Result |
-| --- | --- |
-| Documents 0 and 1 | Processed and acknowledged |
-| Documents 2 and 3 | Processed, then worker crashed before acknowledgement |
-| Documents 4 and 5 | Processed and acknowledged |
-| Pending before reclaim | 2 messages |
-| Reclaimed documents | 2 and 3; duplicate effects had no impact |
-| Final embedded set | 0, 1, 2, 3, 4, 5 |
-| Pending after reclaim | 0 messages |
+```output
+worker-a processed doc 0
+worker-a processed doc 1
+worker-b embedded doc 2, then crashed before acknowledging
+worker-b embedded doc 3, then crashed before acknowledging
+worker-a processed doc 4
+worker-a processed doc 5
+pending (delivered, never acknowledged): 2
+worker-a reclaimed doc 2 (duplicate, no effect)
+worker-a reclaimed doc 3 (duplicate, no effect)
+documents embedded: [0, 1, 2, 3, 4, 5] | pending now: 0
+```
 
 Every document was processed, none was lost to the crash, and the two duplicates did no harm because the effect was idempotent. If the effect had been "increment a counter" or "send an email", the redelivery would have double-counted or double-sent. Designing every consumer so a repeated message is harmless is the single most important rule of queue-based systems. Record processed message IDs, write results with keys that overwrite rather than append, or use the idempotency-key pattern from [Production Reliability](/docs/mlops/production-reliability#idempotency-and-distributed-locks).
 
@@ -266,10 +267,10 @@ for name, keys in [("key = user_id", users), ("key = merchant_id", merchants)]:
     print(f"{name:<18} busiest partition {max(shares):.0%} of traffic, quietest {min(shares):.0%}")
 ```
 
-| Partition key | Busiest share | Quietest share |
-| --- | ---: | ---: |
-| `user_id` | 17% | 16% |
-| `merchant_id` | 46% | 3% |
+```output
+key = user_id      busiest partition 17% of traffic, quietest 16%
+key = merchant_id  busiest partition 46% of traffic, quietest 3%
+```
 
 Keyed by user, six partitions share traffic almost evenly. Keyed by merchant, where a few large merchants dominate, one partition carries 46% of all traffic: adding consumers can't help, because that partition can only be read by one consumer at a time. Choose keys with many values of similar volume, key by the finest unit that needs ordering, and for unavoidable hot keys, split them (append a small bucket number to the key) at the cost of ordering across buckets.
 

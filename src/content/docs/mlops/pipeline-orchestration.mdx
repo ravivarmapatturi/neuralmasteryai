@@ -198,13 +198,15 @@ if __name__ == "__main__":
 
 The relevant log lines:
 
-| Event | Result |
-| --- | --- |
-| Fetch attempt 1 | Timed out; retry starts in 1 second |
-| Fetch attempt 2 | Timed out; retry starts in 1 second |
-| Fetch attempt 3 | Completed; 569 rows returned |
-| Feature task | Computed `features/2026-10-22.parquet` |
-| Second run | Fetch completed; feature task was cached |
+```output
+Task run 'fetch_rows-cd8' - Task run failed with exception: ConnectionError('upstream timed out') - Retry 1/3 will start 1 second(s) from now
+Task run 'fetch_rows-cd8' - Task run failed with exception: ConnectionError('upstream timed out') - Retry 2/3 will start 1 second(s) from now
+Task run 'fetch_rows-cd8' - Finished in state Completed()
+Task run 'build_features-a39' - computing features for 2026-10-22
+Flow run 'transparent-antelope' - 2026-10-22: 569 rows -> features/2026-10-22.parquet (fetch attempts: 3)
+Task run 'fetch_rows-d6d' - Finished in state Completed()
+Task run 'build_features-a43' - Finished in state Cached(type=COMPLETED)
+```
 
 The second run never printed "computing features": the task was skipped because its inputs matched a stored result.
 
@@ -295,19 +297,15 @@ What each part does:
 
 Running it locally with `airflow dags test retrain_classifier 2026-10-22` executes all four tasks in order in one process. The run succeeds and the gate logs:
 
-| Gate output | Value |
-| --- | --- |
-| Candidate decision | Pass |
-| Validation AUC | 0.9952 |
+```output
+candidate passes with AUC 0.9952
+```
 
 Raising `MIN_AUC` to `0.999` and running again shows the gate doing its job: `extract`, `validate` and `train` succeed, the gate fails once with no retries, and the run is marked failed:
 
-| Gate output | Value |
-| --- | --- |
-| Candidate decision | Fail |
-| Measured AUC | 0.9952 |
-| Required AUC | 0.999 |
-| Action | Do not register |
+```output
+ValueError: AUC 0.9952 below 0.999: not registering
+```
 
 The other commands you'll use day to day are `airflow tasks test retrain_classifier train 2026-10-22`, which runs one task in isolation for debugging, and `airflow backfill create --dag-id retrain_classifier --from-date 2026-10-01 --to-date 2026-10-07`, which queues a backfill.
 
@@ -347,11 +345,10 @@ if __name__ == "__main__":
     print("user_features:", result.output_for_node("user_features"))
 ```
 
-| Materialization output | Value |
-| --- | --- |
-| Successful | True |
-| User 42 feature | 48.5 |
-| User 7 feature | 12.0 |
+```output
+success: True
+user_features: {42: 48.5, 7: 12.0}
+```
 
 Because Dagster knows *what* each asset is rather than only *how* to run a step, it can answer questions a task graph can't easily answer: which assets are stale because their upstream data or their code changed, what the lineage of a model is, and which downstream assets a broken table affects. It also attaches data quality checks to assets directly. The cost is a different mental model, and less of the existing operator ecosystem than Airflow has.
 

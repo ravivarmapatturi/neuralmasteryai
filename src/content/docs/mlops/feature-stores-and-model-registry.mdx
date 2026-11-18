@@ -92,16 +92,18 @@ print("naive:\n", naive.sort_values("label_time").to_string(index=False))
 print("point-in-time:\n", pit[["user_id", "label_time", "is_fraud", "avg_txn_amount_7d"]].to_string(index=False))
 ```
 
-- naive:
--   user_id label_time  is_fraud  avg_txn_amount_7d
--        7 2026-10-03         0               15.5
--       42 2026-10-06         0              220.0
--       42 2026-10-10         1              220.0
-- point-in-time:
--   user_id label_time  is_fraud  avg_txn_amount_7d
--        7 2026-10-03         0               12.0
--       42 2026-10-06         0              48.5
--       42 2026-10-10         1              220.0
+```output
+naive:
+  user_id label_time  is_fraud  avg_txn_amount_7d
+       7 2026-10-03         0               15.5
+      42 2026-10-06         0              220.0
+      42 2026-10-10         1              220.0
+point-in-time:
+  user_id label_time  is_fraud  avg_txn_amount_7d
+       7 2026-10-03         0               12.0
+      42 2026-10-06         0              48.5
+      42 2026-10-10         1              220.0
+```
 
 Look at user 42's row on October 6. The naive join gave it 220.0, a value computed on October 9, after the fraud spree that the 220.0 reflects. In training, the model learns that a high 7-day average goes with this user, using a number from the future. In production, it will never have that number in time. This is **label leakage through time**, and models trained with it show excellent offline metrics that collapse on deployment.
 
@@ -185,8 +187,10 @@ user_features = FeatureView(
 
 `data/user_stats.parquet` holds the same five snapshots as section 2. Running `feast apply` registers the definitions and creates the online table:
 
-- Created feature view user_features
-- Created sqlite table fraud_user_features
+```output
+Created feature view user_features
+Created sqlite table fraud_user_features
+```
 
 Now use the store from both sides:
 
@@ -211,11 +215,13 @@ online = store.get_online_features(features=["user_features:avg_txn_amount_7d"],
 print(online)
 ```
 
--  user_id           event_timestamp  is_fraud  avg_txn_amount_7d
--        7 2026-10-03 00:00:00+00:00         0               12.0
--       42 2026-10-06 00:00:00+00:00         0               48.5
--       42 2026-10-10 00:00:00+00:00         1              220.0
-- &#123;'user_id': [42], 'avg_txn_amount_7d': [220.0]&#125;
+```output
+ user_id           event_timestamp  is_fraud  avg_txn_amount_7d
+       7 2026-10-03 00:00:00+00:00         0               12.0
+      42 2026-10-06 00:00:00+00:00         0               48.5
+      42 2026-10-10 00:00:00+00:00         1              220.0
+{'user_id': [42], 'avg_txn_amount_7d': [220.0]}
+```
 
 The training frame matches the hand-written as-of join exactly: user 42's October 6 row gets 48.5, not the future 220.0. The online lookup returns 220.0, the latest value, because that's what the model should see if user 42 transacts today. One definition produced both.
 
