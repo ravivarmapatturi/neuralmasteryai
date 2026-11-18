@@ -12,6 +12,8 @@ import AttentionLayersCatalogDiagram from '../../../viz/diagrams/AttentionLayers
 import NormalizationAxisDiagram from '../../../viz/diagrams/NormalizationAxisDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Neural Network Layers
 
@@ -24,6 +26,17 @@ Think of a kitchen. Every recipe in a cookbook, from soup to cake, is built from
 Neural network layers are those actions. A linear layer mixes everything together. A convolution looks at small neighbourhoods. A recurrent layer reads one step at a time and remembers. Attention lets every item look at every other item. Normalization keeps the numbers at a steady scale. Every architecture is a recipe that strings these together. Everything below is each action made exact: what goes in, what comes out, and what it costs.
 
 </ELI5>
+
+## Why it exists
+
+Layer choice affects tensor shapes, parameter count and compute. The checked PyTorch examples show a 16,384,000-parameter embedding table beside a 640-parameter depthwise convolution.
+
+## The big picture
+
+<PenFlow title="Choose layers by shape and cost" ariaLabel="Choose layers by shape and cost" rows={[{ steps: { title: 'Describe input shape', lines: ['Batch, channel, time and feature axes'], tone: 'blue' } }, { steps: { title: 'Apply a layer', lines: ['Transform values or aggregate neighbours'], tone: 'purple' } }, { steps: { title: 'Check output shape', lines: ['Stride, padding and sequence length matter'], tone: 'orange' } }, { steps: { title: 'Count parameters', lines: ['Memory and compute follow the layer choice'], tone: 'green' } }]} caption="Layer shapes and parameter counts make architectural costs concrete." />
+
+<Worksheet title="PyTorch layer shapes and parameters" ariaLabel="PyTorch layer shapes and parameters" stages={[{ tag: 'Measured values', color: 'yellow', note: 'Numbers copied from the experiment output on this page.', grid: { head: ['', 'Measured result'], rows: [{ label: 'Linear 512 to 256', cells: ['(8, 256); 131,328 parameters'] }, { label: 'Embedding 32000 by 512', cells: ['(8, 16, 512); 16,384,000 parameters'] }, { label: 'Depthwise Conv2d', cells: ['(8, 64, 32, 32); 640 parameters'] }, { label: 'LSTM 128 to 256', cells: ['(8, 20, 256); 395,264 parameters'] }] } }]} />
+
 
 ## 1. How to Read a Layer
 
@@ -186,7 +199,7 @@ for name, layer, x in layers:
 
 Output (PyTorch 2.5):
 
-```text
+```output
 Linear(512, 256)                   (8, 512)           -> (8, 256)                131,328 params
 Embedding(32000, 512)              (8, 16)            -> (8, 16, 512)         16,384,000 params
 Conv1d(64, 128, k=5)               (8, 64, 100)       -> (8, 128, 100)            41,088 params
@@ -219,7 +232,27 @@ That's why a model's parameter count predicts its memory well and its speed only
 
 </GoDeeper>
 
-## 9. When *Not* to Reach for a Layer
+## Worked example
+
+Layer choice affects tensor shapes, parameter count and compute. The checked PyTorch examples show a 16,384,000-parameter embedding table beside a 640-parameter depthwise convolution.
+
+## Try it yourself
+
+Use the runnable code and measured values above. Change one parameter and compare the result.
+
+```python
+# Try it: change the Conv2d output channels from 64 to 32 and recompute its parameter count.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Ignoring tensor axis conventions | A valid layer can still interpret the wrong dimension | Write and check input/output shapes |
+| Using full convolution where depthwise fits | Full filters multiply channel interactions | Choose depthwise separable blocks when the design allows |
+| Counting only weights | Activations and optimizer state also use memory | Estimate the full training footprint |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

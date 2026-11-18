@@ -7,6 +7,8 @@ description: "What training actually optimizes: losses as negative log-likelihoo
 import RegressionLossesDiagram from '../../../viz/diagrams/RegressionLossesDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Loss Functions
 
@@ -21,6 +23,17 @@ You'll learn to throw differently depending on the coach. Under the first, you'l
 A loss function is the coach. The network learns whatever the coach rewards, not what you hoped it would learn. Everything below is the major coaches, made exact, and what each one teaches.
 
 </ELI5>
+
+## Why it exists
+
+Training minimizes the loss we choose, so its assumptions decide what counts as an expensive mistake. On the six-value example, MSE chooses 26.67 while MAE chooses 12.68 because the outlier affects squared error much more.
+
+## The big picture
+
+<PenFlow title="Choose the errors training should avoid" ariaLabel="Choose the errors training should avoid" rows={[{ steps: { title: 'Assume a target model', lines: ['Noise assumptions lead to likelihoods'], tone: 'blue' } }, { steps: { title: 'Choose a penalty', lines: ['Outliers and asymmetric costs change the optimum'], tone: 'purple' } }, { steps: { title: 'Compute gradients', lines: ['The loss decides how strong each correction is'], tone: 'orange' } }, { steps: { title: 'Validate the goal', lines: ['Measure the behaviour the task needs'], tone: 'green' } }]} caption="A loss function encodes which prediction errors matter most." />
+
+<Worksheet title="Losses choose different constants" ariaLabel="Losses choose different constants" stages={[{ tag: 'Measured values', color: 'yellow', note: 'Numbers copied from the experiment output on this page.', grid: { head: ['', 'Loss'], rows: [{ label: 'MSE', cells: ['26.67'] }, { label: 'MAE', cells: ['12.68'] }, { label: 'Huber, delta 1', cells: ['12.50'] }, { label: 'Quantile 0.9', cells: ['99.98'] }, { label: 'Cross-entropy gradient', cells: ['-0.9975'] }, { label: 'Squared-error gradient', cells: ['-0.0049'] }] } }]} />
+
 
 ## 1. Where Losses Come From
 
@@ -106,7 +119,7 @@ for name, fn in [("cross-entropy", lambda p: -torch.log(p)), ("squared error", l
     print(f"{name:13s} dLoss/dlogit = {g.item():+.4f}")
 ```
 
-```text
+```output
 MSE           best constant =  26.67
 MAE           best constant =  12.68
 Huber (d=1)   best constant =  12.50
@@ -248,7 +261,27 @@ A loss encodes which mistakes you consider worse. MSE says big errors are dispro
 | Embeddings and retrieval | InfoNCE with in-batch negatives | Few classes with many examples each: triplet loss with hard negatives |
 | Segmentation | Cross-entropy plus Dice | Unequal error costs: Tversky |
 
-## 8. When *Not* to Use Each
+## Worked example
+
+Training minimizes the loss we choose, so its assumptions decide what counts as an expensive mistake. On the six-value example, MSE chooses 26.67 while MAE chooses 12.68 because the outlier affects squared error much more.
+
+## Try it yourself
+
+Use the runnable code and measured values above. Change one parameter named below and compare the result.
+
+```python
+# Try it: change the outlier from 100 to 30 and recompute the four best constants.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Using MSE with large outliers | Squared errors give outliers disproportionate weight | Try MAE or Huber when robust estimates matter |
+| Using accuracy as the training loss | It has no useful gradient almost everywhere | Train with cross-entropy and choose a threshold separately |
+| Ignoring asymmetric costs | A symmetric loss targets a mean or median | Use quantile or task-weighted loss |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

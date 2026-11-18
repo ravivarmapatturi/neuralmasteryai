@@ -7,6 +7,8 @@ description: "The three remaining training-loop decisions: how weights start (Xa
 import LrSchedulesDiagram from '../../../viz/diagrams/LrSchedulesDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Initialization, Regularization and Learning-Rate Schedules
 
@@ -21,6 +23,17 @@ During rehearsal, the band could memorize one exact performance of each song, ev
 And when tuning, you turn the knobs in big moves at first, then smaller and smaller ones as you get close. That's a learning-rate schedule. Everything below is those three habits made exact.
 
 </ELI5>
+
+## Why it exists
+
+A deep network can lose or amplify its signal before training begins, then overfit or destabilize as updates continue. After 50 layers, He initialization leaves ReLU activation standard deviation at 0.932 in the printed experiment.
+
+## The big picture
+
+<PenFlow title="Keep signals and updates in range" ariaLabel="Keep signals and updates in range" rows={[{ steps: { title: 'Initialize weights', lines: ['Set variance for the activation'], tone: 'blue' } }, { steps: { title: 'Control fit', lines: ['Use penalties, dropout or data'], tone: 'purple' } }, { steps: { title: 'Schedule the step size', lines: ['Warm up, hold, then decay'], tone: 'orange' } }, { steps: { title: 'Measure over depth', lines: ['Check signal and gradient scales'], tone: 'green' } }]} caption="Initialization sets the starting scale; regularization and schedules guide later learning." />
+
+<Worksheet title="Activation scale after 50 layers" ariaLabel="Activation scale after 50 layers" stages={[{ tag: 'Measured values', color: 'yellow', note: 'Numbers copied from the experiment output on this page.', grid: { head: ['', 'Measured result'], rows: [{ label: 'tanh small normal', cells: ['activation std 5.10e-33'] }, { label: 'tanh Xavier', cells: ['activation std 9.66e-02'] }, { label: 'ReLU Xavier', cells: ['activation std 2.32e-08'] }, { label: 'ReLU He', cells: ['activation std 9.32e-01'] }] } }]} />
+
 
 ## 1. Why Initialization Matters
 
@@ -95,7 +108,7 @@ for s in (0, 250, 500, 2500, 5000, 7500, 9999):
     print(f"step {s:5d}: learning rate {lr_at(s):.1e}")
 ```
 
-```text
+```output
 tanh + N(0, 0.01^2)      activation std after 50 layers: 5.10e-33
 tanh + Xavier 1/sqrt(n)  activation std after 50 layers: 9.66e-02
 tanh + He sqrt(2/n)      activation std after 50 layers: 5.54e-01
@@ -202,7 +215,27 @@ That's why both phases matter. Too short a high phase, and the region found is w
 
 </GoDeeper>
 
-## 6. When *Not* to Use Each
+## Worked example
+
+A deep network can lose or amplify its signal before training begins, then overfit or destabilize as updates continue. After 50 layers, He initialization leaves ReLU activation standard deviation at 0.932 in the printed experiment.
+
+## Try it yourself
+
+Use the runnable code and measured values above. Change one parameter and compare the result.
+
+```python
+# Try it: replace He initialization with Xavier for ReLU and compare the final activation spread.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Using one initialization for every activation | ReLU and tanh have different variance behaviour | Match Xavier or He to the activation and architecture |
+| Applying dropout at inference | It changes predictions and variance | Use evaluation mode |
+| Decaying the learning rate before warmup | Early updates can be unstable | Warm up before the planned decay |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

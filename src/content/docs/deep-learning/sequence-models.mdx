@@ -14,6 +14,8 @@ import Seq2SeqDiagram from '../../../viz/diagrams/Seq2SeqDiagram';
 import Seq2SeqAttentionDiagram from '../../../viz/diagrams/Seq2SeqAttentionDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Sequence Models
 
@@ -24,6 +26,17 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 Most models this site covers look at one snapshot at a time — a row of a spreadsheet, one image — and it wouldn't matter if you shuffled the rows first. A sequence model can't work that way, because the order *is* the information: "dog bites man" and "man bites dog" use the exact same words. Everything below is the history of how the field built models that read left-to-right (or through-time) and actually remember what came before, from a simple "carry a running summary forward" idea (RNNs) through the fixes for that idea's real, mathematical failure mode (LSTM/GRU) up to the architecture — Attention — that ended up not needing a running summary at all.
 
 </ELI5>
+
+## Why it exists
+
+Sequence meaning depends on order, and recurrent networks must carry useful gradients across many steps. At 50 steps, the LSTM gradient is 3.3e-5 while the plain RNN gradient is 2.9e-13 in this experiment.
+
+## The big picture
+
+<PenFlow title="Carry information across time" ariaLabel="Carry information across time" rows={[{ steps: { title: 'Read current input', lines: ['Combine it with the previous state'], tone: 'blue' } }, { steps: { title: 'Update memory', lines: ['Gates control what to keep or forget'], tone: 'purple' } }, { steps: { title: 'Pass gradients backward', lines: ['Long products can vanish or explode'], tone: 'orange' } }, { steps: { title: 'Use attention when needed', lines: ['Create direct paths across distant steps'], tone: 'green' } }]} caption="Recurrent gates slow gradient decay; attention creates shorter paths across a sequence." />
+
+<Worksheet title="Gradient reach at 50 steps" ariaLabel="Gradient reach at 50 steps" stages={[{ tag: 'Measured values', color: 'yellow', note: 'Numbers copied from the experiment output on this page.', grid: { head: ['', 'Cell'], rows: [{ label: 'RNN', cells: ['2.9e-13'] }, { label: 'GRU', cells: ['1.0e-10'] }, { label: 'LSTM', cells: ['3.3e-05'] }] } }]} />
+
 
 ## 1. What Is Sequential Data?
 
@@ -227,7 +240,7 @@ for T in (1, 5, 10, 25, 50, 100):
     print(f"T = {T:3d}   RNN {first_input_influence(rnn, T):.1e}   GRU {first_input_influence(gru, T):.1e}   LSTM {first_input_influence(lstm, T):.1e}")
 ```
 
-```text
+```output
 gradient of the last hidden state with respect to the first input
 T =   1   RNN 2.5e+00   GRU 1.1e+00   LSTM 4.0e-01
 T =   5   RNN 1.4e-01   GRU 1.0e-01   LSTM 1.1e-01
@@ -305,7 +318,27 @@ Since 2023 a family of models has tried to get both. **State-space models** such
   explanation="Attention needs the keys and values of every previous token at each step, so the cache grows linearly with what has been generated. A recurrent or state-space model compresses everything into a fixed-size state, so its memory per step is constant, which is exactly why these models are attractive for very long sequences."
 />
 
-## 10. When *Not* to Use a Recurrent Network
+## Worked example
+
+Sequence meaning depends on order, and recurrent networks must carry useful gradients across many steps. At 50 steps, the LSTM gradient is 3.3e-5 while the plain RNN gradient is 2.9e-13 in this experiment.
+
+## Try it yourself
+
+Use the runnable code and measured values above. Change one parameter named below and compare the result.
+
+```python
+# Try it: change the tested sequence length from 50 to 25 and compare gradient reach.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Expecting a plain RNN to remember far back | Its gradient shrinks exponentially with sequence length | Use gated cells or attention for long dependencies |
+| Treating the LSTM gradient as constant | It still decays, only more slowly | Measure the task’s needed context length |
+| Shuffling sequence order | Order carries meaning | Preserve temporal order in inputs and validation |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

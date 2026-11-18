@@ -7,6 +7,8 @@ description: "Why networks need a nonlinearity, the four properties that decide 
 import ActivationFunctionsDiagram from '../../../viz/diagrams/ActivationFunctionsDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Activation Functions
 
@@ -21,6 +23,17 @@ An activation function is each person's rule for reacting. "Stay silent unless t
 But the rule also decides how well the person can learn from feedback. If someone's rule makes them deaf to small changes, nobody can correct them. Everything below is about choosing rules that bend the message *and* stay responsive to correction.
 
 </ELI5>
+
+## Why it exists
+
+A network needs nonlinear steps, but the activation also controls how much gradient reaches earlier layers. This page compares saturation, dead units, smooth gates and softmax using the printed slopes and the overflow example.
+
+## The big picture
+
+<PenFlow title="Shape signals, preserve learning" ariaLabel="Shape signals, preserve learning" rows={[{ steps: { title: 'Input score', lines: ['Each neuron produces a raw value'], tone: 'blue' } }, { steps: { title: 'Apply a nonlinearity', lines: ['Choose its output shape and slope'], tone: 'purple' } }, { steps: { title: 'Backpropagate', lines: ['The slope scales the gradient'], tone: 'orange' } }, { steps: { title: 'Check failure modes', lines: ['Dead units and overflow need separate fixes'], tone: 'green' } }]} caption="An activation bends the forward signal and controls the gradient passed backward." />
+
+<Worksheet title="Activation values and slopes" ariaLabel="Activation values and slopes" stages={[{ tag: 'Measured values', color: 'yellow', note: 'Numbers copied from the experiment output on this page.', grid: { head: ['', 'Measured result'], rows: [{ label: 'bias shift -2', cells: ['12.9% units silent'] }, { label: 'bias shift -5', cells: ['100.0% units silent'] }, { label: 'large scores', cells: ['stable softmax: 0.0900 / 0.2447 / 0.6652'] }] } }]} />
+
 
 <ActivationFunctionsDiagram />
 
@@ -174,7 +187,7 @@ stable = np.exp(scores - scores.max()) / np.exp(scores - scores.max()).sum()
 print("naive softmax:", naive, "  stable softmax:", stable.round(4))
 ```
 
-```text
+```output
 z:               [-3.0, -1.0, 0.0, 1.0, 3.0]
 sigmoid    f(z): [0.047 0.269 0.5   0.731 0.953]   f'(z): [0.045 0.197 0.25  0.197 0.045]
 tanh       f(z): [-0.995 -0.762  0.     0.762  0.995]   f'(z): [0.01 0.42 1.   0.42 0.01]
@@ -221,7 +234,27 @@ It also explains a visible difference in the [Neural Network Fundamentals](/docs
 
 The practical defaults: **ReLU** for CNNs and plain MLPs, **SwiGLU** (or GELU) for transformers, **sigmoid** for a binary output, **softmax** for a multi-class output, **identity** for regression outputs.
 
-## 8. When *Not* to Use Each
+## Worked example
+
+A network needs nonlinear steps, but the activation also controls how much gradient reaches earlier layers. This page compares saturation, dead units, smooth gates and softmax using the printed slopes and the overflow example.
+
+## Try it yourself
+
+Use the runnable code and measured values above. Change one parameter named below and compare the result.
+
+```python
+# Try it: replace ReLU with LeakyReLU and compare the negative-input slopes.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Using sigmoid deep in a network | Its saturated slopes shrink gradients | Use ReLU, GELU or SiLU in hidden layers |
+| Using ReLU with strongly negative bias | A dead unit has zero gradient | Use suitable initialization or a small negative slope |
+| Exponentiating large logits directly | Exponentials overflow | Subtract the largest score before softmax |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

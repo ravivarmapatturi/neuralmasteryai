@@ -13,6 +13,8 @@ import DepthwiseSeparableConvDiagram from '../../../viz/diagrams/DepthwiseSepara
 import CnnVsVitDiagram from '../../../viz/diagrams/CnnVsVitDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Convolutional Neural Networks
 
@@ -27,6 +29,17 @@ A convolution is that magnifying glass. A small pattern detector, a few pixels w
 Everything below is that idea made exact: what the detector computes, how big its output is, and why sliding one small detector beats connecting every pixel to everything.
 
 </ELI5>
+
+## Why it exists
+
+Images have local structure and repeated patterns, so sharing a small filter can replace a huge dense mapping. A 3×3 convolution in the page’s example uses 1,792 weights instead of a dense layer’s billions.
+
+## The big picture
+
+<PenFlow title="Reuse local image patterns" ariaLabel="Reuse local image patterns" rows={[{ steps: { title: 'Slide a small filter', lines: ['Look for the same pattern at each location'], tone: 'blue' } }, { steps: { title: 'Build feature maps', lines: ['Each channel detects a learned feature'], tone: 'purple' } }, { steps: { title: 'Grow receptive fields', lines: ['Stack or pool to combine nearby evidence'], tone: 'orange' } }, { steps: { title: 'Reduce cost', lines: ['Weight sharing avoids a dense image mapping'], tone: 'green' } }]} caption="Convolution reuses each filter across the image, cutting parameters while preserving location." />
+
+<Worksheet title="Count convolution weights" ariaLabel="Count convolution weights" stages={[{ tag: 'Measured values', color: 'yellow', note: 'Numbers copied from the experiment output on this page.', grid: { head: ['', 'Layer'], rows: [{ label: 'Dense image mapping', cells: ['483,385,147,392'] }, { label: '3×3 convolution, 64 filters', cells: ['1,792'] }] } }]} />
+
 
 ## 1. Two Facts About Images
 
@@ -104,7 +117,7 @@ conv = 3 * 3 * 3 * 64 + 64                                # 64 filters of 3x3x3,
 print(f"224x224x3 -> 224x224x64: dense {dense:,} weights, 3x3 conv {conv:,} weights")
 ```
 
-```text
+```output
 [[ 0  0  3  3  0 -3]
  [ 0  0  4  4  0 -4]
  [ 0  0  4  4  0 -4]
@@ -181,7 +194,7 @@ for name, model in models.items():
     print(f"{name}: {params:5,} parameters   test accuracy {acc:.3f}   shifted 2px {acc_shift:.3f}")
 ```
 
-```text
+```output
 MLP: 4,810 parameters   test accuracy 0.972   shifted 2px 0.165
 CNN: 5,130 parameters   test accuracy 0.985   shifted 2px 0.954
 ```
@@ -271,7 +284,27 @@ The **Vision Transformer** (ViT; Dosovitskiy et al., 2020) cuts the image into 1
 
 The result today is a mix. Transformers and hybrids dominate large-scale vision and vision-language models, where data is plentiful. CNNs remain strong and often preferable for small datasets, real-time and on-device inference, and dense prediction at high resolution, where attention's cost grows with the square of the number of patches. And, as ConvNeXt showed, the gap between the two is smaller than the early benchmarks suggested once both are trained with the same care.
 
-## 9. When *Not* to Use a CNN
+## Worked example
+
+Images have local structure and repeated patterns, so sharing a small filter can replace a huge dense mapping. A 3×3 convolution in the page’s example uses 1,792 weights instead of a dense layer’s billions.
+
+## Try it yourself
+
+Use the runnable code and measured values above. Change one parameter and compare the result.
+
+```python
+# Try it: change the convolution output channels from 64 to 32 and recompute weights.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Ignoring stride and padding | Feature maps shrink or shift unexpectedly | Calculate output dimensions before stacking layers |
+| Replacing convolution with a dense image map | Parameter count explodes | Share local filters across positions |
+| Assuming pooling preserves all detail | Downsampling loses location precision | Use it only when the task tolerates that loss |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
