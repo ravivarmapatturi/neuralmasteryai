@@ -1,0 +1,241 @@
+---
+title: "Types of RAG"
+sidebar_position: 6.2
+description: "Nine kinds of retrieval-augmented generation, from naive to agentic: what each one changes in the pipeline, which documents it suits, and what it costs."
+---
+
+import RagTypesExplorer from '../../../viz/diagrams/RagTypesExplorer';
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PenFlow from '../../../components/notebook/PenFlow';
+
+# Types of RAG
+
+<ELI5>
+
+Every RAG system answers a question by first looking things up and then writing an answer from what it found. The types differ in *how* they look things up. The simplest one asks a single question of a single index and trusts the first results. Better ones search two ways at once, double-check what came back, rewrite the question when the first search misses, or plan a whole sequence of searches like a researcher would. Each step up fixes a specific way the simple version fails, and each one costs more time and money per question. Picking a type means matching that cost to what your documents and questions actually need.
+
+</ELI5>
+
+## Why it exists
+
+The [RAG page](/docs/llms-genai/rag) builds one pipeline: chunk, embed, retrieve, rerank, generate. In practice teams hit the limits of that pipeline in predictable ways. Exact product codes don't match in vector search. A chunk cut out of a contract loses the name of the company it is about. A question like "what are the main themes across all these reports?" has no single chunk that answers it. A model happily answers from chunks that have nothing to do with the question.
+
+Each of those failures produced a named variant. The research survey by Gao et al. groups them into three stages (naive, advanced and modular RAG), but in daily work it is more useful to know the nine concrete types below and the one failure each of them fixes.
+
+## The big picture
+
+Watch the explorer step through all nine types, or click one. The dot is a single question travelling through the pipeline. Dashed purple boxes are work done once when documents are indexed; solid blue boxes run on every question; a red loop means the system can go back and try again before it answers.
+
+<RagTypesExplorer />
+
+The same nine types, side by side:
+
+| Type | What it adds | Best for | LLM calls per question |
+| --- | --- | --- | --- |
+| Naive | One embedding search | Clean prose, simple lookups | 1 |
+| Hybrid | Keyword search beside vector search | Product codes, names, IDs, legal terms | 1 |
+| Reranked | A second, more careful scoring pass | Large corpora where the right chunk is "somewhere in the top 50" | 1 (plus a reranker model) |
+| Contextual | A short summary of the source glued onto each chunk | Long documents whose chunks lose meaning alone (contracts, reports) | 1 (plus 1 per chunk at index time) |
+| HyDE | Searches with a drafted answer instead of the question | Short questions against long technical text | 2 |
+| GraphRAG | A knowledge graph and community summaries built at index time | "Across the whole corpus" and multi-hop questions | 1 to several (plus a costly index build) |
+| Corrective | A grader that checks retrieved chunks, then retries | Corpora with gaps, where bad retrieval is common | 2 to 3 |
+| Self-RAG | A model trained to decide when to retrieve and to critique itself | Mixed questions where some need no retrieval at all | 1 model, several passes |
+| Agentic | An agent that plans searches and uses tools in a loop | Open research questions across many sources | 3 to 10 or more |
+
+## The types, one by one
+
+### 1. Naive RAG
+
+Embed the question, take the top few chunks from a vector index, and put them in the prompt. This is the version in most first tutorials, and for clean, well-written documents with straightforward questions it is often good enough.
+
+It fails in two common ways. Embedding models encode meaning, not spelling, so an error code like `E-4021` or a part number has almost no "meaning" to match on. And it trusts whatever comes back: if the top chunks are irrelevant, the model still answers from them.
+
+### 2. Hybrid RAG
+
+Run a keyword search (usually BM25) and a vector search side by side, then merge the two ranked lists. The usual merge is reciprocal rank fusion: each document scores the sum of `1 / (60 + rank)` over the lists it appears in, so a document that both searches rank highly rises to the top without needing their raw scores to be comparable.
+
+This is the single most common upgrade in production, because it fixes the exact-term problem at almost no extra cost per question. The price is running and syncing two indexes.
+
+### 3. Reranked RAG
+
+Retrieve generously (say the top 50), then rescore each candidate with a cross-encoder: a model that reads the question and the chunk *together* and outputs one relevance score. Keep the best five for the prompt.
+
+A first-stage retriever compares a question vector with chunk vectors computed separately, which is fast but rough. The cross-encoder is far more accurate because it sees both texts at once, but it is too slow to run on the whole corpus. Using it only on a short list gets most of its accuracy at a fraction of the cost. It adds latency proportional to the number of candidates.
+
+### 4. Contextual RAG
+
+At index time, before embedding each chunk, ask an LLM to write one or two sentences placing the chunk in its document ("This section is from Acme's 2024 annual report and covers revenue by region"), and prepend that to the chunk. Index the enriched chunk for both vector and keyword search.
+
+A chunk saying "revenue grew 3% over the previous quarter" is useless on its own: which company, which quarter? Anthropic's write-up of this technique reported large drops in failed retrievals, especially combined with hybrid search and reranking. The cost moves to indexing: one LLM call per chunk, paid again whenever documents change.
+
+### 5. HyDE (hypothetical document embeddings)
+
+Ask the LLM to write a plausible answer to the question first, without retrieval, then embed *that draft* and search with it. The draft is never shown to the user; it only steers the search.
+
+Questions are short and phrased differently from the documents that answer them. A drafted answer looks like the documents, so it lands closer to them in embedding space. The risk is a confidently wrong draft that pulls the search toward the wrong topic, and it doubles the LLM calls per question.
+
+### 6. GraphRAG
+
+At index time, use an LLM to extract entities and the relationships between them, build a graph, group it into communities of closely linked entities, and write a summary for each community. At question time, answer from the relevant community summaries (for broad questions) or by following links between entities (for multi-hop questions).
+
+No chunk answers "what are the main risks mentioned across these 400 reports?", because the answer is spread over all of them. Community summaries are a precomputed answer to that kind of question. Microsoft's open-source GraphRAG is the reference implementation. The graph is expensive to build and must be rebuilt or patched as the documents change, so it pays off for fairly stable corpora that get many broad questions.
+
+### 7. Corrective RAG (CRAG)
+
+After retrieval, a lightweight grader checks whether the chunks are actually relevant to the question. If they are, answer. If they are not, rewrite the question, search more widely (including web search in the original paper), or both, then answer.
+
+Naive RAG has no way to notice that it retrieved the wrong thing. The grader adds that check for the price of one extra model call per question, plus the retries when retrieval was poor.
+
+### 8. Self-RAG
+
+Train the language model itself to emit special reflection tokens while it writes: whether it needs to retrieve at all, whether a retrieved passage is relevant, and whether each part of its answer is supported by the passage. Retrieval and checking happen inside generation rather than in a separate pipeline.
+
+Questions like "say hello in French" need no retrieval, and questions needing several facts may need retrieval more than once. Self-RAG lets the model decide. The catch is that it needs a model trained to produce those tokens; you cannot get it from an off-the-shelf model with a prompt alone.
+
+### 9. Agentic RAG
+
+Give an agent search, SQL and other tools and let it plan: search, read, decide what is still missing, search again with a better query, and stop when it has enough. Retrieval becomes a step the agent chooses, any number of times, from any source.
+
+This handles open research questions that no fixed pipeline can, such as comparing several products across their documentation and pricing pages. It is also the most expensive and least predictable type: the number of LLM calls, the latency and the cost all vary from question to question. See [Agent Architectures](/docs/agents/agent-architectures) for how the planning loop itself works.
+
+## Choosing a type
+
+Start from the simplest type and only add a mechanism when you can name the failure it fixes:
+
+<PenFlow ariaLabel="Choosing a RAG type: start naive, add hybrid for exact terms, reranking for ordering, contextual for lost meaning, graph for corpus-wide questions, corrective or agentic for retrieval that misses" title="Add one fix at a time" rows={[
+  { steps: { title: 'Start: naive RAG', lines: ['Measure retrieval and answers on real questions'], tone: 'blue' } },
+  { steps: [
+    { title: 'Misses exact names or codes?', lines: ['Add keyword search: hybrid'], tone: 'green' },
+    { title: 'Right chunk ranked too low?', lines: ['Add a reranker'], tone: 'green' },
+  ] },
+  { steps: [
+    { title: 'Chunks lose their meaning?', lines: ['Add context to chunks'], tone: 'amber' },
+    { title: 'Questions span the whole corpus?', lines: ['Consider GraphRAG'], tone: 'amber' },
+  ] },
+  { steps: { title: 'Retrieval often irrelevant or needs several steps?', lines: ['Add a grader (corrective) or an agent loop'], tone: 'red' } },
+]} />
+
+Most production systems end up as **hybrid + reranked + contextual**, with a corrective check or an agent loop added only for the question types that need it.
+
+## Worked example
+
+Three teams, three corpora, counted per question:
+
+| Corpus and questions | Type chosen | Why | LLM calls per question |
+| --- | --- | --- | --- |
+| A support knowledge base; users paste error codes like `E-4021` | Hybrid + reranked | Codes need keyword match; 10,000 articles need good ordering | 1 |
+| 300 long legal contracts; "what is the termination notice in the Acme contract?" | Contextual + hybrid | A clause chunk alone doesn't say which contract it is from | 1 (plus 1 per chunk once, at indexing) |
+| Analyst asks "what themes recur across all 2025 customer interviews?" | GraphRAG | No single chunk holds a cross-corpus answer | 1 to several |
+
+Suppose the support base has 40,000 chunks and contracts produce 25,000. Contextual indexing for the contracts costs 25,000 LLM calls once, and again for every edited contract. For the support base, the same step would cost 40,000 calls but would fix little, because each support article is short and self-contained. The cost of a type depends on the corpus, not just on the type.
+
+## Try it yourself
+
+The demo below has four tiny documents and one question about an error code. The "dense" search gives each known word a small meaning vector, the way an embedding model works, so the rare code `E-4021` carries no meaning at all. Run it and see which search finds the document that actually answers the question.
+
+<RunnableCode code={`import math
+from collections import Counter
+
+docs = {
+    "D1": "Printer shows error E-4021 when the paper tray is empty",
+    "D2": "How to fix common printer problems and paper jams",
+    "D3": "Error codes explained: what a printer error usually means",
+    "D4": "Refill the paper tray before printing a large job",
+}
+query = "what does E-4021 mean"
+
+def words(text):
+    return [w.strip(".:,").lower() for w in text.split()]
+
+# "Dense" stand-in: each known word has a meaning vector (meaning, printer, paper).
+# Like a real embedding model, it has no special meaning for a rare code like
+# "E-4021", so the code contributes nothing.
+MEANING = {
+    "mean": (1, 0, 0), "means": (1, 0, 0), "explained": (1, 0, 0), "what": (0.5, 0, 0),
+    "error": (0.6, 0.6, 0), "codes": (0.6, 0.4, 0), "printer": (0, 1, 0),
+    "fix": (0.3, 0.6, 0), "problems": (0.3, 0.6, 0), "paper": (0, 0.3, 1), "tray": (0, 0.3, 1),
+}
+def embed(text):
+    v = [0.0, 0.0, 0.0]
+    for w in words(text):
+        for i, x in enumerate(MEANING.get(w, (0, 0, 0))):
+            v[i] += x
+    return v
+
+def cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na, nb = math.sqrt(sum(x * x for x in a)), math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+# Keyword (BM25-style) score: rare words that match count most
+N = len(docs)
+df = Counter(w for d in docs.values() for w in set(words(d)))
+def keyword(q, d):
+    dw = Counter(words(d))
+    return sum(dw[w] * math.log((N + 1) / (df[w] + 0.5)) for w in words(q) if w in dw)
+
+dense = sorted(docs, key=lambda k: -cosine(embed(query), embed(docs[k])))
+sparse = sorted(docs, key=lambda k: -keyword(query, docs[k]))
+
+# Hybrid: reciprocal rank fusion, score = sum of 1 / (60 + rank)
+rrf = Counter()
+for ranking in (dense, sparse):
+    for rank, doc in enumerate(ranking, start=1):
+        rrf[doc] += 1 / (60 + rank)
+hybrid = [d for d, _ in rrf.most_common()]
+
+for name, ranking in (("Naive (dense only)", dense), ("Keyword only", sparse), ("Hybrid (RRF)", hybrid)):
+    print(f"{name:20s} top-2: {ranking[:2]}")
+print("For this question, the answer is in D1.")
+
+# Try it: change the query to "printer paper problems" and compare the three rankings.
+`} />
+
+You should see naive search miss D1 completely, keyword search rank it first, and hybrid search keep it in the top two. That gap is exactly why hybrid search is the most common first upgrade.
+
+## Common mistakes
+
+- **Jumping straight to agentic or graph RAG.** They are the most expensive types and hardest to debug. Most failures are fixed earlier by hybrid search, reranking or better chunking.
+- **Upgrading without measuring.** Without a set of real questions and the chunks that should answer them, you cannot tell whether a new type helped. Measure retrieval quality separately from answer quality (see [Evaluating RAG](/docs/llms-genai/rag#evaluating-rag)).
+- **Forgetting index-time cost.** Contextual RAG and GraphRAG move cost to indexing, and you pay it again whenever documents change. A fast-changing corpus can make them expensive.
+- **Trusting a grader blindly.** A corrective grader is itself a model and can wrongly reject good chunks. Check its decisions on a sample.
+- **No limit on agent loops.** An agentic system needs a cap on steps and cost per question, or a hard question can run for minutes.
+
+## When not to use it
+
+| Situation | Use instead |
+| --- | --- |
+| The whole corpus fits comfortably in the model's context window | Put it in the prompt (or cache it); no retrieval needed |
+| Answers live in a database as exact numbers | Query the database (text-to-SQL); don't retrieve paragraphs |
+| You need a consistent style or format, not new facts | Prompting or fine-tuning; retrieval doesn't teach style |
+| Questions are few, fixed and known in advance | Write the answers once and look them up |
+
+## Remember
+
+| Type | One line |
+| --- | --- |
+| Naive | One vector search; fine for clean prose |
+| Hybrid | Add keyword search for exact terms; the most common first upgrade |
+| Reranked | Retrieve wide, then score carefully |
+| Contextual | Give each chunk the context it lost when it was cut out |
+| HyDE | Search with a drafted answer |
+| GraphRAG | Precompute answers to corpus-wide questions |
+| Corrective | Check retrieval before answering, retry if it missed |
+| Self-RAG | A trained model decides when to retrieve and checks itself |
+| Agentic | Plan and repeat searches with tools; most powerful, least predictable |
+
+Next: [Retrieval & Reranking Architectures](/docs/llms-genai/retrieval-and-reranking-architectures) — how the retrievers and rerankers inside these types are built.
+
+## Sources
+
+- Lewis et al. [Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks](https://arxiv.org/abs/2005.11401) (NeurIPS, 2020).
+- Gao et al. [Retrieval-Augmented Generation for Large Language Models: A Survey](https://arxiv.org/abs/2312.10997) (2023).
+- Cormack, Clarke and Büttcher. [Reciprocal Rank Fusion Outperforms Condorcet and Individual Rank Learning Methods](https://doi.org/10.1145/1571941.1572114) (SIGIR, 2009).
+- Nogueira and Cho. [Passage Re-ranking with BERT](https://arxiv.org/abs/1901.04085) (2019).
+- Anthropic. [Introducing Contextual Retrieval](https://www.anthropic.com/news/contextual-retrieval) (2024).
+- Gao, Ma, Lin and Callan. [Precise Zero-Shot Dense Retrieval without Relevance Labels (HyDE)](https://arxiv.org/abs/2212.10496) (2022).
+- Edge et al. [From Local to Global: A Graph RAG Approach to Query-Focused Summarization](https://arxiv.org/abs/2404.16130) (2024); code: [microsoft/graphrag](https://github.com/microsoft/graphrag).
+- Yan et al. [Corrective Retrieval Augmented Generation](https://arxiv.org/abs/2401.15884) (2024).
+- Asai et al. [Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection](https://arxiv.org/abs/2310.11511) (2023).
+- Singh et al. [Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG](https://arxiv.org/abs/2501.09136) (2025).
