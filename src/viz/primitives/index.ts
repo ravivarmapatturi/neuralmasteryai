@@ -9,3 +9,5 @@ export { default as VisualizationExplanation } from './VisualizationExplanation'
 export { default as VisualizationCode } from './VisualizationCode';
 export { default as VisualizationMath } from './VisualizationMath';
 export { default as SelectableRow } from './SelectableRow';
+export { FlowDots, Pulse, PulseRect, line } from './LiveFlow';
+export { useAutoCycle } from './useAutoCycle';

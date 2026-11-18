@@ -8,15 +8,7 @@ import { getAnalytics, isSupported, setConsent, logEvent, type Analytics } from 
 // servers, they are not secrets, and they grant no access on their own.
 // The actual security boundary is Firestore's security rules (see
 // firestore.rules), enforced server-side regardless of what a client sends.
-const firebaseConfig = {
-  apiKey: 'AIzaSyAVT-WKPzeVvB5n24jzsTxNasV-tz-h7OU',
-  authDomain: 'neuralmastery-4dc6b.firebaseapp.com',
-  projectId: 'neuralmastery-4dc6b',
-  storageBucket: 'neuralmastery-4dc6b.firebasestorage.app',
-  messagingSenderId: '78041224350',
-  appId: '1:78041224350:web:c1d24e752b5b8ef598178f',
-  measurementId: 'G-PKEBF7474W',
-};
+import { firebaseConfig } from './firebaseConfig';
 
 export const firebaseApp = initializeApp(firebaseConfig);
 export const auth = getAuth(firebaseApp);

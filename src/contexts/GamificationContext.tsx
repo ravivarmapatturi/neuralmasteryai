@@ -213,7 +213,15 @@ function leaderboardFields(user: User, events: AwardEvent[], now: number, displa
     weeklyPoints: computeWeeklyPoints(events, new Date(now)),
     weekStart: weekStartDateString(new Date(now)),
     updatedAt: now,
+    isGuest: !!user.isAnonymous,
   };
+}
+
+/** Guests join the public leaderboard only after real activity, so drive-by
+ * visitors never clutter it (anti-spam). Signed-in accounts always appear. */
+export const GUEST_LEADERBOARD_MIN_POINTS = 50;
+function mayListOnLeaderboard(user: User, events: AwardEvent[]) {
+  return !user.isAnonymous || totalPoints(events) >= GUEST_LEADERBOARD_MIN_POINTS;
 }
 
 /**
@@ -353,7 +361,8 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
           setDoc(progressRef, { gamificationEvents: merged, ...(resolvedOverride ? { displayNameOverride: resolvedOverride } : {}) }, { merge: true }),
         );
         if (cancelled) return;
-        void withRetry(() => setDoc(leaderboardRef, leaderboardFields(user, merged, Date.now(), resolvedOverride), { merge: true })).catch((err) =>
+        // guests appear only after GUEST_LEADERBOARD_MIN_POINTS; until then they see their own row locally
+        if (mayListOnLeaderboard(user, merged)) void withRetry(() => setDoc(leaderboardRef, leaderboardFields(user, merged, Date.now(), resolvedOverride), { merge: true })).catch((err) =>
           console.error('Failed to sync leaderboard entry to the server after retrying:', err),
         );
 
@@ -432,7 +441,8 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
             void withRetry(() => setDoc(progressRef, { gamificationEvents: merged }, { merge: true })).catch((err) =>
               console.error('Failed to sync gamification progress to the server after retrying:', err),
             );
-            void withRetry(() => setDoc(leaderboardRef, leaderboardFields(user, merged, Date.now(), displayNameOverrideRef.current), { merge: true })).catch((err) =>
+            // guests appear only after GUEST_LEADERBOARD_MIN_POINTS; until then they see their own row locally
+        if (mayListOnLeaderboard(user, merged)) void withRetry(() => setDoc(leaderboardRef, leaderboardFields(user, merged, Date.now(), displayNameOverrideRef.current), { merge: true })).catch((err) =>
               console.error('Failed to sync leaderboard entry to the server after retrying:', err),
             );
           });
@@ -581,7 +591,7 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
           .then(({ progressRef, leaderboardRef, setDoc }) =>
             Promise.all([
               withRetry(() => setDoc(progressRef, { displayNameOverride: trimmed }, { merge: true })),
-              withRetry(() => setDoc(leaderboardRef, { displayName: trimmed }, { merge: true })),
+              ...(user.isAnonymous ? [] : [withRetry(() => setDoc(leaderboardRef, { displayName: trimmed }, { merge: true }))]),
             ]),
           )
           .catch((err) => console.error('Failed to save display name to the server after retrying:', err));

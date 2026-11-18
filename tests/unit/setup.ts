@@ -17,9 +17,9 @@ vi.mock('firebase/app', () => ({
 vi.mock('firebase/auth', () => ({
   getAuth: vi.fn(() => ({})),
   connectAuthEmulator: vi.fn(),
-  GoogleAuthProvider: vi.fn(function GoogleAuthProvider(this: unknown) {
+  GoogleAuthProvider: Object.assign(vi.fn(function GoogleAuthProvider(this: unknown) {
     return this
-  }),
+  }), { credentialFromError: vi.fn(() => null) }),
   onAuthStateChanged: vi.fn((_auth: unknown, callback: (user: null) => void) => {
     callback(null)
     return () => {}
@@ -28,6 +28,12 @@ vi.mock('firebase/auth', () => ({
   signInWithRedirect: vi.fn().mockResolvedValue(undefined),
   getRedirectResult: vi.fn().mockResolvedValue(null),
   signOut: vi.fn().mockResolvedValue(undefined),
+  signInAnonymously: vi.fn().mockResolvedValue({ user: { uid: 'guest' } }),
+  linkWithPopup: vi.fn().mockResolvedValue({ user: { providerData: [] } }),
+  linkWithRedirect: vi.fn().mockResolvedValue(undefined),
+  linkWithCredential: vi.fn().mockResolvedValue({ user: null }),
+  signInWithCredential: vi.fn().mockResolvedValue({ user: null }),
+  EmailAuthProvider: { credential: vi.fn(() => ({})) },
   createUserWithEmailAndPassword: vi.fn().mockResolvedValue({ user: null }),
   signInWithEmailAndPassword: vi.fn().mockResolvedValue({ user: null }),
 }))
@@ -38,6 +44,8 @@ vi.mock('firebase/firestore', () => ({
   getFirestore: vi.fn(() => ({})),
   connectFirestoreEmulator: vi.fn(),
   doc: vi.fn(() => ({})),
+  collection: vi.fn(() => ({})),
+  serverTimestamp: vi.fn(() => ({})),
   getDoc: mockGetDoc,
   setDoc: mockSetDoc,
   runTransaction: vi.fn(async (_db: unknown, updateFunction: (tx: { get: (ref: unknown) => Promise<unknown>; set: (ref: unknown, data: unknown, opts?: unknown) => void }) => Promise<unknown>) => {

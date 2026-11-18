@@ -7,6 +7,8 @@ import TableOfContents from './TableOfContents';
 import MobileNavDrawer from './MobileNavDrawer';
 import PrevNext from './PrevNext';
 import MarkUnderstoodButton from './MarkUnderstoodButton';
+import { LoveButton, LoveNudge } from './LoveButton';
+import FeedbackBox from './FeedbackBox';
 import RoadmapProgressBanner from './RoadmapProgressBanner';
 import PageFeedback from './PageFeedback';
 import ThemeSkinPicker from '../ThemeSkinPicker';
@@ -125,6 +127,7 @@ export default function DocLayout() {
             <span>Neural Mastery</span>
             <span aria-hidden="true">·</span>
             <span>{formatDiaryDate(page.lastUpdated)}</span>
+            <span style={{ marginLeft: 'auto', userSelect: 'auto' }}><LoveButton route={page.route} /></span>
           </header>
           <article className="prose">
             {page.route.endsWith('/roadmap') && <RoadmapProgressBanner section={page.section} />}
@@ -135,7 +138,10 @@ export default function DocLayout() {
             </ErrorBoundary>
           </article>
           <PageFeedback page={page} />
+          <div style={{ display: 'flex', justifyContent: 'center', margin: '1.5rem 0 0.5rem' }}><LoveButton route={page.route} size="lg" /></div>
+          <FeedbackBox key={page.route} route={page.route} />
           <MarkUnderstoodButton />
+          <LoveNudge route={page.route} />
           <PrevNext route={page.route} />
         </main>
         <div className="nm-toc-wrap" style={{ position: 'relative', flexShrink: 0 }}>

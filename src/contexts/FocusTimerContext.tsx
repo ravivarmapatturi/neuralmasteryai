@@ -166,7 +166,7 @@ function getInitialStateAndSessions(): { timerState: FocusTimerState; sessions: 
 }
 
 export function FocusTimerProvider({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
+  const { syncUser: user, loading: authLoading } = useAuth(); // guests save too
   const { enabled: musicEnabled, playing: musicPlaying, play: playMusic, pause: pauseMusic } = useFocusMusic();
 
   const [initialData] = useState(() => getInitialStateAndSessions());
@@ -538,19 +538,9 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
   const todaySeconds = useMemo(() => todayFocusSeconds(sessions), [sessions]);
   const formattedToday = useMemo(() => formatTodayFocusTime(todaySeconds), [todaySeconds]);
 
-  // Update document title
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const prevTitle = document.title;
-    if (isPaused) {
-      document.title = `(Paused) Focus — NeuralMastery`;
-    } else {
-      document.title = `(${formattedToday}) Focus — NeuralMastery`;
-    }
-    return () => {
-      document.title = prevTitle;
-    };
-  }, [isPaused, formattedToday]);
+  // The timer is shown on the page itself, never in the browser tab title:
+  // writing it there replaced every page's real title (and search engines
+  // indexed "(00:00) Focus — NeuralMastery" as the home page title).
 
   const value: FocusTimerContextType = {
     status: isPaused ? 'paused' : 'running',

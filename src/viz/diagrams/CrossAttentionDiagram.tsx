@@ -1,5 +1,5 @@
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, FlowDots, Pulse, line } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchEllipse, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -62,6 +62,20 @@ export default function CrossAttentionDiagram() {
             </>
           )}
 
+          {crossWire ? (
+            <>
+              <FlowDots d={line(srcX + 34, 34, attnX - 35, srcY - 20)} color={qColor} />
+              <FlowDots d={line(srcX + 34, panelH - 42, attnX - 35, srcY + 6)} color={kColor} delay={0.4} />
+              <FlowDots d={line(srcX + 34, panelH - 28, attnX - 35, srcY + 18)} color={vColor} delay={0.8} />
+            </>
+          ) : (
+            <>
+              <FlowDots d={line(srcX + 30, srcY - 15, attnX - 35, srcY - 20)} color={qColor} />
+              <FlowDots d={line(srcX + 30, srcY, attnX - 35, srcY)} color={kColor} delay={0.4} />
+              <FlowDots d={line(srcX + 30, srcY + 15, attnX - 35, srcY + 20)} color={vColor} delay={0.8} />
+            </>
+          )}
+          <Pulse cx={attnX} cy={srcY} r={30} color={attnColor} />
           {/* Plain backing ellipse for the Attn node's wash, SketchEllipse on top */}
           <ellipse cx={attnX} cy={srcY} rx={30} ry={30} fill={`${attnColor}22`} stroke="none" />
           <SketchEllipse cx={attnX} cy={srcY} width={60} height={60} color={attnColor} strokeWidth={2} id={`ca-attn-${title}`} />

@@ -1,3 +1,4 @@
+import { useTotalLoves } from '../../lib/pageLoves';
 import { useEffect, useState } from 'react';
 
 /** The visit-stats Worker (workers/visit-stats/worker.js): daily totals in
@@ -142,6 +143,7 @@ function plural(n: number, one: string, many: string) {
  */
 export function LiveStatsTicker({ pages, problems }: { pages: number; problems: number }) {
   const stats = useSiteStats();
+  const loves = useTotalLoves();
   const [paused, setPaused] = useState(false);
   if (!stats) return null;
 
@@ -149,6 +151,7 @@ export function LiveStatsTicker({ pages, problems }: { pages: number; problems: 
     stats.todayVisits > 0 && plural(stats.todayVisits, 'visit today', 'visits today'),
     stats.visits > 0 && plural(stats.visits, 'person this week', 'people this week'),
     stats.todayViews > 0 && plural(stats.todayViews, 'page read today', 'pages read today'),
+    loves !== null && loves > 0 && `♥ ${plural(loves, 'love', 'loves')} from learners`,
     `${pages.toLocaleString('en-US')} lessons`,
     `${problems.toLocaleString('en-US')} practice problems`,
   ].filter(Boolean) as string[];

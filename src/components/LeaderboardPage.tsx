@@ -23,7 +23,7 @@ export default function LeaderboardPage() {
     'Weekly and all-time rankings of Neural Mastery learners by points earned from lessons, problems and interview questions.',
   );
 
-  const { user, loading: authLoading, signInWithGoogle } = useAuth();
+  const { user, isGuest, loading: authLoading, signInWithGoogle } = useAuth();
   const { points, weeklyPoints, events, displayName: userDisplayName } = useGamification();
   const [params] = useSearchParams();
   const [tab, setTab] = useState<LeaderboardTab>(params.get('tab') === 'interview' ? 'interview' : params.get('tab') === 'weekly' ? 'weekly' : 'allTime');
@@ -144,7 +144,7 @@ export default function LeaderboardPage() {
             without this a returning signed-in visitor sees this exact
             "Sign in with Google" banner flash before the real state
             resolves (audit finding C5). */}
-        {!authLoading && !user && (
+        {!authLoading && (!user || isGuest) && (
           <div
             style={{
               padding: '1.25rem 1.5rem',
@@ -429,6 +429,9 @@ export default function LeaderboardPage() {
                         }}
                       >
                         {entry.displayName}
+                        {entry.isGuest && (
+                          <span style={{ marginLeft: 6, fontSize: 12, padding: '0 6px', borderRadius: 8, border: '1px solid var(--nm-border)', color: 'var(--nm-text-muted)', verticalAlign: 'middle' }}>guest</span>
+                        )}
                       </span>
                       {isSelf && (
                         <span

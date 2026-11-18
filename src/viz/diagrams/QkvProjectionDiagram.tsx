@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationMath, FlowDots, Pulse } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor, type DiagramConcept } from './diagramSystem';
 import { SketchArrow, SketchEllipse, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -36,6 +36,7 @@ export default function QkvProjectionDiagram() {
           X
         </text>
 
+        <Pulse cx={xCenter.x} cy={xCenter.y} r={30} color={getConceptColor(t, 'embedding')} />
         {BRANCHES.map((b, i) => {
           const y = branchYs[i];
           const isActive = active === i;
@@ -63,6 +64,7 @@ export default function QkvProjectionDiagram() {
 
               <SketchArrow points={[[branchX + 34, y], [outX - 30, y]]} color={color} strokeWidth={isActive ? 2.5 : 1.5} id={`qkv-arrow-out-${i}`} />
 
+              <FlowDots d={`M ${xCenter.x + 30},${xCenter.y} L ${xCenter.x + 100},${xCenter.y} L ${branchX - 80},${y} L ${branchX - 32},${y} M ${branchX + 34},${y} L ${outX - 28},${y}`} color={color} dur={2.6} count={3} delay={i * 0.3} />
               <circle cx={outX} cy={y} r={26} fill={color} fillOpacity={0.18} stroke="none" />
               <SketchEllipse cx={outX} cy={y} width={52} height={52} color={color} strokeWidth={isActive ? 2.5 : 1.5} id={`qkv-out-${i}`} />
               <text x={outX} y={y + 5} textAnchor="middle" fontSize={15} fontWeight={700} fontFamily="monospace" fill={color}>

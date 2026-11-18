@@ -19,25 +19,31 @@ const STEP_MS = 650;
 export default function RnnVsAttentionComparison() {
   const t = useVizTokens();
   const reducedMotion = usePrefersReducedMotion();
-  const [step, setStep] = useState(WORDS.length); // fully revealed by default
-  const [playing, setPlaying] = useState(false);
+  // Live by default: the RNN lights up one word at a time while attention connects
+  // all words at once, then it loops. Any click hands control to the reader.
+  const [step, setStep] = useState(reducedMotion ? WORDS.length : 0);
+  const [playing, setPlaying] = useState(!reducedMotion);
+  const [auto, setAuto] = useState(true);
   const [selectedToken, setSelectedToken] = useState<number | null>(1); // "cat" selected by default, so the arcs mean something on first paint
 
   useEffect(() => {
     if (!playing || reducedMotion) return undefined;
     if (step >= WORDS.length) {
-      setPlaying(false);
-      return undefined;
+      if (!auto) { setPlaying(false); return undefined; }
+      const again = setTimeout(() => setStep(0), 2200);
+      return () => clearTimeout(again);
     }
     const id = setTimeout(() => setStep((s) => s + 1), STEP_MS);
     return () => clearTimeout(id);
-  }, [playing, step, reducedMotion]);
+  }, [playing, step, reducedMotion, auto]);
 
   const play = () => {
+    setAuto(false);
     setStep(0);
     setPlaying(true);
   };
   const reset = () => {
+    setAuto(false);
     setPlaying(false);
     setStep(WORDS.length);
   };
@@ -186,7 +192,7 @@ export default function RnnVsAttentionComparison() {
             {WORDS.map((word, i) => {
               const isSelected = selectedToken === i;
               return (
-                <g key={`attn-node-${i}`} onClick={() => setSelectedToken(isSelected ? null : i)} style={{ cursor: 'pointer' }}>
+                <g key={`attn-node-${i}`} onClick={() => { setAuto(false); setSelectedToken(isSelected ? null : i); }} style={{ cursor: 'pointer' }}>
                   <circle
                     cx={cellX(i)}
                     cy={inputY}

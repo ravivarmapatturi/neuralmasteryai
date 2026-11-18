@@ -12,7 +12,7 @@ function readLearningWithAttempts(uid?:string) {
 }
 
 export function InterviewLearningProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { syncUser: user } = useAuth(); // guests save too
   const uid = user?.uid;
   const [history, setHistory] = useState(() => ({ owner: uid, records: readLearningWithAttempts(uid) }));
   const records = history.owner === uid ? history.records : [];

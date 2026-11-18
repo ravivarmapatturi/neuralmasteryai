@@ -6,7 +6,7 @@ type SyncState = 'local' | 'syncing' | 'synced' | 'offline' | 'storage-error';
 const Context = createContext<{ attempts: InterviewAttempt[]; save: (attempt: InterviewAttempt) => void; syncState: SyncState } | null>(null);
 
 export function InterviewAttemptsProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { syncUser: user } = useAuth(); // guests save too
   const uid = user?.uid;
   const [history, setHistory] = useState(() => ({ owner: uid, attempts: readInterviewAttempts(uid) }));
   const attempts = history.owner === uid ? history.attempts : [];

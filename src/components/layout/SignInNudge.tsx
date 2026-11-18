@@ -70,7 +70,9 @@ export function isDomBlocked(pathname: string): boolean {
 }
 
 export default function SignInNudge() {
-  const { user, loading, signInWithGoogle } = useAuth();
+  const { user: account, isGuest, loading, signInWithGoogle } = useAuth();
+  // guests are still nudged to save their progress with a real sign-in
+  const user = isGuest ? null : account;
   const { isDistractionFree } = useFocusTimer();
   const location = useLocation();
 

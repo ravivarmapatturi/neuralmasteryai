@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens, SPACING, RADIUS, FONT_FAMILY } from '../theme/vizTokens';
 import VisualizationContainer from './primitives/VisualizationContainer';
+import { useAutoCycle } from './primitives/useAutoCycle';
 import VisualizationHeader from './primitives/VisualizationHeader';
 import { PillSelect } from './primitives/VisualizationControls';
 import { hexToRgb } from './lib/colorBlend';
@@ -76,9 +77,11 @@ export default function AttentionStepThrough() {
   const t = useVizTokens();
   const [text, setText] = useState(DEFAULT_TEXT);
   const [headIdx, setHeadIdx] = useState(0);
-  const [focusRow, setFocusRow] = useState(0);
 
   const tokens = useMemo(() => tokenize(text), [text]);
+  const focusCyc = useAutoCycle(Math.max(1, tokens.length), 1800); // walks token by token until the reader clicks one
+  const focusRow = focusCyc.value;
+  const setFocusRow = focusCyc.pick;
   const result: AttentionResult | null = useMemo(() => {
     if (tokens.length === 0) return null;
     return runAttention(tokens, HEADS[headIdx]);

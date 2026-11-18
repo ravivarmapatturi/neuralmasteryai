@@ -6,6 +6,7 @@ export interface LeaderboardEntry {
   displayName: string;
   points: number;
   allTimePoints?: number;
+  isGuest?: boolean;
 }
 
 /**
@@ -73,6 +74,7 @@ export function useLeaderboard(sortBy: LeaderboardTab, limitN = 25): { entries: 
                   displayName: typeof data.displayName === 'string' ? data.displayName : 'Learner',
                   points: data[field] ?? 0,
                   allTimePoints: typeof data.allTimePoints === 'number' ? data.allTimePoints : undefined,
+                  isGuest: data.isGuest === true,
                 };
               })
               .filter((_row, i) => !weekly || snap.docs[i].data().weekStart === thisWeek)

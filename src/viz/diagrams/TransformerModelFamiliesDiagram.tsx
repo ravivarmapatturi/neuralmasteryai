@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle, FlowDots, line } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchPath, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -16,7 +15,7 @@ const FAMILIES: Record<Family, { label: string; architecture: string; objective:
 };
 
 export default function TransformerModelFamiliesDiagram() {
-  const t = useVizTokens(); const [active, setActive] = useState<Family>('bert'); const f = FAMILIES[active]; const primary = getConceptColor(t, 'attention');
+  const t = useVizTokens(); const KEYS = Object.keys(FAMILIES) as Family[]; const cyc = useAutoCycle(KEYS.length, 3500); const active = KEYS[cyc.value]; const setActive = (k: Family) => cyc.pick(KEYS.indexOf(k)); const f = FAMILIES[active]; const primary = getConceptColor(t, 'attention');
   const boxWidth = active === 'seq2seq' || active === 'multimodal' ? 125 : 170; const total = f.blocks.length * boxWidth + (f.blocks.length - 1) * 25; const start = (620 - total) / 2;
   return <VisualizationContainer footer={`${f.label} is ${f.architecture}. Trained for ${f.objective}; strongest when you need ${f.bestFor}.`}>
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>{(Object.keys(FAMILIES) as Family[]).map(k => <VizButton key={k} variant={active === k ? 'primary' : 'secondary'} onClick={() => setActive(k)}>{FAMILIES[k].label}</VizButton>)}</div>
@@ -46,6 +45,16 @@ export default function TransformerModelFamiliesDiagram() {
           id="tmf-bidir-curve"
         />
       )}
+      {active === 'bert' || active === 'vit'
+        ? <g key={active}>
+            {/* every token sees every other: information flows both ways */}
+            <FlowDots d={line(start + 6, 88, start + total - 6, 88)} color={primary} count={2} dur={2.4} />
+            <FlowDots d={line(start + total - 6, 96, start + 6, 96)} color={getConceptColor(t, 'key')} count={2} dur={2.4} delay={0.6} />
+          </g>
+        : <g key={active}>
+            {/* causal: only ever forward, one token after another */}
+            <FlowDots d={line(start + 6, 92, start + total - 6, 92)} color={primary} count={3} dur={2.4} />
+          </g>}
       <text x={310} y={112} textAnchor="middle" fontSize={10.5} fontFamily={HAND_FONT} fill={t.textMuted}>Architecture determines which tokens can exchange information and what the model is trained to output.</text>
     </svg>
     <div style={{ marginTop: 7, fontSize: 12 }}><b>Representative models:</b> {f.examples.join(' · ')}</div>

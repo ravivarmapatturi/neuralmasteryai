@@ -200,7 +200,7 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 7, attemptTimeoutMs
  * sign out on this browser.
  */
 export function ProgressProvider({ children }: { children: React.ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
+  const { syncUser: user, loading: authLoading } = useAuth(); // guests save too
   const [understood, setUnderstood] = useState<UnderstoodMap>({});
 
   // Anonymous baseline -- always loaded once on mount, so there's an

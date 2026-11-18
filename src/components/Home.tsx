@@ -1,3 +1,4 @@
+import { useTotalLoves } from '../lib/pageLoves';
 import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import { getSidebar, getFlatPages, type DocPage } from '../lib/contentTree';
@@ -58,6 +59,7 @@ export default function Home() {
 
   const sectionsById = new Map(sections.map((section) => [section.id, section]));
 
+  const totalLoves = useTotalLoves();
   return (
     <div style={{ minHeight: '100vh', background: 'var(--nm-bg)' }}>
       <Navbar />
@@ -84,6 +86,9 @@ export default function Home() {
           </h1>
           <p style={{ fontSize: 14, color: 'var(--nm-text-muted)', margin: '0 0 2rem' }}>
             Grouped by section, in the order they build on each other. Open a topic to see its pages.
+            {totalLoves !== null && totalLoves > 0 && (
+              <span style={{ marginLeft: 10, color: '#e11d48', fontWeight: 600, whiteSpace: 'nowrap' }}>♥ {totalLoves.toLocaleString()} loves from learners</span>
+            )}
           </p>
           <div className="nm-learn-topics">
             {SECTION_ORDER.map((key) => {

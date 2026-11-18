@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationMath, FlowDots } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchPath, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -15,6 +15,8 @@ const N_HEADS = 8;
  * more projection through W^O mixes information across heads. */
 export default function MultiHeadAttentionDiagram() {
   const t = useVizTokens();
+  // All 8 heads work at the same moment: one wave of dots leaves Q,K,V, splits
+  // into 8 slices, runs through every head in parallel and meets at concat.
   const [activeHead, setActiveHead] = useState<number | null>(null);
 
   const width = 620;
@@ -63,6 +65,7 @@ export default function MultiHeadAttentionDiagram() {
               <text x={headX + 45} y={y + headH / 2 + 4} textAnchor="middle" fontSize={10} fontWeight={600} fontFamily="monospace" fill={isActive ? attnColor : t.textSecondary}>
                 head {i + 1}
               </text>
+              <FlowDots d={`M 100,${height / 2} C ${splitX},${height / 2} ${splitX},${y + headH / 2} ${splitX + 30},${y + headH / 2} L ${concatX - 4},${y + headH / 2}`} color={attnColor} r={3} count={1} dur={2.2} />
               {/* to concat */}
               <SketchArrow points={[[headX + 90, y + headH / 2], [concatX - 4, y + headH / 2]]} color={attnColor} strokeWidth={isActive ? 2 : 1} arrowhead={false} roughness={1.3} id={`mha-toconcat-${i}`} />
             </g>
@@ -73,6 +76,7 @@ export default function MultiHeadAttentionDiagram() {
         <SketchRect x={concatX} y={16} width={16} height={height - 32} color={t.border} strokeWidth={1.5} id="mha-concat" />
         <text x={concatX + 8} y={height / 2} textAnchor="middle" fontSize={10.5} fontFamily={HAND_FONT} fill={t.textMuted} transform={`rotate(-90 ${concatX + 8} ${height / 2})`}>concat</text>
 
+        <FlowDots d={`M ${concatX + 16},${height / 2} L ${outX - 42},${height / 2}`} color={t.textSecondary} count={1} r={5} dur={2.2} delay={1.6} />
         {/* W^O */}
         <SketchArrow points={[[concatX + 16, height / 2], [outX - 40, height / 2]]} color={t.textSecondary} strokeWidth={2} id="mha-to-wo" />
         <SketchRect x={outX - 40} y={height / 2 - 20} width={70} height={40} color={t.textSecondary} strokeWidth={1.5} id="mha-wo" />

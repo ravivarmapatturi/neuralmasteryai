@@ -1,5 +1,5 @@
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationMath, FlowDots, PulseRect, line } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchEllipse, SketchPath, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -52,6 +52,11 @@ export default function AddNormDiagram() {
         <SketchRect x={normX} y={midY - 18} width={normW} height={36} color={t.accentPrimary} id="an-layernorm" />
         <text x={normX + normW / 2} y={midY + 5} textAnchor="middle" fontSize={11.5} fontWeight={700} fontFamily={HAND_FONT} fill={t.accentPrimary}>LayerNorm</text>
 
+        <PulseRect x={subX} y={topY - 18} w={subW} h={36} color={subColor} dur={2.4} delay={0.6} />
+        <FlowDots d={`M ${inX + 16},${midY - 4} C 65,${topY} 85,${topY} ${subX},${topY} L ${subX + subW},${topY} C ${sumX - 25},${topY} ${sumX - 5},${midY - 25} ${sumX - 5},${midY - 15}`} color={subColor} dur={2.4} count={1} />
+        <FlowDots d={`M ${inX + 14},${midY + 8} C 80,${botY} ${sumX - 40},${botY} ${sumX - 5},${midY + 15}`} color={t.textSecondary} dur={2.4} count={1} />
+        {/* the two arrive at + together and leave as one, larger dot */}
+        <FlowDots d={line(sumX + 16, midY, outX, midY)} color={t.accentPrimary} dur={2.4} count={1} r={6} delay={2.4} />
         <SketchArrow points={[[normX + normW + 2, midY], [outX, midY]]} color={t.accentPrimary} strokeWidth={1.5} roughness={1.2} id="an-out" />
       </svg>
       <div style={{ marginTop: 8, textAlign: 'center' }}>

@@ -128,7 +128,8 @@ function SignInPanel({ onClose }: { onClose: () => void }) {
  * a View Profile link to /profile, sign-out).
  */
 export default function AuthButton() {
-  const { user, loading, signOutUser } = useAuth();
+  const { user, isGuest, loading, signOutUser, signInWithGoogle } = useAuth();
+  const [savePanel, setSavePanel] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
 
@@ -136,11 +137,13 @@ export default function AuthButton() {
     const handleOpen = () => {
       if (!loading && !user) {
         setMenuOpen(true);
+      } else if (!loading && isGuest) {
+        setSavePanel(true); // "sign in" from a nudge upgrades the guest account
       }
     };
     window.addEventListener(SIGN_IN_DIALOG_OPEN_EVENT, handleOpen);
     return () => window.removeEventListener(SIGN_IN_DIALOG_OPEN_EVENT, handleOpen);
-  }, [loading, user]);
+  }, [loading, user, isGuest]);
 
   if (loading) return null; // avoid flashing "Sign in" before the real (likely signed-in) state is known
 
@@ -170,7 +173,21 @@ export default function AuthButton() {
   const initial = (user.displayName ?? user.email ?? '?').charAt(0).toUpperCase();
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8 }}>
+      {isGuest && (
+        // Guests always see a real sign-in button; it upgrades the guest account
+        // in place, so their progress carries over to Google.
+        <button
+          type="button"
+          onClick={() => { signInWithGoogle().catch(() => setSavePanel(true)); }}
+          className="nm-auth-signin-btn"
+          title="Sign in with Google. Your guest progress comes with you."
+          aria-label="Sign in with Google and keep your guest progress"
+        >
+          <PersonIcon />
+          <span className="nm-auth-signin-label">Sign in with Google</span>
+        </button>
+      )}
       <button
         type="button"
         onClick={() => setMenuOpen((v) => !v)}
@@ -215,7 +232,12 @@ export default function AuthButton() {
             }}
           >
             <div style={{ fontSize: 12.5, color: 'var(--nm-text-secondary)', padding: '0.2rem 0.3rem 0.6rem', wordBreak: 'break-all' }}>
-              {user.email}
+              {isGuest ? (
+                <>
+                  <b style={{ color: 'var(--nm-text-primary)' }}>{user.displayName ?? 'Neural_Guest'}</b>
+                  <br />Your progress is saved on this device. Sign in to keep it on every device.
+                </>
+              ) : user.email}
             </div>
             <Link
               to="/profile"
@@ -231,6 +253,15 @@ export default function AuthButton() {
             >
               View Profile
             </Link>
+            {isGuest ? (
+            <button
+              type="button"
+              onClick={() => { setMenuOpen(false); setSavePanel(true); }}
+              style={{ width: '100%', textAlign: 'left', fontSize: 13, fontWeight: 700, color: 'var(--nm-accent-primary)', background: 'transparent', border: 'none', borderRadius: 6, padding: '0.4rem 0.3rem', cursor: 'pointer' }}
+            >
+              Save my progress (sign in)
+            </button>
+            ) : (
             <button
               type="button"
               onClick={async () => {
@@ -251,9 +282,11 @@ export default function AuthButton() {
             >
               Sign out
             </button>
+            )}
           </div>
         </>
       )}
+      {savePanel && <SignInPanel onClose={() => setSavePanel(false)} />}
     </div>
   );
 }

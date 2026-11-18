@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, FlowDots, PulseRect, line } from '../primitives';
+
+const STEP_S = 0.7; // seconds a token spends in each sublayer
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchPath, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -74,6 +76,11 @@ export default function TransformerArchitectureDiagram() {
             </g>
           );
         })}
+        {blocks.map((b, i) => (
+          <PulseRect key={`p-${b.key}`} x={x - boxW / 2} y={topPad + i * (boxH + gap)} w={boxW} h={boxH} color={getConceptColor(t, b.concept)}
+            blink dur={blocks.length * STEP_S + 1} delay={i * STEP_S + 0.3} />
+        ))}
+        <FlowDots d={line(x, topPad - 4, x, topPad + blocks.length * (boxH + gap) + 10)} color={t.textPrimary} count={1} r={4.5} dur={blocks.length * STEP_S + 1} />
         <SketchArrow
           points={[[x, topPad + (blocks.length - 1) * (boxH + gap) + boxH], [x, topPad + (blocks.length - 1) * (boxH + gap) + boxH + 18]]}
           color={t.textMuted}
@@ -112,6 +119,8 @@ export default function TransformerArchitectureDiagram() {
               strokeWidth={hovered?.key === 'd-cross' ? 2.5 : 1.5}
               id="arch-cross-wire"
             />
+            <FlowDots d={`M ${encX + boxW / 2},${encOutY - 4} C ${(encX + decX) / 2},${encOutY - 4} ${(encX + decX) / 2},${crossY} ${decX - boxW / 2 - 4},${crossY}`}
+              color={getConceptColor(t, 'query')} count={3} dur={2.2} />
             {/* Arrowhead into decoder cross-attention block perimeter */}
             <polygon
               points={`${decX - boxW / 2 - 1},${crossY} ${decX - boxW / 2 - 8},${crossY - 4} ${decX - boxW / 2 - 8},${crossY + 4}`}

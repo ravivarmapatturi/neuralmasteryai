@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import DiagramMatrix from './DiagramMatrix';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
@@ -27,7 +26,9 @@ function rowFor(id: number): number[] {
  * Click "cat" (either occurrence): both point at the identical row. */
 export default function TokenEmbeddingLookup() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(1); // "cat" selected by default
+  const cyc = useAutoCycle(SENTENCE.length, 1600, 1); // walks through the sentence until the reader clicks
+  const selected = cyc.value;
+  const setSelected = cyc.pick;
   const selectedId = SENTENCE[selected].id;
   const rowIndex = VOCAB_ROWS.indexOf(selectedId);
   const embColor = getConceptColor(t, 'embedding');

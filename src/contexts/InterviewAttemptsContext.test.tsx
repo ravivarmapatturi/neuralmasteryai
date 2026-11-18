@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { InterviewAttemptsProvider, useInterviewAttempts } from './InterviewAttemptsContext';
 import { attemptsKey, type InterviewAttempt } from '../lib/interviewAttempts';
 const mocks = vi.hoisted(() => ({ uid: undefined as string | undefined, sync: vi.fn(), watch: vi.fn() }));
-vi.mock('./AuthContext',()=>({useAuth:()=>({user:mocks.uid ? {uid:mocks.uid}:null})}));
+vi.mock('./AuthContext',()=>({useAuth:()=>({user:mocks.uid ? {uid:mocks.uid}:null, syncUser:mocks.uid ? {uid:mocks.uid}:null})}));
 vi.mock('../lib/interviewAttemptSync',()=>({syncInterviewAttempts:mocks.sync,watchInterviewAttempts:mocks.watch}));
 const a = (id:string):InterviewAttempt => ({id,questionId:'q',time:1,transcript:id,points:[],source:'rubric',status:'unchecked'});
 function View(){const {attempts,save,syncState}=useInterviewAttempts();return <><output>{attempts.map(a=>a.id).join(',')}:{syncState}</output><button onClick={()=>save(a('local'))}>Save</button></>;}

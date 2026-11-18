@@ -5,6 +5,12 @@ interface AuthContextValue {
   /** null while the initial auth-state check is still in flight, undefined
    * (never) is not a state this uses -- see `loading` for that distinction. */
   user: User | null;
+  /** The account data is saved under: the real user, or else the silent guest
+   * account every visitor gets automatically. Use this for saving progress;
+   * use `user` for anything that shows "signed in" or touches public data. */
+  syncUser: User | null;
+  /** True while the visitor is on their automatic guest account. */
+  isGuest: boolean;
   /** True only until Firebase's first onAuthStateChanged callback fires --
    * lets a consumer avoid flashing "signed out" UI before the real answer
    * (a persisted session, restored from IndexedDB) is known. */
@@ -43,21 +49,37 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  * (a type-only import), so it costs nothing at runtime either way.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  // `account` is whatever Firebase has, guest included; `user` hides guests.
+  const [account, setAccount] = useState<User | null>(null);
+  // Guests count as signed in (own profile, on the leaderboard); isGuest tells them apart.
+  const user = account;
+  const isGuest = !!account?.isAnonymous;
   const [loading, setLoading] = useState(true);
+  // bumped when a guest gets their Neural_GuestN name, so consumers re-read user.displayName
+  const [, setNameTick] = useState(0);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     let cancelled = false;
 
     Promise.all([import('../lib/firebase'), import('firebase/auth')]).then(
-      ([{ auth }, { onAuthStateChanged, getRedirectResult }]) => {
+      ([{ auth }, { onAuthStateChanged, getRedirectResult, signInAnonymously }]) => {
         if (cancelled) return;
         getRedirectResult(auth).catch(() => {});
 
         unsubscribe = onAuthStateChanged(auth, (u) => {
-          setUser(u);
+          setAccount(u);
           setLoading(false);
+          if (u?.isAnonymous && !u.displayName) {
+            import('../lib/guestName').then(({ ensureGuestName }) => ensureGuestName(u))
+              .then((name) => { if (name) setNameTick((x) => x + 1); })
+              .catch(() => { /* name is cosmetic; Guest_XXXX fallback stays */ });
+          }
+          // Every visitor gets a guest account automatically, so progress saves
+          // from the first visit. Signing in later upgrades it in place.
+          if (!u && typeof signInAnonymously === 'function') {
+            try { void signInAnonymously(auth)?.catch?.(() => {}); } catch { /* guest sign-in is best-effort */ }
+          }
         });
       },
     );
@@ -69,15 +91,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
-    const [{ auth }, { GoogleAuthProvider, signInWithPopup, signInWithRedirect }] = await Promise.all([
+    const [{ auth }, { GoogleAuthProvider, signInWithPopup, signInWithRedirect, linkWithPopup, linkWithRedirect, signInWithCredential }] = await Promise.all([
       import('../lib/firebase'),
       import('firebase/auth'),
     ]);
     const provider = new GoogleAuthProvider();
+    const guest = auth.currentUser?.isAnonymous ? auth.currentUser : null;
     try {
-      await signInWithPopup(auth, provider);
+      // A guest is upgraded in place (same account, progress kept). If this
+      // Google account already exists, switch to it instead.
+      if (guest) {
+        const res = await linkWithPopup(guest, provider);
+        // swap the guest nickname for the real Google name
+        const google = res.user.providerData.find((p) => p.providerId === 'google.com');
+        if (google?.displayName) {
+          const { updateProfile } = await import('firebase/auth');
+          await updateProfile(res.user, { displayName: google.displayName, photoURL: google.photoURL ?? res.user.photoURL });
+          setNameTick((x) => x + 1); // re-render with the new name
+        }
+      }
+      else await signInWithPopup(auth, provider);
     } catch (err: unknown) {
       const error = err as { code?: string };
+      if (guest && error?.code === 'auth/credential-already-in-use') {
+        const cred = GoogleAuthProvider.credentialFromError(err as never);
+        if (cred) { await signInWithCredential(auth, cred); return; }
+      }
+      if (guest && (error?.code === 'auth/popup-blocked' || /iPhone|iPad|iPod|Android/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : ''))) {
+        await linkWithRedirect(guest, provider);
+        return;
+      }
       if (
         error?.code === 'auth/popup-blocked' ||
         error?.code === 'auth/popup-closed-by-user' ||
@@ -91,7 +134,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUpWithEmail = useCallback(async (email: string, password: string) => {
-    const [{ auth }, { createUserWithEmailAndPassword }] = await Promise.all([import('../lib/firebase'), import('firebase/auth')]);
+    const [{ auth }, { createUserWithEmailAndPassword, EmailAuthProvider, linkWithCredential }] = await Promise.all([import('../lib/firebase'), import('firebase/auth')]);
+    const guest = auth.currentUser?.isAnonymous ? auth.currentUser : null;
+    if (guest) {
+      // upgrade the guest in place so its progress stays
+      await linkWithCredential(guest, EmailAuthProvider.credential(email, password));
+      return;
+    }
     await createUserWithEmailAndPassword(auth, email, password);
   }, []);
 
@@ -118,8 +167,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, signOutUser }),
-    [user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, signOutUser],
+    () => ({ user, syncUser: account, isGuest, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, signOutUser }),
+    [user, account, isGuest, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, signOutUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

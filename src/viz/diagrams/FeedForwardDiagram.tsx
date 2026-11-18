@@ -1,5 +1,5 @@
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationMath, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -16,6 +16,7 @@ const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
  * every other converted diagram this session. */
 export default function FeedForwardDiagram() {
   const t = useVizTokens();
+  const reduced = usePrefersReducedMotion();
   const width = 460;
   const height = 150;
   const barCenterY = 60;
@@ -46,6 +47,16 @@ export default function FeedForwardDiagram() {
         <text x={(stageX[1] + stageX[2]) / 2 + 10} y={barCenterY - 14} textAnchor="middle" fontSize={10} fontFamily="monospace" fill={t.textMuted}>W₂, b₂</text>
 
         <Bar x={stageX[2]} w={outW * 2.2} label="output" sub="512" />
+        {/* one token travels through: small (512) -> grows to 2048 -> shrinks back to 512 */}
+        {!reduced && (
+          <rect aria-hidden x={-inW * 1.1} y={-inW * 1.1} width={inW * 2.2} height={inW * 2.2} rx={3} fill={t.accentSecondary} opacity={0.35}>
+            <animateTransform attributeName="transform" type="translate" values={`${stageX[0]} ${barCenterY};${stageX[1]} ${barCenterY};${stageX[1]} ${barCenterY};${stageX[2]} ${barCenterY};${stageX[2]} ${barCenterY}`} keyTimes="0;0.35;0.5;0.85;1" dur="4s" repeatCount="indefinite" />
+            <animate attributeName="width" values={`${inW * 2.2};${midW};${midW};${inW * 2.2};${inW * 2.2}`} keyTimes="0;0.35;0.5;0.85;1" dur="4s" repeatCount="indefinite" />
+            <animate attributeName="height" values={`${inW * 2.2};${midW};${midW};${inW * 2.2};${inW * 2.2}`} keyTimes="0;0.35;0.5;0.85;1" dur="4s" repeatCount="indefinite" />
+            <animate attributeName="x" values={`${-inW * 1.1};${-midW / 2};${-midW / 2};${-inW * 1.1};${-inW * 1.1}`} keyTimes="0;0.35;0.5;0.85;1" dur="4s" repeatCount="indefinite" />
+            <animate attributeName="y" values={`${-inW * 1.1};${-midW / 2};${-midW / 2};${-inW * 1.1};${-inW * 1.1}`} keyTimes="0;0.35;0.5;0.85;1" dur="4s" repeatCount="indefinite" />
+          </rect>
+        )}
       </svg>
       <div style={{ marginTop: 8, textAlign: 'center' }}>
         <VisualizationMath latex="\text{FFN}(x) = \max(0, xW_1+b_1)W_2+b_2" />

@@ -233,9 +233,10 @@ export function mergeEvents(a: AwardEvent[], b: AwardEvent[]): AwardEvent[] {
  * an anonymized handle) gets swapped in -- everything else reads a
  * display name through this function, never `user.displayName` directly. */
 export function computeDisplayName(
-  user: { displayName?: string | null; email?: string | null; uid?: string } | null | undefined,
+  user: { displayName?: string | null; email?: string | null; uid?: string; isAnonymous?: boolean } | null | undefined,
 ): string {
   if (user?.displayName) return user.displayName;
+  if (user?.isAnonymous) return 'Neural_Guest';
   if (user?.email) {
     const handle = user.email.split('@')[0];
     if (handle) return handle;

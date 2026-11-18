@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useVizTokens, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, VisualizationMath, VisualizationStepController, useStepController, VizButton } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, VisualizationMath, VisualizationStepController, useStepController, VizButton, usePrefersReducedMotion } from '../primitives';
 import DiagramMatrix from './DiagramMatrix';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { TOKENS, EMBEDDINGS, Q, K, V, RAW_SCORES, SCALE, SCALED_SCORES, ATTENTION_WEIGHTS, ATTENTION_WEIGHTS_UNSCALED, OUTPUT } from '../lib/attentionWorkedExample';
@@ -27,9 +27,27 @@ export default function AttentionWorkedExample() {
   const controller = useStepController(STEPS.length, 1400);
   const [showUnscaled, setShowUnscaled] = useState(false);
   const step = controller.step;
+  // Live by default: starts playing when scrolled into view and loops, until the reader touches it.
+  const reduced = usePrefersReducedMotion();
+  const [auto, setAuto] = useState(true);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const { play, reset, playing } = controller;
+  useEffect(() => {
+    const el = boxRef.current;
+    if (reduced || !auto || !el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) play(); }, { threshold: 0.4 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [reduced, auto, play]);
+  useEffect(() => {
+    if (reduced || !auto || playing || step !== STEPS.length - 1) return;
+    const id = window.setTimeout(() => { reset(); play(); }, 2500);
+    return () => window.clearTimeout(id);
+  }, [reduced, auto, playing, step, reset, play]);
 
   return (
     <VisualizationContainer footer="Every matrix below is computed live from the token embeddings via real matrix multiplication -- not a fixed screenshot. Step through to watch softmax(QKᵀ/√dₖ)V build up piece by piece.">
+      <div ref={boxRef} onPointerDown={() => setAuto(false)}>
       <VisualizationHeader eyebrow="Interactive · Worked Example" title={`Step ${step + 1}: ${STEPS[step].title}`} />
 
       <div style={{ minHeight: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', overflowX: 'auto', padding: '8px 0' }}>
@@ -83,6 +101,7 @@ export default function AttentionWorkedExample() {
       </div>
 
       <VisualizationStepController controller={controller} totalSteps={STEPS.length} stepLabel={(s) => STEPS[s].title} />
+      </div>
     </VisualizationContainer>
   );
 }
