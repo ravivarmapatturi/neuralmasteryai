@@ -31,6 +31,8 @@ describe('FocusPage Component', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.useFakeTimers();
+    // Sessions below start "1 hour ago"; pin the clock to midday so they never cross midnight (was flaky near 00:00).
+    vi.setSystemTime(new Date(2026, 5, 15, 12, 0, 0));
     Object.defineProperty(document, 'hidden', { configurable: true, value: false });
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
     Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
