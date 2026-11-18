@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const LAYERS = [
@@ -15,7 +14,7 @@ const LAYERS = [
 
 export default function SystemStackFailureDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(0);
+  const { value: selected, pick: setSelected, stop } = useAutoCycle(LAYERS.length, 2500, 0);
   const color = getConceptColor(t, 'attention');
 
   return (
@@ -24,7 +23,10 @@ export default function SystemStackFailureDiagram() {
         {LAYERS.map((layer, i) => (
           <div key={layer.name} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div
-              onClick={() => setSelected(i)}
+              onClick={() => {
+                stop();
+                setSelected(i);
+              }}
               style={{
                 padding: '8px 20px',
                 borderRadius: 8,

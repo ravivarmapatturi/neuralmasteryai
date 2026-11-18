@@ -724,6 +724,82 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  12: [
+    {
+      route: '/docs/ai-security/owasp-llm-top-10-and-prompt-attacks',
+      diagrams: [
+        { name: 'DefenseInDepthDiagram', match: 'Untrusted-content framing' },
+        { name: 'DirectVsIndirectInjectionDiagram', match: 'Indirect (more dangerous)' },
+        { name: 'ExcessiveAgencyDiagram', match: 'illustrative blast-radius severity' },
+        { name: 'InstructionDataBoundaryDiagram', match: 'One channel' },
+      ],
+    },
+    {
+      route: '/docs/context-engineering/overview',
+      diagrams: [
+        { name: 'ContextBudgetWaterfallVisualizer', match: 'Token Budgeting & Allocation Breakdown' },
+      ],
+    },
+    {
+      route: '/docs/cs-fundamentals/apis-http-and-protocols',
+      diagrams: [
+        { name: 'AuthNvsAuthZDiagram', match: 'Request arrives' },
+        { name: 'CommunicationPatternSequenceDiagram', match: 'Short polling' },
+        { name: 'DependencyInjectionDiagram', match: 'Depends(get_current_user)' },
+        { name: 'FastApiRequestFlowDiagram', match: 'Request validation' },
+        { name: 'HttpMethodsDiagram', match: 'Idempotent:' },
+        { name: 'JwtStructureDiagram', match: 'header.payload.signature' },
+        { name: 'OAuthFlowDiagram', match: 'the authorization-code flow' },
+        { name: 'PatternComparisonMatrixDiagram', match: 'Connection cost' },
+        { name: 'RequestResponseCycleDiagram', match: 'REQUEST (client → server)' },
+        { name: 'RestResourceModelDiagram', match: 'API style' },
+        { name: 'StatusCodeFamiliesDiagram', match: '2xx Success' },
+      ],
+    },
+    {
+      route: '/docs/cs-fundamentals/linux-git-and-tooling',
+      diagrams: [
+        { name: 'CompiledVsInterpretedDiagram', match: 'Execution model' },
+        { name: 'GitObjectModelDiagram', match: 'tree (root)' },
+        { name: 'RebaseVsMergeDiagram', match: 'A, B (unchanged)' },
+      ],
+    },
+    {
+      route: '/docs/cs-fundamentals/networking-and-distributed-systems',
+      diagrams: [
+        { name: 'CapTheoremDiagram', match: 'Partition active' },
+        { name: 'ConsensusQuorumDiagram', match: 'Unreachable nodes' },
+        { name: 'DnsResolutionDiagram', match: 'Cold lookup' },
+        { name: 'LoadBalancingDiagram', match: 'Round-robin' },
+        { name: 'TcpVsUdpDiagram', match: 'Simulated packet loss' },
+      ],
+    },
+    {
+      route: '/docs/cs-fundamentals/operating-systems-and-concurrency',
+      diagrams: [
+        { name: 'ConcurrencyVsParallelismDiagram', match: 'Concurrent (1 core)' },
+        { name: 'CpuCacheLatencyDiagram', match: 'Bar length is log-scaled' },
+        { name: 'GilReleaseDiagram', match: 'Pure Python loop' },
+        { name: 'ProcessVsThreadDiagram', match: 'Two Processes' },
+        { name: 'SequentialVsRandomIoDiagram', match: 'Individual file size' },
+      ],
+    },
+    {
+      route: '/docs/cs-fundamentals/overview',
+      diagrams: [
+        { name: 'SystemStackFailureDiagram', match: 'distributed workers' },
+      ],
+    },
+    {
+      route: '/docs/cs-fundamentals/software-engineering-practices',
+      diagrams: [
+        { name: 'DesignPatternDiagram', match: 'Strategy' },
+        { name: 'FlameGraphDiagram', match: 'train_step()' },
+        { name: 'GitBisectDiagram', match: 'Commits to search' },
+        { name: 'TestingPyramidDiagram', match: 'Pyramid (correct)' },
+      ],
+    },
+  ],
 };
 
 async function main() {

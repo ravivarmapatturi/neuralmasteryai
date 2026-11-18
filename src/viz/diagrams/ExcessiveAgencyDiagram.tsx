@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const LEVELS = [
@@ -13,12 +12,12 @@ const MAX_SEVERITY = 9;
 
 export default function ExcessiveAgencyDiagram() {
   const t = useVizTokens();
-  const [levelIdx, setLevelIdx] = useState(2);
+  const { value: levelIdx, pick: setLevelIdx, stop } = useAutoCycle(LEVELS.length, 3000, 2);
   const level = LEVELS[levelIdx];
 
   return (
     <VisualizationContainer footer={`Same injected instruction, same attack, every single time -- only the agent's GRANTED capability changes below. ${level.consequence}`}>
-      <input type="range" min={0} max={LEVELS.length - 1} step={1} value={levelIdx} onChange={(e) => setLevelIdx(Number(e.target.value))}
+      <input type="range" min={0} max={LEVELS.length - 1} step={1} value={levelIdx} onChange={(e) => { stop(); setLevelIdx(Number(e.target.value)); }}
         style={{ width: '100%', accentColor: t.accentPrimary }} />
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: t.textMuted, marginTop: 2 }}>
         {LEVELS.map((l) => <span key={l.id}>{l.label.split(' ')[0]}</span>)}

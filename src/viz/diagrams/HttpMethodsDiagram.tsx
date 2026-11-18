@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const METHODS = [
@@ -16,20 +15,21 @@ const METHODS = [
  * method. */
 export default function HttpMethodsDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('POST');
+  const { value: activeIdx, pick: setActiveIdx, stop } = useAutoCycle(METHODS.length, 3000, 1);
   const color = getConceptColor(t, 'attention');
-  const active = METHODS.find((m) => m.key === selected)!;
+  const active = METHODS[activeIdx];
+  const selected = active.key;
 
   return (
     <VisualizationContainer footer={active.desc}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {METHODS.map((m) => {
+        {METHODS.map((m, i) => {
           const isSelected = selected === m.key;
           return (
             <div
               key={m.key}
-              onClick={() => setSelected(m.key)}
-              onMouseEnter={() => setSelected(m.key)}
+              onClick={() => { stop(); setActiveIdx(i); }}
+              onMouseEnter={() => { stop(); setActiveIdx(i); }}
               style={{ cursor: 'pointer', padding: '6px 14px', borderRadius: 7, fontWeight: 700, fontSize: 12.5, fontFamily: 'monospace', background: isSelected ? `${color}25` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}`, color: isSelected ? color : t.textSecondary }}
             >
               {m.key}

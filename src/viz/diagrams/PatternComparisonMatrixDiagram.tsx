@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const ROWS = [
@@ -25,9 +24,10 @@ function Dots({ n, color, t }: { n: number; color: string; t: ReturnType<typeof 
  * click a row for when it's the right call. */
 export default function PatternComparisonMatrixDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('sse');
+  const { value: selectedIdx, pick: setSelectedIdx, stop } = useAutoCycle(ROWS.length, 3200, 3);
   const color = getConceptColor(t, 'attention');
-  const active = ROWS.find((r) => r.key === selected)!;
+  const active = ROWS[selectedIdx];
+  const selected = active.key;
 
   return (
     <VisualizationContainer footer={`When to use ${active.label}: ${active.when}`}>
@@ -43,10 +43,10 @@ export default function PatternComparisonMatrixDiagram() {
             </tr>
           </thead>
           <tbody>
-            {ROWS.map((r) => {
+            {ROWS.map((r, i) => {
               const isSelected = selected === r.key;
               return (
-                <tr key={r.key} onClick={() => setSelected(r.key)} onMouseEnter={() => setSelected(r.key)} style={{ cursor: 'pointer', background: isSelected ? `${color}12` : 'transparent' }}>
+                <tr key={r.key} onClick={() => { stop(); setSelectedIdx(i); }} onMouseEnter={() => { stop(); setSelectedIdx(i); }} style={{ cursor: 'pointer', background: isSelected ? `${color}12` : 'transparent' }}>
                   <td style={{ padding: '6px 8px', fontWeight: isSelected ? 700 : 500, color: isSelected ? color : t.textPrimary }}>{r.label}</td>
                   <td style={{ padding: '6px 8px' }}><Dots n={r.latency} color={color} t={t} /></td>
                   <td style={{ padding: '6px 8px', color: r.serverPush ? t.accentPrimary : t.textMuted }}>{r.serverPush ? 'yes' : 'no'}</td>

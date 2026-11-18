@@ -1,19 +1,20 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, FlowDots } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 
 const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Stage = 'authn' | 'authz';
+const STAGES: Stage[] = ['authn', 'authz'];
 
 /** Two different questions, two different failure modes -- a system can
  * authenticate perfectly and still be broken if authorization is missing.
  * Click either stage. */
 export default function AuthNvsAuthZDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<Stage>('authz');
+  const { value: stageIdx, pick: setStageIdx, stop } = useAutoCycle(STAGES.length, 3500, 1);
+  const active = STAGES[stageIdx];
   const authnColor = getConceptColor(t, 'query');
   const authzColor = getConceptColor(t, 'attention');
   const width = 560;
@@ -30,22 +31,25 @@ export default function AuthNvsAuthZDiagram() {
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
         <text x={30} y={32} fontSize={11} fontFamily={HAND_FONT} fill={t.textMuted}>Request arrives</text>
         <SketchArrow points={[[125, 28], [185, 28]]} color={t.textMuted} strokeWidth={1.5} id="aa-arrow-1" />
+        <FlowDots d="M 125 28 L 185 28" color={t.textMuted} count={2} r={2} />
 
-        <g onClick={() => setActive('authn')} onMouseEnter={() => setActive('authn')} style={{ cursor: 'pointer' }} opacity={active === 'authn' ? 1 : 0.4}>
+        <g onClick={() => { stop(); setStageIdx(0); }} onMouseEnter={() => { stop(); setStageIdx(0); }} style={{ cursor: 'pointer' }} opacity={active === 'authn' ? 1 : 0.4}>
           <rect x={190} y={10} width={130} height={36} rx={8} fill={active === 'authn' ? `${authnColor}30` : t.surfaceAlt} stroke="none" />
           <SketchRect x={190} y={10} width={130} height={36} color={authnColor} strokeWidth={active === 'authn' ? 2.5 : 1.5} id="aa-authn" />
           <text x={255} y={32} textAnchor="middle" fontSize={10} fontWeight={700} fontFamily={HAND_FONT} fill={authnColor}>Authentication</text>
         </g>
 
         <SketchArrow points={[[325, 28], [365, 28]]} color={t.textMuted} strokeWidth={1.5} id="aa-arrow-2" />
+        <FlowDots d="M 325 28 L 365 28" color={t.textMuted} count={2} r={2} />
 
-        <g onClick={() => setActive('authz')} onMouseEnter={() => setActive('authz')} style={{ cursor: 'pointer' }} opacity={active === 'authz' ? 1 : 0.4}>
+        <g onClick={() => { stop(); setStageIdx(1); }} onMouseEnter={() => { stop(); setStageIdx(1); }} style={{ cursor: 'pointer' }} opacity={active === 'authz' ? 1 : 0.4}>
           <rect x={370} y={10} width={130} height={36} rx={8} fill={active === 'authz' ? `${authzColor}30` : t.surfaceAlt} stroke="none" />
           <SketchRect x={370} y={10} width={130} height={36} color={authzColor} strokeWidth={active === 'authz' ? 2.5 : 1.5} id="aa-authz" />
           <text x={435} y={32} textAnchor="middle" fontSize={10} fontWeight={700} fontFamily={HAND_FONT} fill={authzColor}>Authorization</text>
         </g>
 
         <SketchArrow points={[[505, 28], [538, 28]]} color={t.accentPrimary} strokeWidth={1.5} id="aa-arrow-3" />
+        <FlowDots d="M 505 28 L 538 28" color={t.accentPrimary} count={2} r={2} />
         <text x={544} y={32} fontSize={10} fontFamily={HAND_FONT} fill={t.accentPrimary}>OK</text>
 
         <text x={255} y={65} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={authnColor}>"who are you?"</text>

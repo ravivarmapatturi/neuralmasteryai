@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Style = 'rest' | 'rpc' | 'graphql';
+const STYLES: Style[] = ['rest', 'rpc', 'graphql'];
 const EXAMPLES: Record<Style, { call: string; desc: string }> = {
   rest: { call: 'GET /users/123/conversations\nPOST /conversations\nDELETE /conversations/456', desc: 'Resources identified by URLs, standard verbs act on them. Predictable, cacheable, but the server dictates the response shape per endpoint.' },
   rpc: { call: 'POST /getUserConversations\nPOST /createConversation\nPOST /deleteConversation', desc: 'Actions modeled directly as function calls. Natural for operations that don\'t map cleanly to CRUD, but each endpoint is a one-off contract.' },
@@ -15,7 +15,8 @@ const EXAMPLES: Record<Style, { call: string; desc: string }> = {
  * shows what REST's resource-and-verb convention is actually buying you. */
 export default function RestResourceModelDiagram() {
   const t = useVizTokens();
-  const [style, setStyle] = useState<Style>('rest');
+  const { value: styleIdx, pick: setStyleIdx, stop } = useAutoCycle(STYLES.length, 3500, 0);
+  const style = STYLES[styleIdx];
   const color = getConceptColor(t, 'attention');
 
   return (
@@ -23,7 +24,11 @@ export default function RestResourceModelDiagram() {
       <PillSelect<Style>
         label="API style"
         value={style}
-        onChange={setStyle}
+        onChange={(val) => {
+          const v = typeof val === 'function' ? val(style) : val;
+          stop();
+          setStyleIdx(STYLES.indexOf(v));
+        }}
         options={[
           { value: 'rest', label: 'REST' },
           { value: 'rpc', label: 'RPC-style' },

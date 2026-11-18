@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STEPS = [
@@ -17,7 +16,7 @@ const STEPS = [
  * at any point. */
 export default function OAuthFlowDiagram() {
   const t = useVizTokens();
-  const [step, setStep] = useState(1);
+  const { value: step, pick: setStep, stop } = useAutoCycle(STEPS.length, 3000, 1);
   const color = getConceptColor(t, 'key');
 
   return (
@@ -29,7 +28,7 @@ export default function OAuthFlowDiagram() {
           return (
             <div
               key={i}
-              onClick={() => setStep(i)}
+              onClick={() => { stop(); setStep(i); }}
               style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '0.5rem 0.7rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, opacity: isPast || isActive ? 1 : 0.55 }}
             >
               <div style={{ width: 20, height: 20, borderRadius: '50%', background: isActive || isPast ? color : t.border, color: t.background, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{i + 1}</div>
@@ -39,8 +38,8 @@ export default function OAuthFlowDiagram() {
         })}
       </div>
       <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 10 }}>
-        <button type="button" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, border: `1px solid ${t.border}`, background: 'transparent', color: t.textSecondary, cursor: step === 0 ? 'default' : 'pointer' }}>← prev</button>
-        <button type="button" onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))} disabled={step === STEPS.length - 1} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, border: `1px solid ${t.border}`, background: 'transparent', color: t.textSecondary, cursor: step === STEPS.length - 1 ? 'default' : 'pointer' }}>next →</button>
+        <button type="button" onClick={() => { stop(); setStep(Math.max(0, step - 1)); }} disabled={step === 0} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, border: `1px solid ${t.border}`, background: 'transparent', color: t.textSecondary, cursor: step === 0 ? 'default' : 'pointer' }}>← prev</button>
+        <button type="button" onClick={() => { stop(); setStep(Math.min(STEPS.length - 1, step + 1)); }} disabled={step === STEPS.length - 1} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, border: `1px solid ${t.border}`, background: 'transparent', color: t.textSecondary, cursor: step === STEPS.length - 1 ? 'default' : 'pointer' }}>next →</button>
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 6 }}>
         Step {step + 1} of {STEPS.length} -- the authorization-code flow.

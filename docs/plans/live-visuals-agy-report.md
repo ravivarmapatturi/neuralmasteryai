@@ -405,5 +405,50 @@ Pages covered:
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 26 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-11/`.
 
+## Batch 12 Report
+
+### Motion Rationales:
+1. `DefenseInDepthDiagram.tsx`: Autocycles (3500ms) preset layer combinations, demonstrating that while individual defenses have modest catch rates (25-45%), combining all layers mathematically drives cumulative defense catch probability to 80%+.
+2. `DirectVsIndirectInjectionDiagram.tsx`: Autocycles (4000ms) between direct and indirect injection modes with FlowDots tracking attacker-to-model data flow, demonstrating that indirect injection hides malicious payloads in external retrieval sources where innocent users trigger them unwittingly.
+3. `ExcessiveAgencyDiagram.tsx`: Autocycles (3000ms) agency grant levels from read-only to financial actions, showing that identical injection attacks yield drastically different real-world blast radiuses depending on tool scopes.
+4. `InstructionDataBoundaryDiagram.tsx`: Autocycles (3800ms) between parameterized SQL (mechanically separated code/data channels) and LLM prompt concatenation (single unified channel), illustrating why prompt injection cannot be resolved by standard syntax parsers.
+5. `ContextBudgetWaterfallVisualizer.tsx`: Autocycles (3800ms) between unmanaged (inlining raw files/schemas consuming 62.6% of window) and engineered context (AST maps and deferred schemas consuming only 6.2%), showing how context budgeting preserves 93.8% free attention headroom.
+6. `AuthNvsAuthZDiagram.tsx`: Autocycles (3500ms) between Authentication and Authorization stages with FlowDots along the pipeline, clarifying that identity verification (AuthN) and permission scoping (AuthZ) are distinct sequential failure boundaries.
+7. `CommunicationPatternSequenceDiagram.tsx`: Autocycles (3500ms) across short-poll, long-poll, webhook, SSE, and WebSocket patterns with animated request/response arrows, illustrating the connection lifecycles and latency trade-offs between pull and push models.
+8. `DependencyInjectionDiagram.tsx`: Autocycles (3500ms) hover/active state with FlowDots flowing from `Depends(get_current_user)` to route handlers, illustrating how shared authentication logic is resolved once and injected without duplicated boilerplate.
+9. `FastApiRequestFlowDiagram.tsx`: Autocycles (3000ms) through route matching, request validation, handler execution, response validation, and OpenAPI documentation, highlighting how Pydantic models automatically reject invalid payloads before execution.
+10. `HttpMethodsDiagram.tsx`: Autocycles (3000ms) across HTTP verbs (GET, POST, PUT, PATCH, DELETE), teaching which verbs are safe to retry without side effects (idempotent) versus those that risk duplicate operations.
+11. `JwtStructureDiagram.tsx`: Autocycles (3200ms) across Header, Payload, and Signature components, debunking the misconception that JWTs are encrypted by revealing that payloads are only base64url-encoded and unencrypted.
+12. `OAuthFlowDiagram.tsx`: Autocycles (3000ms) through the 5 steps of the authorization code grant, illustrating that client secrets and user credentials remain strictly partitioned server-side.
+13. `PatternComparisonMatrixDiagram.tsx`: Autocycles (3200ms) across communication patterns in the comparison matrix, showing the multi-dimensional trade-offs between latency, push capability, and connection complexity.
+14. `RequestResponseCycleDiagram.tsx`: Autocycles (3000ms) through request and response segments (method, URL, headers, bodies, status), showing how client queries translate into server actions and formatted responses.
+15. `RestResourceModelDiagram.tsx`: Autocycles (3500ms) across REST, RPC, and GraphQL conventions for fetching conversation entities, demonstrating how REST maps standard verbs to resource URIs.
+16. `StatusCodeFamiliesDiagram.tsx`: Autocycles (3200ms) across 2xx, 3xx, 4xx, and 5xx status families, teaching client retry policies (e.g. backoff for 429 and 5xx vs. immediate error correction for 4xx).
+17. `CompiledVsInterpretedDiagram.tsx`: Autocycles (3500ms) across compiled (C++/Rust), interpreted, Python hybrid bytecode, and PyTorch tensor ops, showing that PyTorch tensors execute inside pre-compiled CUDA kernels without paying per-element interpreter loops.
+18. `GitObjectModelDiagram.tsx`: Autocycles (3000ms) between commit, tree, and blob objects with FlowDots illustrating pointer relationships, demonstrating content-addressable storage where unchanged files share identical SHA hashes.
+19. `RebaseVsMergeDiagram.tsx`: Autocycles (4000ms) between git merge and git rebase modes with FlowDots on branch trajectories, showing how rebase rewrites linear commit history with new SHA hashes whereas merge preserves historical branching.
+20. `CapTheoremDiagram.tsx`: Autocycles (3500ms) across partitioned/unpartitioned and CP/AP states, demonstrating that under a network split a system must choose between returning stale data (AP) or erroring out to preserve consistency (CP).
+21. `ConsensusQuorumDiagram.tsx`: Autocycles (3000ms) unreachable node counts [1, 0, 2, 3, 4] across 5 cluster nodes, showing that commits succeed only when reachable nodes strictly exceed majority quorum (>= 3).
+22. `DnsResolutionDiagram.tsx`: Autocycles (3500ms) between cold (200ms) and cached (2ms) DNS lookups, showing the dramatic reduction in connection setup latency once host mappings are cached locally.
+23. `LoadBalancingDiagram.tsx`: Autocycles (3500ms) between round-robin, least-connections, and consistent hashing on variable-cost requests, demonstrating that least-connections balances real worker load whereas round-robin causes tail hot-spots.
+24. `TcpVsUdpDiagram.tsx`: Autocycles (3000ms) packet loss rates [0.2, 0.05, 0.4, 0.1], showing that UDP drops lost packets with low latency whereas TCP pauses to retransmit missing sequence numbers in order.
+25. `ConcurrencyVsParallelismDiagram.tsx`: Autocycles (3800ms) between 1 core interleaved concurrency and 3 core simultaneous parallelism, demonstrating that concurrency shares a single execution unit whereas parallelism executes truly in parallel.
+26. `CpuCacheLatencyDiagram.tsx`: Autocycles (2500ms) across L1, L2, L3, and RAM memory hierarchy levels, using log-scaled bars to teach that RAM access (~200 cycles) is roughly 50x slower than L1 cache (4 cycles).
+27. `GilReleaseDiagram.tsx`: Autocycles (3800ms) between pure Python CPU loops and NumPy/PyTorch calls, showing how native C/CUDA libraries release Python's GIL during execution so other threads can proceed.
+28. `ProcessVsThreadDiagram.tsx`: Autocycles (3800ms) between two isolated processes and two shared-memory threads, highlighting the trade-off between private OS memory safety and shared-state speed.
+29. `SequentialVsRandomIoDiagram.tsx`: Autocycles (3000ms) file size presets [50KB, 10KB, 200KB, 25KB], illustrating why formats like Parquet/WebDataset pack training data sequentially to avoid per-file seek latency overheads.
+30. `SystemStackFailureDiagram.tsx`: Autocycles (2500ms) down the full system stack (CPU -> RAM -> PCIe -> GPU -> VRAM -> Network -> Distributed), isolating the specific architectural failure mode at each layer.
+31. `DesignPatternDiagram.tsx`: Autocycles (3500ms) across Strategy, Factory, Observer, and Decorator patterns, showcasing how design patterns decouple core ML training loops from optimizer implementations and logging.
+32. `FlameGraphDiagram.tsx`: Autocycles (2500ms) across call stack frames, showing how stack bar widths accurately expose hidden performance bottlenecks (such as JSON parsing taking 65% of batch time).
+33. `GitBisectDiagram.tsx`: Autocycles (3000ms) commit search presets [200, 50, 500, 1000], illustrating how binary search halves the commit range in log2(n) steps compared to linear search.
+34. `TestingPyramidDiagram.tsx`: Autocycles (3800ms) between traditional pyramid and inverted test suites, showing that suites dominated by slow end-to-end tests explode total test suite execution time from seconds to minutes.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 34 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-12/`.
+
+
 
 

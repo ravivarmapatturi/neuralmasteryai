@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 
 type Scenario = 'unmanaged' | 'engineered';
+const SCENARIOS: Scenario[] = ['engineered', 'unmanaged'];
 
 interface LayerToken {
   name: string;
@@ -28,7 +28,8 @@ const ENGINEERED_LAYERS: LayerToken[] = [
 
 export default function ContextBudgetWaterfallVisualizer() {
   const t = useVizTokens();
-  const [scenario, setScenario] = useState<Scenario>('engineered');
+  const { value: scenIdx, pick: setScenIdx, stop } = useAutoCycle(SCENARIOS.length, 3800, 0);
+  const scenario = SCENARIOS[scenIdx];
 
   const layers = scenario === 'unmanaged' ? UNMANAGED_LAYERS : ENGINEERED_LAYERS;
   const totalWindow = 128000;
@@ -53,7 +54,11 @@ export default function ContextBudgetWaterfallVisualizer() {
         <PillSelect<Scenario>
           label="Context Strategy"
           value={scenario}
-          onChange={setScenario}
+          onChange={(val) => {
+            const v = typeof val === 'function' ? val(scenario) : val;
+            stop();
+            setScenIdx(SCENARIOS.indexOf(v));
+          }}
           options={[
             { value: 'engineered', label: '1. Engineered Context (Curated)' },
             { value: 'unmanaged', label: '2. Unmanaged Context (Inlined)' },

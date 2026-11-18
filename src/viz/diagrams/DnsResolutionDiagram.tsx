@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const COLD_MS = 200;
@@ -9,7 +9,9 @@ const CONNECT_MS = 30;
 
 export default function DnsResolutionDiagram() {
   const t = useVizTokens();
-  const [cached, setCached] = useState(false);
+  const { value: autoVal, stop } = useAutoCycle(2, 3500, 0);
+  const [userCached, setUserCached] = useState<boolean | null>(null);
+  const cached = userCached ?? (autoVal === 1);
   const color = getConceptColor(t, 'attention');
   const dnsMs = cached ? CACHED_MS : COLD_MS;
   const total = dnsMs + CONNECT_MS;
@@ -23,10 +25,10 @@ export default function DnsResolutionDiagram() {
       }
     >
       <div style={{ marginBottom: 12 }}>
-        <VizButton variant={!cached ? 'primary' : 'secondary'} onClick={() => setCached(false)}>
+        <VizButton variant={!cached ? 'primary' : 'secondary'} onClick={() => { stop(); setUserCached(false); }}>
           Cold lookup
         </VizButton>{' '}
-        <VizButton variant={cached ? 'primary' : 'secondary'} onClick={() => setCached(true)}>
+        <VizButton variant={cached ? 'primary' : 'secondary'} onClick={() => { stop(); setUserCached(true); }}>
           Cached lookup
         </VizButton>
       </div>

@@ -1,13 +1,14 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 
 type Mode = 'sql' | 'prompt';
+const MODES: Mode[] = ['prompt', 'sql'];
 
 export default function InstructionDataBoundaryDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('prompt');
+  const { value: modeIdx, pick: setModeIdx, stop } = useAutoCycle(MODES.length, 3800, 0);
+  const mode = MODES[modeIdx];
 
   return (
     <VisualizationContainer footer={
@@ -15,7 +16,7 @@ export default function InstructionDataBoundaryDiagram() {
         ? 'A parameterized query keeps the SQL code and the user-supplied value in two mechanically separate channels -- the database driver never interprets the parameter\'s contents as SQL syntax, no matter what it contains. This is a structural guarantee, not a filter that can be evaded.'
         : 'An LLM prompt has no equivalent separate channel -- the "instructions" and the "data" (a retrieved document, a user message) are concatenated into one token stream the model reads uniformly. There is no mechanical guarantee the model treats one part as inert data; it\'s a learned, probabilistic tendency, which is exactly what prompt injection exploits.'
     }>
-      <PillSelect label="Compare" value={mode} onChange={(v) => setMode(v as Mode)} options={[
+      <PillSelect label="Compare" value={mode} onChange={(v) => { stop(); setModeIdx(MODES.indexOf(v as Mode)); }} options={[
         { value: 'sql', label: 'SQL (parameterized -- solved)' },
         { value: 'prompt', label: 'LLM prompt (unsolved)' },
       ]} />

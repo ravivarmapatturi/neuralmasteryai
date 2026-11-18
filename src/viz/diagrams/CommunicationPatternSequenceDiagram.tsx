@@ -1,12 +1,12 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle, FlowDots } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import { SketchArrow } from '../../components/notebook/RoughShape';
 
 const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Pattern = 'short-poll' | 'long-poll' | 'webhook' | 'sse' | 'websocket';
+const PATTERNS: Pattern[] = ['short-poll', 'long-poll', 'webhook', 'sse', 'websocket'];
 
 const SEQUENCES: Record<Pattern, { from: 'C' | 'S'; label: string }[]> = {
   'short-poll': [
@@ -56,7 +56,8 @@ const NOTES: Record<Pattern, string> = {
  * direction, instead of just reading a description. */
 export default function CommunicationPatternSequenceDiagram() {
   const t = useVizTokens();
-  const [pattern, setPattern] = useState<Pattern>('sse');
+  const { value: patIdx, pick: setPatIdx, stop } = useAutoCycle(PATTERNS.length, 3500, 3);
+  const pattern = PATTERNS[patIdx];
   const cColor = getConceptColor(t, 'query');
   const sColor = getConceptColor(t, 'attention');
   const messages = SEQUENCES[pattern];
@@ -72,7 +73,11 @@ export default function CommunicationPatternSequenceDiagram() {
       <PillSelect<Pattern>
         label="Pattern"
         value={pattern}
-        onChange={setPattern}
+        onChange={(val) => {
+          const v = typeof val === 'function' ? val(pattern) : val;
+          stop();
+          setPatIdx(PATTERNS.indexOf(v));
+        }}
         options={(Object.keys(LABELS) as Pattern[]).map((k) => ({ value: k, label: LABELS[k] }))}
       />
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
@@ -89,7 +94,12 @@ export default function CommunicationPatternSequenceDiagram() {
           const textW = Math.min(320, m.label.length * 6.5 + 16);
           return (
             <g key={i}>
-              {!isNote && <SketchArrow points={[[fromX, y], [toX, y]]} color={color} strokeWidth={1.5} arrowhead={true} id={`cps-msg-${i}`} />}
+              {!isNote && (
+                <>
+                  <SketchArrow points={[[fromX, y], [toX, y]]} color={color} strokeWidth={1.5} arrowhead={true} id={`cps-msg-${i}`} />
+                  <FlowDots d={`M ${fromX} ${y} L ${toX} ${y}`} color={color} count={2} r={2} />
+                </>
+              )}
               {isNote && <SketchArrow points={[[fromX, y], [toX, y]]} color={t.textMuted} strokeWidth={1} arrowhead={false} id={`cps-note-${i}`} />}
               <rect x={(fromX + toX) / 2 - textW / 2} y={y - 8} width={textW} height={14} rx={3} fill={t.surface} />
               <text x={(fromX + toX) / 2} y={y + 1} textAnchor="middle" fontSize={7.8} fontFamily={HAND_FONT} fill={isNote ? t.textMuted : color} fontStyle={isNote ? 'italic' : 'normal'}>{m.label}</text>

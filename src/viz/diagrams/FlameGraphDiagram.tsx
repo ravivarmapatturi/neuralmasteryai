@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 interface Frame {
@@ -29,7 +29,9 @@ const WIDTH = 460;
 
 export default function FlameGraphDiagram() {
   const t = useVizTokens();
-  const [hovered, setHovered] = useState<string | null>('parse_json(example)');
+  const { value: frameIdx, pick: setFrameIdx, stop } = useAutoCycle(FRAMES.length, 2500, 4);
+  const [userHovered, setUserHovered] = useState<string | null>(null);
+  const hovered = userHovered ?? FRAMES[frameIdx].name;
   const frame = FRAMES.find((f) => f.name === hovered);
   const color = getConceptColor(t, 'attention');
   const warnColor = t.accentDanger;
@@ -37,12 +39,20 @@ export default function FlameGraphDiagram() {
   return (
     <VisualizationContainer footer={frame ? `${frame.name}: ${frame.width}% of total runtime.${frame.surprising ? ' Nobody expected JSON parsing to be the hot path -- but width in a flame graph doesn\'t lie about where time actually goes, regardless of intuition.' : ''}` : 'Hover a frame to see its share of total runtime.'}>
       <svg width={WIDTH} height={4 * CELL_H + 10} viewBox={`0 0 ${WIDTH} ${4 * CELL_H + 10}`} className="nm-fit-svg">
-        {FRAMES.map((f) => {
+        {FRAMES.map((f, i) => {
           const x = (f.start / 100) * WIDTH;
           const w = (f.width / 100) * WIDTH;
           const isHovered = hovered === f.name;
           return (
-            <g key={f.name} onMouseEnter={() => setHovered(f.name)} style={{ cursor: 'pointer' }}>
+            <g
+              key={f.name}
+              onMouseEnter={() => {
+                stop();
+                setUserHovered(f.name);
+                setFrameIdx(i);
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               <rect
                 x={x}
                 y={f.depth * CELL_H}

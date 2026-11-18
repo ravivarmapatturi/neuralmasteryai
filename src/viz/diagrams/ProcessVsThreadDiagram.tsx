@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+
+const MODES: ('process' | 'thread')[] = ['thread', 'process'];
 
 export default function ProcessVsThreadDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'process' | 'thread'>('thread');
+  const { value: modeIdx, stop } = useAutoCycle(MODES.length, 3800, 0);
+  const [userMode, setUserMode] = useState<'process' | 'thread' | null>(null);
+  const mode = userMode ?? MODES[modeIdx];
   const colorA = getConceptColor(t, 'query');
   const colorB = getConceptColor(t, 'key');
 
@@ -18,10 +22,10 @@ export default function ProcessVsThreadDiagram() {
       }
     >
       <div style={{ marginBottom: 12 }}>
-        <VizButton variant={mode === 'process' ? 'primary' : 'secondary'} onClick={() => setMode('process')}>
+        <VizButton variant={mode === 'process' ? 'primary' : 'secondary'} onClick={() => { stop(); setUserMode('process'); }}>
           Two Processes
         </VizButton>{' '}
-        <VizButton variant={mode === 'thread' ? 'primary' : 'secondary'} onClick={() => setMode('thread')}>
+        <VizButton variant={mode === 'thread' ? 'primary' : 'secondary'} onClick={() => { stop(); setUserMode('thread'); }}>
           Two Threads
         </VizButton>
       </div>

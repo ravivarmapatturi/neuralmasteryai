@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Pattern = 'strategy' | 'factory' | 'observer' | 'decorator';
@@ -28,17 +27,27 @@ const PATTERNS: Record<Pattern, { name: string; code: string; note: string }> = 
   },
 };
 
+const PATTERN_KEYS = Object.keys(PATTERNS) as Pattern[];
+
 export default function DesignPatternDiagram() {
   const t = useVizTokens();
-  const [pattern, setPattern] = useState<Pattern>('strategy');
+  const { value: patIdx, pick: setPatIdx, stop } = useAutoCycle(PATTERN_KEYS.length, 3500, 0);
+  const pattern = PATTERN_KEYS[patIdx];
   const info = PATTERNS[pattern];
   const color = getConceptColor(t, 'attention');
 
   return (
     <VisualizationContainer footer={info.note}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        {(Object.keys(PATTERNS) as Pattern[]).map((p) => (
-          <VizButton key={p} variant={pattern === p ? 'primary' : 'secondary'} onClick={() => setPattern(p)}>
+        {PATTERN_KEYS.map((p, idx) => (
+          <VizButton
+            key={p}
+            variant={pattern === p ? 'primary' : 'secondary'}
+            onClick={() => {
+              stop();
+              setPatIdx(idx);
+            }}
+          >
             {PATTERNS[p].name}
           </VizButton>
         ))}

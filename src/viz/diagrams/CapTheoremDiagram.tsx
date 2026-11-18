@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -8,10 +8,19 @@ const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Choice = 'cp' | 'ap';
 
+const STATES: { choice: Choice; partitioned: boolean }[] = [
+  { choice: 'ap', partitioned: true },
+  { choice: 'cp', partitioned: true },
+  { choice: 'ap', partitioned: false },
+];
+
 export default function CapTheoremDiagram() {
   const t = useVizTokens();
-  const [choice, setChoice] = useState<Choice>('ap');
-  const [partitioned, setPartitioned] = useState(true);
+  const { value: stateIdx, stop } = useAutoCycle(STATES.length, 3500, 0);
+  const [userChoice, setUserChoice] = useState<Choice | null>(null);
+  const [userPartitioned, setUserPartitioned] = useState<boolean | null>(null);
+  const choice = userChoice ?? STATES[stateIdx].choice;
+  const partitioned = userPartitioned ?? STATES[stateIdx].partitioned;
   const okColor = getConceptColor(t, 'attention');
   const errColor = t.accentDanger;
 
@@ -29,13 +38,13 @@ export default function CapTheoremDiagram() {
       }
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <VizButton variant={partitioned ? 'primary' : 'secondary'} onClick={() => setPartitioned((p) => !p)}>
+        <VizButton variant={partitioned ? 'primary' : 'secondary'} onClick={() => { stop(); setUserPartitioned(!partitioned); }}>
           {partitioned ? 'Partition active' : 'No partition'}
         </VizButton>
-        <VizButton variant={choice === 'cp' ? 'primary' : 'secondary'} onClick={() => setChoice('cp')}>
+        <VizButton variant={choice === 'cp' ? 'primary' : 'secondary'} onClick={() => { stop(); setUserChoice('cp'); }}>
           CP
         </VizButton>
-        <VizButton variant={choice === 'ap' ? 'primary' : 'secondary'} onClick={() => setChoice('ap')}>
+        <VizButton variant={choice === 'ap' ? 'primary' : 'secondary'} onClick={() => { stop(); setUserChoice('ap'); }}>
           AP
         </VizButton>
       </div>

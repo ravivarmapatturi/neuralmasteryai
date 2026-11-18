@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const FAMILIES = [
@@ -14,18 +13,19 @@ const FAMILIES = [
  * what it means for how a client should react. */
 export default function StatusCodeFamiliesDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('4xx');
+  const { value: activeIdx, pick: setActiveIdx, stop } = useAutoCycle(FAMILIES.length, 3200, 2);
   const colorFor = (k: string) => (k === '2xx' ? t.accentPrimary : k === '3xx' ? getConceptColor(t, 'query') : k === '4xx' ? t.accentWarn : t.accentDanger);
-  const active = FAMILIES.find((f) => f.key === selected)!;
+  const active = FAMILIES[activeIdx];
+  const selected = active.key;
 
   return (
     <VisualizationContainer footer={`Client action: ${active.retry}`}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {FAMILIES.map((f) => {
+        {FAMILIES.map((f, i) => {
           const isSelected = selected === f.key;
           const color = colorFor(f.key);
           return (
-            <div key={f.key} onClick={() => setSelected(f.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(f.key); } }} onMouseEnter={() => setSelected(f.key)} style={{ flex: '1 1 120px', cursor: 'pointer', padding: '0.6rem 0.8rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}>
+            <div key={f.key} onClick={() => { stop(); setActiveIdx(i); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stop(); setActiveIdx(i); } }} onMouseEnter={() => { stop(); setActiveIdx(i); }} style={{ flex: '1 1 120px', cursor: 'pointer', padding: '0.6rem 0.8rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}>
               <div style={{ fontWeight: 700, fontSize: 12.5, color }}>{f.label}</div>
               <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 2 }}>{f.desc}</div>
             </div>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, FlowDots, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const ROUTES = ['GET /conversations', 'POST /conversations', 'DELETE /conversations/{id}'];
@@ -11,7 +11,9 @@ const ROUTES = ['GET /conversations', 'POST /conversations', 'DELETE /conversati
  * its own auth check. */
 export default function DependencyInjectionDiagram() {
   const t = useVizTokens();
-  const [hovered, setHovered] = useState(true);
+  const { value: autoVal, stop } = useAutoCycle(2, 3500, 0);
+  const [userHovered, setUserHovered] = useState<boolean | null>(null);
+  const hovered = userHovered ?? (autoVal === 0);
   const depColor = getConceptColor(t, 'key');
   const routeColor = getConceptColor(t, 'attention');
   const width = 520;
@@ -27,7 +29,7 @@ export default function DependencyInjectionDiagram() {
             <path d="M0,0 L7,3.5 L0,7 Z" fill={depColor} />
           </marker>
         </defs>
-        <g onClick={() => setHovered((h) => !h)} onMouseEnter={() => setHovered(true)} style={{ cursor: 'pointer' }}>
+        <g onClick={() => { stop(); setUserHovered(!hovered); }} onMouseEnter={() => { stop(); setUserHovered(true); }} style={{ cursor: 'pointer' }}>
           <rect x={depX - 100} y={depY - 18} width={200} height={36} rx={8} fill={hovered ? `${depColor}30` : t.surfaceAlt} stroke={depColor} strokeWidth={hovered ? 2.5 : 1.5} />
           <text x={depX} y={depY + 5} textAnchor="middle" fontSize={10.5} fontFamily="monospace" fontWeight={700} fill={depColor}>Depends(get_current_user)</text>
         </g>
@@ -37,6 +39,14 @@ export default function DependencyInjectionDiagram() {
           return (
             <g key={r}>
               <line x1={depX} y1={depY + 18} x2={x} y2={y - 18} stroke={depColor} strokeWidth={hovered ? 2 : 1} opacity={hovered ? 0.9 : 0.35} markerEnd="url(#di-arrow)" />
+              {hovered && (
+                <FlowDots
+                  d={`M ${depX} ${depY + 18} L ${x} ${y - 18}`}
+                  color={depColor}
+                  count={2}
+                  r={2}
+                />
+              )}
               <rect x={x - 55} y={y - 18} width={110} height={36} rx={7} fill={t.surfaceAlt} stroke={routeColor} strokeWidth={1.5} />
               <text x={x} y={y + 5} textAnchor="middle" fontSize={8.5} fontFamily="monospace" fill={routeColor}>{r}</text>
             </g>

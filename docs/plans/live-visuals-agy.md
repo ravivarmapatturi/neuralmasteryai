@@ -367,47 +367,47 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 12
 - `src/content/docs/ai-security/owasp-llm-top-10-and-prompt-attacks.mdx`
-  - [ ] `src/viz/diagrams/DefenseInDepthDiagram.tsx`
-  - [ ] `src/viz/diagrams/DirectVsIndirectInjectionDiagram.tsx`
-  - [ ] `src/viz/diagrams/ExcessiveAgencyDiagram.tsx`
-  - [ ] `src/viz/diagrams/InstructionDataBoundaryDiagram.tsx`
+  - [x] `src/viz/diagrams/DefenseInDepthDiagram.tsx`
+  - [x] `src/viz/diagrams/DirectVsIndirectInjectionDiagram.tsx`
+  - [x] `src/viz/diagrams/ExcessiveAgencyDiagram.tsx`
+  - [x] `src/viz/diagrams/InstructionDataBoundaryDiagram.tsx`
 - `src/content/docs/context-engineering/overview.mdx`
-  - [ ] `src/viz/diagrams/ContextBudgetWaterfallVisualizer.tsx`
+  - [x] `src/viz/diagrams/ContextBudgetWaterfallVisualizer.tsx`
 - `src/content/docs/cs-fundamentals/apis-http-and-protocols.mdx`
-  - [ ] `src/viz/diagrams/AuthNvsAuthZDiagram.tsx`
-  - [ ] `src/viz/diagrams/CommunicationPatternSequenceDiagram.tsx`
-  - [ ] `src/viz/diagrams/DependencyInjectionDiagram.tsx`
-  - [ ] `src/viz/diagrams/FastApiRequestFlowDiagram.tsx`
-  - [ ] `src/viz/diagrams/HttpMethodsDiagram.tsx`
-  - [ ] `src/viz/diagrams/JwtStructureDiagram.tsx`
-  - [ ] `src/viz/diagrams/OAuthFlowDiagram.tsx`
-  - [ ] `src/viz/diagrams/PatternComparisonMatrixDiagram.tsx`
-  - [ ] `src/viz/diagrams/RequestResponseCycleDiagram.tsx`
-  - [ ] `src/viz/diagrams/RestResourceModelDiagram.tsx`
-  - [ ] `src/viz/diagrams/StatusCodeFamiliesDiagram.tsx`
+  - [x] `src/viz/diagrams/AuthNvsAuthZDiagram.tsx`
+  - [x] `src/viz/diagrams/CommunicationPatternSequenceDiagram.tsx`
+  - [x] `src/viz/diagrams/DependencyInjectionDiagram.tsx`
+  - [x] `src/viz/diagrams/FastApiRequestFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/HttpMethodsDiagram.tsx`
+  - [x] `src/viz/diagrams/JwtStructureDiagram.tsx`
+  - [x] `src/viz/diagrams/OAuthFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/PatternComparisonMatrixDiagram.tsx`
+  - [x] `src/viz/diagrams/RequestResponseCycleDiagram.tsx`
+  - [x] `src/viz/diagrams/RestResourceModelDiagram.tsx`
+  - [x] `src/viz/diagrams/StatusCodeFamiliesDiagram.tsx`
 - `src/content/docs/cs-fundamentals/linux-git-and-tooling.mdx`
-  - [ ] `src/viz/diagrams/CompiledVsInterpretedDiagram.tsx`
-  - [ ] `src/viz/diagrams/GitObjectModelDiagram.tsx`
-  - [ ] `src/viz/diagrams/RebaseVsMergeDiagram.tsx`
+  - [x] `src/viz/diagrams/CompiledVsInterpretedDiagram.tsx`
+  - [x] `src/viz/diagrams/GitObjectModelDiagram.tsx`
+  - [x] `src/viz/diagrams/RebaseVsMergeDiagram.tsx`
 - `src/content/docs/cs-fundamentals/networking-and-distributed-systems.mdx`
-  - [ ] `src/viz/diagrams/CapTheoremDiagram.tsx`
-  - [ ] `src/viz/diagrams/ConsensusQuorumDiagram.tsx`
-  - [ ] `src/viz/diagrams/DnsResolutionDiagram.tsx`
-  - [ ] `src/viz/diagrams/LoadBalancingDiagram.tsx`
-  - [ ] `src/viz/diagrams/TcpVsUdpDiagram.tsx`
+  - [x] `src/viz/diagrams/CapTheoremDiagram.tsx`
+  - [x] `src/viz/diagrams/ConsensusQuorumDiagram.tsx`
+  - [x] `src/viz/diagrams/DnsResolutionDiagram.tsx`
+  - [x] `src/viz/diagrams/LoadBalancingDiagram.tsx`
+  - [x] `src/viz/diagrams/TcpVsUdpDiagram.tsx`
 - `src/content/docs/cs-fundamentals/operating-systems-and-concurrency.mdx`
-  - [ ] `src/viz/diagrams/ConcurrencyVsParallelismDiagram.tsx`
-  - [ ] `src/viz/diagrams/CpuCacheLatencyDiagram.tsx`
-  - [ ] `src/viz/diagrams/GilReleaseDiagram.tsx`
-  - [ ] `src/viz/diagrams/ProcessVsThreadDiagram.tsx`
-  - [ ] `src/viz/diagrams/SequentialVsRandomIoDiagram.tsx`
+  - [x] `src/viz/diagrams/ConcurrencyVsParallelismDiagram.tsx`
+  - [x] `src/viz/diagrams/CpuCacheLatencyDiagram.tsx`
+  - [x] `src/viz/diagrams/GilReleaseDiagram.tsx`
+  - [x] `src/viz/diagrams/ProcessVsThreadDiagram.tsx`
+  - [x] `src/viz/diagrams/SequentialVsRandomIoDiagram.tsx`
 - `src/content/docs/cs-fundamentals/overview.mdx`
-  - [ ] `src/viz/diagrams/SystemStackFailureDiagram.tsx`
+  - [x] `src/viz/diagrams/SystemStackFailureDiagram.tsx`
 - `src/content/docs/cs-fundamentals/software-engineering-practices.mdx`
-  - [ ] `src/viz/diagrams/DesignPatternDiagram.tsx`
-  - [ ] `src/viz/diagrams/FlameGraphDiagram.tsx`
-  - [ ] `src/viz/diagrams/GitBisectDiagram.tsx`
-  - [ ] `src/viz/diagrams/TestingPyramidDiagram.tsx`
+  - [x] `src/viz/diagrams/DesignPatternDiagram.tsx`
+  - [x] `src/viz/diagrams/FlameGraphDiagram.tsx`
+  - [x] `src/viz/diagrams/GitBisectDiagram.tsx`
+  - [x] `src/viz/diagrams/TestingPyramidDiagram.tsx`
 
 ## Batch 13
 - `src/content/docs/databases/graph/overview.mdx`

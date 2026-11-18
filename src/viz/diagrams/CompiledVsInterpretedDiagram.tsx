@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Mode = 'compiled' | 'interpreted' | 'python' | 'pytorch';
+const MODES: Mode[] = ['pytorch', 'python', 'compiled', 'interpreted'];
 
 const STAGES: Record<Mode, { label: string; color: 'query' | 'attention' | 'key'; width: number }[]> = {
   compiled: [{ label: 'compile (once, ahead of time)', color: 'query', width: 35 }, { label: 'run machine code (fast)', color: 'attention', width: 65 }],
@@ -26,14 +26,19 @@ const EXPLAIN: Record<Mode, string> = {
 
 export default function CompiledVsInterpretedDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('pytorch');
+  const { value: modeIdx, pick: setModeIdx, stop } = useAutoCycle(MODES.length, 3500, 0);
+  const mode = MODES[modeIdx];
 
   return (
     <VisualizationContainer footer={EXPLAIN[mode]}>
       <PillSelect<Mode>
         label="Execution model"
         value={mode}
-        onChange={setMode}
+        onChange={(val) => {
+          const v = typeof val === 'function' ? val(mode) : val;
+          stop();
+          setModeIdx(MODES.indexOf(v));
+        }}
         options={(Object.keys(LABELS) as Mode[]).map((m) => ({ value: m, label: LABELS[m] }))}
       />
       <div style={{ display: 'flex', height: 32, borderRadius: 6, overflow: 'hidden', marginTop: 10 }}>

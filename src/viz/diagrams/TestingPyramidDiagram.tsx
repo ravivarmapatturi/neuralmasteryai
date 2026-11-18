@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const UNIT_MS: Record<'unit' | 'integration' | 'e2e', number> = { unit: 5, integration: 200, e2e: 4000 };
@@ -10,9 +10,13 @@ const SHAPES = {
   inverted: { unit: 10, integration: 30, e2e: 100 },
 };
 
+const SHAPES_LIST: ('pyramid' | 'inverted')[] = ['pyramid', 'inverted'];
+
 export default function TestingPyramidDiagram() {
   const t = useVizTokens();
-  const [shape, setShape] = useState<'pyramid' | 'inverted'>('pyramid');
+  const { value: shapeIdx, stop } = useAutoCycle(SHAPES_LIST.length, 3800, 0);
+  const [userShape, setUserShape] = useState<'pyramid' | 'inverted' | null>(null);
+  const shape = userShape ?? SHAPES_LIST[shapeIdx];
   const counts = SHAPES[shape];
   const totalMs = counts.unit * UNIT_MS.unit + counts.integration * UNIT_MS.integration + counts.e2e * UNIT_MS.e2e;
   const color = getConceptColor(t, 'attention');
@@ -34,10 +38,22 @@ export default function TestingPyramidDiagram() {
       }
     >
       <div style={{ marginBottom: 12 }}>
-        <VizButton variant={shape === 'pyramid' ? 'primary' : 'secondary'} onClick={() => setShape('pyramid')}>
+        <VizButton
+          variant={shape === 'pyramid' ? 'primary' : 'secondary'}
+          onClick={() => {
+            stop();
+            setUserShape('pyramid');
+          }}
+        >
           Pyramid (correct)
         </VizButton>{' '}
-        <VizButton variant={shape === 'inverted' ? 'primary' : 'secondary'} onClick={() => setShape('inverted')}>
+        <VizButton
+          variant={shape === 'inverted' ? 'primary' : 'secondary'}
+          onClick={() => {
+            stop();
+            setUserShape('inverted');
+          }}
+        >
           Inverted (bad)
         </VizButton>
       </div>

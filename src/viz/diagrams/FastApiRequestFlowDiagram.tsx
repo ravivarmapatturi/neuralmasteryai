@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STAGES = [
@@ -15,9 +14,10 @@ const STAGES = [
  * click one for what happens there. */
 export default function FastApiRequestFlowDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('validate');
+  const { value: activeIdx, pick: setActiveIdx, stop } = useAutoCycle(STAGES.length, 3000, 1);
   const color = getConceptColor(t, 'attention');
-  const info = STAGES.find((s) => s.key === active)!;
+  const info = STAGES[activeIdx];
+  const active = info.key;
 
   return (
     <VisualizationContainer footer={info.desc}>
@@ -27,8 +27,8 @@ export default function FastApiRequestFlowDiagram() {
           return (
             <div key={s.key}>
               <div
-                onClick={() => setActive(s.key)}
-                onMouseEnter={() => setActive(s.key)}
+                onClick={() => { stop(); setActiveIdx(i); }}
+                onMouseEnter={() => { stop(); setActiveIdx(i); }}
                 style={{ cursor: 'pointer', padding: '0.5rem 0.7rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}
               >
                 <div style={{ fontSize: 11.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary, marginBottom: 3 }}>{s.label}</div>

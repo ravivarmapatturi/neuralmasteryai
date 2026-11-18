@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, FlowDots } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type ObjType = 'commit' | 'tree' | 'blob';
@@ -28,8 +27,9 @@ const COLOR_KEY: Record<ObjType, 'query' | 'attention' | 'key'> = { commit: 'que
 
 export default function GitObjectModelDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<string>('c2');
-  const node = NODES.find((n) => n.id === selected)!;
+  const { value: nodeIdx, pick: setNodeIdx, stop } = useAutoCycle(NODES.length, 3000, 0);
+  const node = NODES[nodeIdx];
+  const selected = node.id;
 
   const WIDTH = 460;
   const HEIGHT = 210;
@@ -56,7 +56,12 @@ export default function GitObjectModelDiagram() {
         {NODES.map((n) =>
           (n.children ?? []).map((childId) => {
             const child = NODES.find((c) => c.id === childId)!;
-            return <line key={`${n.id}-${childId}`} x1={n.x} y1={n.y + 14} x2={child.x} y2={child.y - 14} stroke={t.border} strokeWidth={1.5} markerEnd="url(#git-tree-arrow)" />;
+            return (
+              <g key={`${n.id}-${childId}`}>
+                <line x1={n.x} y1={n.y + 14} x2={child.x} y2={child.y - 14} stroke={t.border} strokeWidth={1.5} markerEnd="url(#git-tree-arrow)" />
+                <FlowDots d={`M ${n.x} ${n.y + 14} L ${child.x} ${child.y - 14}`} color={t.accentPrimary} count={2} r={2} />
+              </g>
+            );
           }),
         )}
         {NODES.filter((n) => n.parent).map((n) => {
@@ -68,11 +73,11 @@ export default function GitObjectModelDiagram() {
             </g>
           );
         })}
-        {NODES.map((n) => {
+        {NODES.map((n, i) => {
           const color = getConceptColor(t, COLOR_KEY[n.type]);
           const isSelected = n.id === selected;
           return (
-            <g key={n.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(n.id)}>
+            <g key={n.id} style={{ cursor: 'pointer' }} onClick={() => { stop(); setNodeIdx(i); }}>
               <rect x={n.x - 55} y={n.y - 14} width={110} height={28} rx={6} fill={isSelected ? `${color}22` : t.surfaceAlt} stroke={color} strokeWidth={isSelected ? 2.5 : 1.5} />
               <text x={n.x} y={n.y - 1} textAnchor="middle" fontSize={9} fontWeight={700} fill={color}>{n.label}</text>
               <text x={n.x} y={n.y + 10} textAnchor="middle" fontSize={8} fontFamily="monospace" fill={t.textMuted}>{n.hash}</text>

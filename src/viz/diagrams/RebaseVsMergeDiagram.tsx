@@ -1,14 +1,15 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle, FlowDots } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import { SketchArrow } from '../../components/notebook/RoughShape';
 
 const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
+const MODES: ('merge' | 'rebase')[] = ['merge', 'rebase'];
 
 export default function RebaseVsMergeDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'merge' | 'rebase'>('merge');
+  const { value: modeIdx, pick: setModeIdx, stop } = useAutoCycle(MODES.length, 4000, 0);
+  const mode = MODES[modeIdx];
   const mainColor = getConceptColor(t, 'query');
   const featColor = getConceptColor(t, 'attention');
   const newColor = t.accentWarn;
@@ -22,10 +23,10 @@ export default function RebaseVsMergeDiagram() {
       }
     >
       <div style={{ marginBottom: 14 }}>
-        <VizButton variant={mode === 'merge' ? 'primary' : 'secondary'} onClick={() => setMode('merge')}>
+        <VizButton variant={mode === 'merge' ? 'primary' : 'secondary'} onClick={() => { stop(); setModeIdx(0); }}>
           Merge
         </VizButton>{' '}
-        <VizButton variant={mode === 'rebase' ? 'primary' : 'secondary'} onClick={() => setMode('rebase')}>
+        <VizButton variant={mode === 'rebase' ? 'primary' : 'secondary'} onClick={() => { stop(); setModeIdx(1); }}>
           Rebase
         </VizButton>
       </div>
@@ -41,6 +42,7 @@ export default function RebaseVsMergeDiagram() {
           <>
             {/* feature branch diverging and merging back */}
             <SketchArrow points={[[120, 40], [160, 85], [220, 100], [280, 85], [320, 40]]} color={featColor} strokeWidth={2} arrowhead={false} id="rvm-feature" />
+            <FlowDots d="M 120 40 L 160 85 L 220 100 L 280 85 L 320 40" color={featColor} count={2} r={2} />
             <circle cx={200} cy={98} r={8} fill={featColor} />
             <circle cx={260} cy={98} r={8} fill={featColor} />
             <text x={230} y={122} fontSize={10} fontFamily={HAND_FONT} fill={featColor} textAnchor="middle">A, B (unchanged)</text>
@@ -56,6 +58,7 @@ export default function RebaseVsMergeDiagram() {
             <text x={215} y={112} fontSize={9} fontFamily={HAND_FONT} fill={t.textMuted} textAnchor="middle">A, B (orphaned)</text>
 
             <SketchArrow points={[[220, 40], [380, 40]]} color={mainColor} strokeWidth={2} arrowhead={false} id="rvm-main-2" />
+            <FlowDots d="M 220 40 L 380 40" color={newColor} count={2} r={2} />
             <circle cx={300} cy={40} r={8} fill={newColor} />
             <circle cx={360} cy={40} r={8} fill={newColor} />
             <text x={330} y={20} fontSize={10} fontFamily={HAND_FONT} fill={newColor} textAnchor="middle">A', B' (new hashes)</text>

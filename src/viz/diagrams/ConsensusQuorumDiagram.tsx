@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const N_NODES = 5;
+const PRESETS = [1, 0, 2, 3, 4];
 
 export default function ConsensusQuorumDiagram() {
   const t = useVizTokens();
-  const [unreachable, setUnreachable] = useState(1);
+  const { value: autoIdx, stop } = useAutoCycle(PRESETS.length, 3000, 0);
+  const [userVal, setUserVal] = useState<number | null>(null);
+  const unreachable = userVal ?? PRESETS[autoIdx];
   const reachable = N_NODES - unreachable;
   const majority = Math.floor(N_NODES / 2) + 1;
   const committed = reachable >= majority;
@@ -16,7 +19,7 @@ export default function ConsensusQuorumDiagram() {
 
   return (
     <VisualizationContainer footer={`${N_NODES} nodes, ${unreachable} unreachable (crashed or network-partitioned away). ${reachable} of ${N_NODES} reachable -- a majority quorum needs at least ${majority}. ${committed ? `${reachable} ≥ ${majority}: the remaining nodes CAN still agree and commit a new value.` : `${reachable} < ${majority}: no majority exists -- the cluster cannot safely commit anything until enough nodes are reachable again, exactly the guarantee that prevents two different sides of a split from both thinking they're in charge.`}`}>
-      <Slider label="Unreachable nodes" value={unreachable} onChange={setUnreachable} min={0} max={N_NODES - 1} format={(v) => `${v}`} />
+      <Slider label="Unreachable nodes" value={unreachable} onChange={(v) => { stop(); setUserVal(v); }} min={0} max={N_NODES - 1} format={(v) => `${v}`} />
       <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
         {Array.from({ length: N_NODES }, (_, i) => {
           const isUnreachable = i < unreachable;

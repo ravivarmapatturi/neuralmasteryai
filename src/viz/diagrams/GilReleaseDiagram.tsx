@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Code = 'python' | 'numpy';
+const CODES: Code[] = ['python', 'numpy'];
 
 export default function GilReleaseDiagram() {
   const t = useVizTokens();
-  const [code, setCode] = useState<Code>('python');
+  const { value: codeIdx, stop } = useAutoCycle(CODES.length, 3800, 0);
+  const [userCode, setUserCode] = useState<Code | null>(null);
+  const code = userCode ?? CODES[codeIdx];
   const colorA = getConceptColor(t, 'query');
   const colorB = getConceptColor(t, 'key');
   const gilColor = t.accentWarn;
@@ -21,10 +24,10 @@ export default function GilReleaseDiagram() {
       }
     >
       <div style={{ marginBottom: 12 }}>
-        <VizButton variant={code === 'python' ? 'primary' : 'secondary'} onClick={() => setCode('python')}>
+        <VizButton variant={code === 'python' ? 'primary' : 'secondary'} onClick={() => { stop(); setUserCode('python'); }}>
           Pure Python loop
         </VizButton>{' '}
-        <VizButton variant={code === 'numpy' ? 'primary' : 'secondary'} onClick={() => setCode('numpy')}>
+        <VizButton variant={code === 'numpy' ? 'primary' : 'secondary'} onClick={() => { stop(); setUserCode('numpy'); }}>
           NumPy/PyTorch call
         </VizButton>
       </div>

@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Part = 'method' | 'url' | 'reqHeaders' | 'reqBody' | 'status' | 'resHeaders' | 'resBody';
+const PART_KEYS: Part[] = ['method', 'url', 'reqHeaders', 'reqBody', 'status', 'resHeaders', 'resBody'];
 const PARTS: Record<Part, { label: string; example: string; desc: string; side: 'req' | 'res' }> = {
   method: { label: 'Method', example: 'POST', side: 'req', desc: 'What kind of action -- GET, POST, PUT, PATCH, DELETE.' },
   url: { label: 'URL', example: '/v1/messages', side: 'req', desc: 'Which resource this request targets.' },
@@ -18,7 +18,8 @@ const PARTS: Record<Part, { label: string; example: string; desc: string; side: 
  * -- click any part to see what it is and a real example. */
 export default function RequestResponseCycleDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<Part>('reqBody');
+  const { value: activeIdx, pick: setActiveIdx, stop } = useAutoCycle(PART_KEYS.length, 3000, 3);
+  const active = PART_KEYS[activeIdx];
   const reqColor = getConceptColor(t, 'query');
   const resColor = getConceptColor(t, 'attention');
   const info = PARTS[active];
@@ -29,8 +30,8 @@ export default function RequestResponseCycleDiagram() {
     const isActive = active === k;
     return (
       <div
-        onClick={() => setActive(k)}
-        onMouseEnter={() => setActive(k)}
+        onClick={() => { stop(); setActiveIdx(PART_KEYS.indexOf(k)); }}
+        onMouseEnter={() => { stop(); setActiveIdx(PART_KEYS.indexOf(k)); }}
         style={{ cursor: 'pointer', padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: isActive ? 700 : 500, background: isActive ? `${color}25` : t.surfaceAlt, border: `1.25px solid ${isActive ? color : t.border}`, color }}
       >
         {p.label}

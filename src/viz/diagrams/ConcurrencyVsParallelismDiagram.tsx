@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Mode = 'concurrent' | 'parallel';
+const MODES: Mode[] = ['concurrent', 'parallel'];
 const WIDTH = 420;
 const ROW_H = 26;
 const TASK_MS = 40;
@@ -11,7 +12,9 @@ const N = 3;
 
 export default function ConcurrencyVsParallelismDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('concurrent');
+  const { value: modeIdx, stop } = useAutoCycle(MODES.length, 3800, 0);
+  const [userMode, setUserMode] = useState<Mode | null>(null);
+  const mode = userMode ?? MODES[modeIdx];
   const colors = [getConceptColor(t, 'query'), getConceptColor(t, 'key'), getConceptColor(t, 'attention')];
 
   // Concurrent: one core, tasks interleaved in small slices.
@@ -46,10 +49,10 @@ export default function ConcurrencyVsParallelismDiagram() {
       }
     >
       <div style={{ marginBottom: 12 }}>
-        <VizButton variant={mode === 'concurrent' ? 'primary' : 'secondary'} onClick={() => setMode('concurrent')}>
+        <VizButton variant={mode === 'concurrent' ? 'primary' : 'secondary'} onClick={() => { stop(); setUserMode('concurrent'); }}>
           Concurrent (1 core)
         </VizButton>{' '}
-        <VizButton variant={mode === 'parallel' ? 'primary' : 'secondary'} onClick={() => setMode('parallel')}>
+        <VizButton variant={mode === 'parallel' ? 'primary' : 'secondary'} onClick={() => { stop(); setUserMode('parallel'); }}>
           Parallel (3 cores)
         </VizButton>
       </div>

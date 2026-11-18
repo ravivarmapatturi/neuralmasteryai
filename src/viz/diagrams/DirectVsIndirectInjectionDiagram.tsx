@@ -1,13 +1,14 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, FlowDots } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 
 type Mode = 'direct' | 'indirect';
+const MODES: Mode[] = ['indirect', 'direct'];
 
 export default function DirectVsIndirectInjectionDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('indirect');
+  const { value: modeIdx, pick: setModeIdx, stop } = useAutoCycle(MODES.length, 4000, 0);
+  const mode = MODES[modeIdx];
 
   const nodes = mode === 'direct'
     ? [{ id: 'attacker', label: 'Attacker' }, { id: 'chat', label: 'Chat input' }, { id: 'model', label: 'Model' }, { id: 'output', label: 'Output' }]
@@ -20,8 +21,8 @@ export default function DirectVsIndirectInjectionDiagram() {
         : 'Indirect injection: the attacker plants the instruction somewhere the model will later retrieve or process. The user who triggers the attack (by asking the model to summarize that page, or read that email) is not the attacker and has no idea anything malicious happened -- the attack surface is every piece of external content the system ever touches, not just the input box.'
     }>
       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        {(['indirect', 'direct'] as Mode[]).map((m) => (
-          <button key={m} type="button" onClick={() => setMode(m)} style={{
+        {MODES.map((m, idx) => (
+          <button key={m} type="button" onClick={() => { stop(); setModeIdx(idx); }} style={{
             padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
             border: `1px solid ${mode === m ? t.accentPrimary : t.border}`,
             background: mode === m ? t.accentPrimary : 'transparent',
@@ -37,16 +38,23 @@ export default function DirectVsIndirectInjectionDiagram() {
           </marker>
         </defs>
         {nodes.slice(0, -1).map((_, i) => (
-          <line
-            key={i}
-            x1={i * 110 + 90}
-            y1={45}
-            x2={(i + 1) * 110 - 2}
-            y2={45}
-            stroke={t.textMuted}
-            strokeWidth={1.5}
-            markerEnd="url(#inj-arrow)"
-          />
+          <g key={i}>
+            <line
+              x1={i * 110 + 90}
+              y1={45}
+              x2={(i + 1) * 110 - 2}
+              y2={45}
+              stroke={t.textMuted}
+              strokeWidth={1.5}
+              markerEnd="url(#inj-arrow)"
+            />
+            <FlowDots
+              d={`M ${i * 110 + 90} 45 L ${(i + 1) * 110 - 2} 45`}
+              color={mode === 'indirect' && i === 0 ? t.accentDanger : t.accentPrimary}
+              count={2}
+              r={2}
+            />
+          </g>
         ))}
         {nodes.map((n, i) => {
           const isAttacker = n.id === 'attacker';

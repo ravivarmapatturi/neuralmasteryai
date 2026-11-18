@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { combinedCatchProbability } from '../lib/aisecurity';
 
@@ -11,15 +11,27 @@ const LAYERS = [
   { id: 'monitor', label: 'Monitoring / detection', catch: 0.25 },
 ];
 
+const PRESET_COMBOS = [
+  new Set(['framing', 'output', 'agency', 'monitor']),
+  new Set(['framing', 'output']),
+  new Set(['agency', 'monitor']),
+  new Set(['framing']),
+];
+
 export default function DefenseInDepthDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<Set<string>>(new Set(LAYERS.map((l) => l.id)));
+  const { value: comboIdx, stop } = useAutoCycle(PRESET_COMBOS.length, 3500, 0);
+  const [userActive, setUserActive] = useState<Set<string> | null>(null);
+  const active = userActive ?? PRESET_COMBOS[comboIdx];
 
-  const toggle = (id: string) => setActive((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
+  const toggle = (id: string) => {
+    stop();
+    setUserActive((prev) => {
+      const next = new Set(prev ?? active);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const enabledRates = useMemo(() => LAYERS.filter((l) => active.has(l.id)).map((l) => l.catch), [active]);
   const combined = combinedCatchProbability(enabledRates);

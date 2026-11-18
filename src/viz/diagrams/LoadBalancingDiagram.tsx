@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Strategy = 'roundrobin' | 'leastconn' | 'hash';
+const STRATEGIES: Strategy[] = ['leastconn', 'roundrobin', 'hash'];
 const N_BACKENDS = 3;
 
 // 9 requests with wildly different costs -- a short completion vs. a long
@@ -47,7 +47,8 @@ const EXPLAIN: Record<Strategy, string> = {
 
 export default function LoadBalancingDiagram() {
   const t = useVizTokens();
-  const [strategy, setStrategy] = useState<Strategy>('leastconn');
+  const { value: stratIdx, pick: setStratIdx, stop } = useAutoCycle(STRATEGIES.length, 3500, 0);
+  const strategy = STRATEGIES[stratIdx];
   const load = simulate(strategy);
   const maxLoad = Math.max(...load, 1);
   const color = getConceptColor(t, 'attention');
@@ -57,7 +58,11 @@ export default function LoadBalancingDiagram() {
       <PillSelect<Strategy>
         label="Strategy"
         value={strategy}
-        onChange={setStrategy}
+        onChange={(val) => {
+          const v = typeof val === 'function' ? val(strategy) : val;
+          stop();
+          setStratIdx(STRATEGIES.indexOf(v));
+        }}
         options={[
           { value: 'roundrobin', label: 'Round-robin' },
           { value: 'leastconn', label: 'Least-connections' },

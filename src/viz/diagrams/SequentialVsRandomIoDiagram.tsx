@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 // Representative real-world figures for a typical SSD -- sequential reads
@@ -18,10 +18,13 @@ function randomTimeMs(totalMb: number, fileKb: number): number {
 }
 
 const TOTAL_MB = 1000; // read 1GB total, either as one sequential stream or as many small files
+const KB_PRESETS = [50, 10, 200, 25];
 
 export default function SequentialVsRandomIoDiagram() {
   const t = useVizTokens();
-  const [fileKb, setFileKb] = useState(50);
+  const { value: autoIdx, stop } = useAutoCycle(KB_PRESETS.length, 3000, 0);
+  const [userKb, setUserKb] = useState<number | null>(null);
+  const fileKb = userKb ?? KB_PRESETS[autoIdx];
 
   const seq = seqTimeMs(TOTAL_MB);
   const random = randomTimeMs(TOTAL_MB, fileKb);
@@ -32,7 +35,18 @@ export default function SequentialVsRandomIoDiagram() {
 
   return (
     <VisualizationContainer footer={`Reading ${TOTAL_MB.toLocaleString()}MB total as ${nFiles.toLocaleString()} separate ${fileKb}KB files: ~${(random / 1000).toFixed(1)}s, dominated by per-file open/seek overhead, not the actual data transfer. The same ${TOTAL_MB.toLocaleString()}MB as one sequential stream: ~${(seq / 1000).toFixed(2)}s. This is the concrete, measurable reason formats like TFRecord/WebDataset/Parquet pack many small training examples into large sequential files instead of one file per example.`}>
-      <Slider label="Individual file size" value={fileKb} onChange={setFileKb} min={5} max={500} step={5} format={(v) => `${v}KB`} />
+      <Slider
+        label="Individual file size"
+        value={fileKb}
+        onChange={(v) => {
+          stop();
+          setUserKb(v);
+        }}
+        min={5}
+        max={500}
+        step={5}
+        format={(v) => `${v}KB`}
+      />
       <div style={{ marginTop: 10 }}>
         <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, marginBottom: 2 }}>Sequential (one large file)</div>
         <div style={{ background: t.surfaceAlt, borderRadius: 6, height: 22, position: 'relative' }}>
