@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 interface AsiRow {
@@ -27,16 +26,13 @@ const ROWS: AsiRow[] = [
   { id: 'ASI10', name: 'Rogue Agents', risk: 'An agent operates outside its intended goal or authority entirely — the most severe, least common failure.', coverage: 'PyRIT: RedTeamingOrchestrator’s multi-turn adversarial conversations, specifically designed to probe for this.', covered: true },
 ];
 
-/** Click each ASI category to see what actually tests for it -- real
- * tools and plugins, not a generic "use red-teaming" gesture, and honest
- * about which categories don't have mature tooling yet. */
 export default function AgenticTop10CoverageDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<string>(ROWS[0].id);
+  const { value: selectedIdx, pick: setSelected, stop } = useAutoCycle(ROWS.length, 3000, 0);
   const color = getConceptColor(t, 'attention');
   const colorGap = t.accentDanger;
 
-  const row = ROWS.find((r) => r.id === selected)!;
+  const row = ROWS[selectedIdx];
   const coveredCount = ROWS.filter((r) => r.covered).length;
 
   return (
@@ -45,12 +41,12 @@ export default function AgenticTop10CoverageDiagram() {
       title="OWASP Agentic AI Top 10, mapped to real red-team/defense coverage"
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6 }}>
-        {ROWS.map((r) => {
-          const isSelected = r.id === selected;
+        {ROWS.map((r, i) => {
+          const isSelected = r.id === row.id;
           return (
             <button
               key={r.id}
-              onClick={() => setSelected(r.id)}
+              onClick={() => { stop(); setSelected(i); }}
               style={{
                 cursor: 'pointer',
                 textAlign: 'left',

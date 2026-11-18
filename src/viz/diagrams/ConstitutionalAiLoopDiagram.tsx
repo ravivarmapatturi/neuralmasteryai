@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, FlowDots } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const STAGES = [
@@ -12,8 +11,9 @@ const STAGES = [
 
 export default function ConstitutionalAiLoopDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('critique');
-  const active = STAGES.find((s) => s.id === selected)!;
+  const { value: stageIdx, pick: setSelected, stop } = useAutoCycle(STAGES.length, 3000, 1);
+  const active = STAGES[stageIdx];
+  const selected = active.id;
 
   const width = 460;
   const height = 220;
@@ -50,16 +50,23 @@ export default function ConstitutionalAiLoopDiagram() {
 
         {/* Clean directional arrows between card boundaries */}
         {arrows.map((a, i) => (
-          <line
-            key={i}
-            x1={a.x1}
-            y1={a.y1}
-            x2={a.x2}
-            y2={a.y2}
-            stroke={t.textMuted}
-            strokeWidth={1.5}
-            markerEnd="url(#cai-arrow)"
-          />
+          <g key={i}>
+            <line
+              x1={a.x1}
+              y1={a.y1}
+              x2={a.x2}
+              y2={a.y2}
+              stroke={t.textMuted}
+              strokeWidth={1.5}
+              markerEnd="url(#cai-arrow)"
+            />
+            <FlowDots
+              d={`M ${a.x1} ${a.y1} L ${a.x2} ${a.y2}`}
+              color={t.accentPrimary}
+              count={2}
+              r={2}
+            />
+          </g>
         ))}
 
         {/* Stage cards */}
@@ -70,7 +77,7 @@ export default function ConstitutionalAiLoopDiagram() {
           const y = pos.y - cardH / 2;
 
           return (
-            <g key={s.id} onClick={() => setSelected(s.id)} style={{ cursor: 'pointer' }}>
+            <g key={s.id} onClick={() => { stop(); setSelected(i); }} style={{ cursor: 'pointer' }}>
               <rect
                 x={x}
                 y={y}

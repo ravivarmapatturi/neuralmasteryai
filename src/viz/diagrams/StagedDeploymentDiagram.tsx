@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { detectionProbability } from '../lib/alignment';
 
@@ -13,17 +13,20 @@ const STAGES = [
   { label: 'Limited external', n: 2000 },
   { label: 'General availability', n: 2_000_000 },
 ];
+const P_PRESETS = [0.0005, 0.002, 0.0001, 0.005];
 
 export default function StagedDeploymentDiagram() {
   const t = useVizTokens();
-  const [p, setP] = useState(0.0005);
+  const { value: autoIdx, stop } = useAutoCycle(P_PRESETS.length, 3000, 0);
+  const [userP, setUserP] = useState<number | null>(null);
+  const p = userP ?? P_PRESETS[autoIdx];
 
   const results = useMemo(() => STAGES.map((s) => ({ ...s, prob: detectionProbability(p, s.n) })), [p]);
   const firstCaughtIdx = results.findIndex((r) => r.prob > 0.5);
 
   return (
     <VisualizationContainer footer={`With a rare real issue rate p=${p.toFixed(4)} per user: ${results.map((r) => `${r.label} (n=${r.n.toLocaleString()}) has ${(r.prob * 100).toFixed(1)}% chance of surfacing it`).join('; ')}. Staged rollout doesn't guarantee catching a rare issue early -- it guarantees that WHICHEVER stage does catch it, the blast radius up to that point was bounded by that stage's audience, not GA's.`}>
-      <Slider label="real issue rate (p) per user" value={p} onChange={setP} min={0.00005} max={0.01} step={0.00005} format={(v) => v.toFixed(4)} />
+      <Slider label="real issue rate (p) per user" value={p} onChange={(v) => { stop(); setUserP(v); }} min={0.00005} max={0.01} step={0.00005} format={(v) => v.toFixed(4)} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
         {results.map((r, i) => (

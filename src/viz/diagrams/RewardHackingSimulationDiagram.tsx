@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { trueQuality, proxyReward, argmaxProxyLength } from '../lib/alignment';
 
+const BETA_PRESETS = [0.3, 0.05, 0.8, 0.5];
+
 export default function RewardHackingSimulationDiagram() {
   const t = useVizTokens();
-  const [beta, setBeta] = useState(0.3);
+  const { value: autoIdx, stop } = useAutoCycle(BETA_PRESETS.length, 3000, 0);
+  const [userBeta, setUserBeta] = useState<number | null>(null);
+  const beta = userBeta ?? BETA_PRESETS[autoIdx];
 
   const optimalLength = useMemo(() => argmaxProxyLength(beta), [beta]);
   const trueAtOptimum = trueQuality(optimalLength);
@@ -23,7 +27,7 @@ export default function RewardHackingSimulationDiagram() {
 
   return (
     <VisualizationContainer footer={`Optimizing the proxy reward (length-correlated) picks length=${optimalLength} words -- its real quality there is only ${trueAtOptimum.toFixed(2)}/10, even though the reward model claims ${proxyAtOptimum.toFixed(2)}. At β=0 the two curves' peaks coincide (length=150, true optimum); push β up and the optimizer chases length instead of quality, dragging real quality down with it.`}>
-      <Slider label="how strongly reward model score correlates with length (β)" value={beta} onChange={setBeta} min={0} max={1} step={0.05} />
+      <Slider label="how strongly reward model score correlates with length (β)" value={beta} onChange={(v) => { stop(); setUserBeta(v); }} min={0} max={1} step={0.05} />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <polyline points={truePts.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke={t.accentSecondary} strokeWidth={2} strokeDasharray="5 3" />

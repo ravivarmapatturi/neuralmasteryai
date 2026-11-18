@@ -1,13 +1,23 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { triggerDetectionProbability } from '../lib/aisecurity';
 
+const TRIGGER_PRESETS = [
+  { triggerSpaceLog: 4, tests: 1000 },
+  { triggerSpaceLog: 3, tests: 5000 },
+  { triggerSpaceLog: 5, tests: 2000 },
+  { triggerSpaceLog: 3.5, tests: 12000 },
+];
+
 export default function BackdoorTriggerDiagram() {
   const t = useVizTokens();
-  const [triggerSpaceLog, setTriggerSpaceLog] = useState(4); // 10^4 possible trigger patterns
-  const [tests, setTests] = useState(1000);
+  const { value: presetIdx, stop } = useAutoCycle(TRIGGER_PRESETS.length, 3200, 0);
+  const [userSpace, setUserSpace] = useState<number | null>(null);
+  const [userTests, setUserTests] = useState<number | null>(null);
+  const triggerSpaceLog = userSpace ?? TRIGGER_PRESETS[presetIdx].triggerSpaceLog;
+  const tests = userTests ?? TRIGGER_PRESETS[presetIdx].tests;
 
   const triggerSpaceSize = Math.round(10 ** triggerSpaceLog);
   const detectProb = useMemo(() => triggerDetectionProbability(triggerSpaceSize, tests), [triggerSpaceSize, tests]);
@@ -23,10 +33,10 @@ export default function BackdoorTriggerDiagram() {
     <VisualizationContainer footer={`With ${triggerSpaceSize.toLocaleString()} possible trigger patterns and ${tests.toLocaleString()} random black-box test inputs, real probability of randomly stumbling onto the exact trigger = ${(detectProb * 100).toFixed(3)}% -- computed from 1−(1−1/N)^tests, the same math as the deception-detection diagram on Alignment & RLHF, just with "possible triggers" standing in for "possible bad behaviors." The model performs correctly on every input except the trigger, which normal evaluation has essentially no reason to ever generate.`}>
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 220 }}>
-          <Slider label="possible trigger patterns (10^x)" value={triggerSpaceLog} onChange={setTriggerSpaceLog} min={2} max={8} step={0.5} />
+          <Slider label="possible trigger patterns (10^x)" value={triggerSpaceLog} onChange={(v) => { stop(); setUserSpace(v); }} min={2} max={8} step={0.5} />
         </div>
         <div style={{ flex: 1, minWidth: 220 }}>
-          <Slider label="random black-box tests run" value={tests} onChange={setTests} min={10} max={20000} step={10} />
+          <Slider label="random black-box tests run" value={tests} onChange={(v) => { stop(); setUserTests(v); }} min={10} max={20000} step={10} />
         </div>
       </div>
 

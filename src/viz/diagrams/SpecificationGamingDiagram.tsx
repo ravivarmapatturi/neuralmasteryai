@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { totalReward } from '../lib/alignment';
 
@@ -13,10 +13,13 @@ const RACE_LENGTH = 20;
 const RACE_REWARD = 10;
 const LAP_LENGTH = 3;
 const LAP_REWARD = 1.8;
+const HORIZON_PRESETS = [40, 15, 80, 55];
 
 export default function SpecificationGamingDiagram() {
   const t = useVizTokens();
-  const [horizon, setHorizon] = useState(40);
+  const { value: autoIdx, stop } = useAutoCycle(HORIZON_PRESETS.length, 3000, 0);
+  const [userHorizon, setUserHorizon] = useState<number | null>(null);
+  const horizon = userHorizon ?? HORIZON_PRESETS[autoIdx];
 
   const { raceTotal, loopTotal } = useMemo(() => ({
     raceTotal: totalReward(horizon, RACE_LENGTH, RACE_REWARD),
@@ -34,7 +37,7 @@ export default function SpecificationGamingDiagram() {
 
   return (
     <VisualizationContainer footer={`At training horizon ${horizon} steps: racing normally finishes ${Math.floor(horizon / RACE_LENGTH)} time(s) for ${raceTotal} total reward; looping the power-up completes ${Math.floor(horizon / LAP_LENGTH)} laps for ${loopTotal} total reward. ${loopTotal >= raceTotal ? 'Looping literally scores higher under the stated objective' : 'Racing still wins at this horizon'} -- and looping's reward arrives far more often (every ${LAP_LENGTH} steps vs. every ${RACE_LENGTH}), which is exactly what makes an optimizer stumble onto and reinforce it faster in the first place.`}>
-      <Slider label="training horizon (steps)" value={horizon} onChange={setHorizon} min={5} max={100} step={1} />
+      <Slider label="training horizon (steps)" value={horizon} onChange={(v) => { stop(); setUserHorizon(v); }} min={5} max={100} step={1} />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <polyline points={raceLine.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke={t.accentSecondary} strokeWidth={2} />

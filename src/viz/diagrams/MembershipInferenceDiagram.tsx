@@ -1,13 +1,23 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { memberConfidenceSamples, classificationRatesAtThreshold } from '../lib/aisecurity';
 
+const MEMBERSHIP_PRESETS = [
+  { noise: 0, threshold: 0.55 },
+  { noise: 0.15, threshold: 0.55 },
+  { noise: 0.30, threshold: 0.55 },
+  { noise: 0, threshold: 0.75 },
+];
+
 export default function MembershipInferenceDiagram() {
   const t = useVizTokens();
-  const [noise, setNoise] = useState(0);
-  const [threshold, setThreshold] = useState(0.55);
+  const { value: presetIdx, stop } = useAutoCycle(MEMBERSHIP_PRESETS.length, 3200, 0);
+  const [userNoise, setUserNoise] = useState<number | null>(null);
+  const [userThreshold, setUserThreshold] = useState<number | null>(null);
+  const noise = userNoise ?? MEMBERSHIP_PRESETS[presetIdx].noise;
+  const threshold = userThreshold ?? MEMBERSHIP_PRESETS[presetIdx].threshold;
 
   const { member, nonMember } = useMemo(() => memberConfidenceSamples(200, 5, 0.35, noise), [noise]);
   const { tpr, fpr } = useMemo(() => classificationRatesAtThreshold(member, nonMember, threshold), [member, nonMember, threshold]);
@@ -28,8 +38,8 @@ export default function MembershipInferenceDiagram() {
   return (
     <VisualizationContainer footer={`At threshold ${threshold.toFixed(2)}: real true-positive rate (correctly flags a training member) = ${(tpr * 100).toFixed(1)}%, real false-positive rate (wrongly flags a non-member) = ${(fpr * 100).toFixed(1)}%. This gap between the two real histograms below IS the membership-inference attack -- the more they overlap, the less an attacker can tell "trained on this" from "never seen this" by confidence alone.`}>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <Slider label="differential-privacy noise added during training" value={noise} onChange={setNoise} min={0} max={0.35} step={0.01} />
-        <Slider label="attacker's confidence threshold" value={threshold} onChange={setThreshold} min={0.1} max={0.9} step={0.01} />
+        <Slider label="differential-privacy noise added during training" value={noise} onChange={(v) => { stop(); setUserNoise(v); }} min={0} max={0.35} step={0.01} />
+        <Slider label="attacker's confidence threshold" value={threshold} onChange={(v) => { stop(); setUserThreshold(v); }} min={0.1} max={0.9} step={0.01} />
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>

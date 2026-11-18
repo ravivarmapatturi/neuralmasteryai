@@ -1,13 +1,24 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { twoProportionPower } from '../lib/humanEval';
 
+const PRESETS = [
+  { effectSize: 0.05, n: 20 },
+  { effectSize: 0.10, n: 60 },
+  { effectSize: 0.03, n: 250 },
+  { effectSize: 0.05, n: 180 },
+];
+
 export default function StatisticalPowerDiagram() {
   const t = useVizTokens();
-  const [effectSize, setEffectSize] = useState(0.05);
-  const [n, setN] = useState(20);
+  const { value: presetIdx, stop } = useAutoCycle(PRESETS.length, 3000, 0);
+  const [userEffect, setUserEffect] = useState<number | null>(null);
+  const [userN, setUserN] = useState<number | null>(null);
+
+  const effectSize = userEffect ?? PRESETS[presetIdx].effectSize;
+  const n = userN ?? PRESETS[presetIdx].n;
 
   const power = useMemo(() => twoProportionPower(0.5, 0.5 + effectSize, n), [effectSize, n]);
 
@@ -21,8 +32,23 @@ export default function StatisticalPowerDiagram() {
   return (
     <VisualizationContainer footer={`Real win-rate difference to detect: ${(effectSize * 100).toFixed(0)} points (50% vs ${(50 + effectSize * 100).toFixed(0)}%). At n=${n} raters per side, real statistical power = ${(power * 100).toFixed(1)}% -- the probability this study actually detects the difference IF it's real. A study "not showing a clear winner" at low power is exactly as likely to mean "underpowered" as "no real difference," and this number is computable BEFORE running the study, not after.`}>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <Slider label="real effect size to detect" value={effectSize} onChange={setEffectSize} min={0.01} max={0.2} step={0.005} format={(v) => `${(v * 100).toFixed(1)} pts`} />
-        <Slider label="sample size (n per group)" value={n} onChange={setN} min={5} max={500} step={5} />
+        <Slider
+          label="real effect size to detect"
+          value={effectSize}
+          onChange={(v) => { stop(); setUserEffect(v); }}
+          min={0.01}
+          max={0.2}
+          step={0.005}
+          format={(v) => `${(v * 100).toFixed(1)} pts`}
+        />
+        <Slider
+          label="sample size (n per group)"
+          value={n}
+          onChange={(v) => { stop(); setUserN(v); }}
+          min={5}
+          max={500}
+          step={5}
+        />
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>

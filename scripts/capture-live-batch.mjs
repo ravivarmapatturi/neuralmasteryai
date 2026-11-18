@@ -656,6 +656,74 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  11: [
+    {
+      route: '/docs/agent-observability/overview',
+      diagrams: [
+        { name: 'AgentTraceWaterfallVisualizer', match: 'Distributed Span Trees' },
+      ],
+    },
+    {
+      route: '/docs/ai-evaluation/evaluation-fundamentals',
+      diagrams: [
+        { name: 'ConstructValidityDiagram', match: 'Shortcut model' },
+        { name: 'ContaminationDiagram', match: 'fraction of benchmark contaminated' },
+        { name: 'GoldenDatasetCoverageDiagram', match: 'golden dataset size' },
+        { name: 'SaturationDiagram', match: 'Re-sample generations' },
+      ],
+    },
+    {
+      route: '/docs/ai-evaluation/human-and-adversarial-evaluation',
+      diagrams: [
+        { name: 'AdversarialRobustnessDiagram', match: 'perturbation strength' },
+        { name: 'CohensKappaDiagram', match: 'raw agreement' },
+        { name: 'EloRatingDiagram', match: 'Play 10 matches' },
+        { name: 'StatisticalPowerDiagram', match: 'real effect size to detect' },
+      ],
+    },
+    {
+      route: '/docs/ai-evaluation/llm-rag-agent-evaluation',
+      diagrams: [
+        { name: 'AgentTrajectoryDiagram', match: 'task success rate' },
+        { name: 'JudgeValidationDiagram', match: 'example-anchored rubric' },
+        { name: 'JudgeVerbosityBiasDiagram', match: 'judge\'s length bias strength' },
+      ],
+    },
+    {
+      route: '/docs/ai-safety/alignment-and-rlhf',
+      diagrams: [
+        { name: 'ConstitutionalAiLoopDiagram', match: 'no human' },
+        { name: 'DeceptionDetectionDiagram', match: 'hidden misbehavior rate' },
+        { name: 'RewardHackingSimulationDiagram', match: 'correlates with length' },
+        { name: 'SpecificationGamingDiagram', match: 'training horizon' },
+      ],
+    },
+    {
+      route: '/docs/ai-safety/scalable-oversight-and-frontier-safety',
+      diagrams: [
+        { name: 'CapabilityThresholdDiagram', match: 'dangerous-capability threshold' },
+        { name: 'DebateConvergenceDiagram', match: 'Re-run debate' },
+        { name: 'OversightApproachesDiagram', match: 'Recursive reward modeling' },
+        { name: 'ProcessVsOutcomeDiagram', match: 'Test Trace A' },
+        { name: 'StagedDeploymentDiagram', match: 'real issue rate' },
+      ],
+    },
+    {
+      route: '/docs/ai-security/ai-red-teaming',
+      diagrams: [
+        { name: 'AgenticTop10CoverageDiagram', match: 'Agent Goal Hijack' },
+      ],
+    },
+    {
+      route: '/docs/ai-security/model-and-data-attacks',
+      diagrams: [
+        { name: 'AdversarialPerturbationDiagram', match: 'perturbation magnitude' },
+        { name: 'BackdoorTriggerDiagram', match: 'possible trigger patterns' },
+        { name: 'MembershipInferenceDiagram', match: 'differential-privacy noise' },
+        { name: 'ModelExtractionDiagram', match: 'attacker\'s query budget' },
+      ],
+    },
+  ],
 };
 
 async function main() {

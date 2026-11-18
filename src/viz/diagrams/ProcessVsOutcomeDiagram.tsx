@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 
 // A concrete, checkable example: "is 91 prime?" Trace A reaches the right
@@ -13,7 +12,8 @@ const TRACE_B = { steps: ['Test small primes: 91 / 7 = 13 exactly.', '91 = 7 × 
 
 export default function ProcessVsOutcomeDiagram() {
   const t = useVizTokens();
-  const [tested, setTested] = useState(false);
+  const { value: autoVal, pick: setTested, stop } = useAutoCycle(2, 4000, 0);
+  const tested = autoVal === 1;
 
   const Badge = ({ ok, label }: { ok: boolean; label: string }) => (
     <span style={{ padding: '2px 8px', borderRadius: DIAGRAM_RADIUS.chip, fontSize: 11, fontWeight: 700, background: ok ? `${t.accentPrimary}25` : `${t.accentDanger}25`, color: ok ? t.accentPrimary : t.accentDanger }}>
@@ -41,7 +41,7 @@ export default function ProcessVsOutcomeDiagram() {
         ))}
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-        <VizButton onClick={() => setTested(true)} disabled={tested}>Test Trace A's rule on a new number (97)</VizButton>
+        <VizButton onClick={() => { stop(); setTested(1); }} disabled={tested}>Test Trace A's rule on a new number (97)</VizButton>
       </div>
     </VisualizationContainer>
   );

@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { contaminatedScore } from '../lib/evaluationFundamentals';
 
 const TRUE_CAPABILITY = 0.62;
+const CONTAMINATIONS = [0.15, 0.05, 0.40, 0.25];
 
 export default function ContaminationDiagram() {
   const t = useVizTokens();
-  const [contamination, setContamination] = useState(0.15);
+  const { value: contamIdx, stop } = useAutoCycle(CONTAMINATIONS.length, 3000, 0);
+  const [userContam, setUserContam] = useState<number | null>(null);
+  const contamination = userContam ?? CONTAMINATIONS[contamIdx];
 
   const reportedScore = useMemo(() => contaminatedScore(TRUE_CAPABILITY, contamination), [contamination]);
   const inflation = reportedScore - TRUE_CAPABILITY;
@@ -22,7 +25,17 @@ export default function ContaminationDiagram() {
 
   return (
     <VisualizationContainer footer={`Real capability = ${(TRUE_CAPABILITY * 100).toFixed(0)}% (fixed, unaffected by contamination). With ${(contamination * 100).toFixed(0)}% of benchmark items memorized during training (answered perfectly, contributing 100% on exactly those items), the REPORTED score is ${(reportedScore * 100).toFixed(1)}% -- a real ${(inflation * 100).toFixed(1)}-point inflation, computed as (1−c)·true + c·1.0, not estimated.`}>
-      <Slider label="fraction of benchmark contaminated into training data" value={contamination} onChange={setContamination} min={0} max={0.6} step={0.01} />
+      <Slider
+        label="fraction of benchmark contaminated into training data"
+        value={contamination}
+        onChange={(v) => {
+          stop();
+          setUserContam(v);
+        }}
+        min={0}
+        max={0.6}
+        step={0.01}
+      />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={0} y1={py(TRUE_CAPABILITY)} x2={width} y2={py(TRUE_CAPABILITY)} stroke={t.textMuted} strokeWidth={1.5} strokeDasharray="3 3" />

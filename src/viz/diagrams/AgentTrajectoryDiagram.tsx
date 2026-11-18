@@ -1,12 +1,11 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { TRAJECTORY, trajectoryQualityScore } from '../lib/llmEval';
 
 export default function AgentTrajectoryDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(0);
+  const { value: selected, pick, stop } = useAutoCycle(TRAJECTORY.length, 2500, 0);
   const step = TRAJECTORY[selected];
   const quality = trajectoryQualityScore(TRAJECTORY);
   const taskSucceeded = true; // the final refund was issued correctly
@@ -15,11 +14,20 @@ export default function AgentTrajectoryDiagram() {
     <VisualizationContainer footer={step.note}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {TRAJECTORY.map((s, i) => (
-          <div key={i} onClick={() => setSelected(i)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(i); } }} style={{
-            flex: '1 1 140px', cursor: 'pointer', padding: '0.6rem 0.7rem', borderRadius: 8,
-            background: selected === i ? `${t.accentPrimary}18` : t.surfaceAlt,
-            border: `1.5px solid ${selected === i ? t.accentPrimary : s.good ? t.border : t.accentDanger}`,
-          }}>
+          <div
+            key={i}
+            onClick={() => { stop(); pick(i); }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stop(); pick(i); } }}
+            onMouseEnter={() => { stop(); pick(i); }}
+            style={{
+              flex: '1 1 140px', cursor: 'pointer', padding: '0.6rem 0.7rem', borderRadius: 8,
+              background: selected === i ? `${t.accentPrimary}18` : t.surfaceAlt,
+              border: `1.5px solid ${selected === i ? t.accentPrimary : s.good ? t.border : t.accentDanger}`,
+              transition: 'all 0.25s ease',
+            }}
+          >
             <div style={{ fontSize: 9, color: t.textMuted }}>step {i + 1}</div>
             <div style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', color: t.textPrimary }}>{s.tool}</div>
             <div style={{ fontSize: 10, color: t.textMuted, marginTop: 2, wordBreak: 'break-all' }}>{s.args}</div>

@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generationScores, stddev } from '../lib/evaluationFundamentals';
 
 const N_GENERATIONS = 5;
+const SEEDS = [1, 2, 3, 4];
 
 export default function SaturationDiagram() {
   const t = useVizTokens();
-  const [seed, setSeed] = useState(1);
+  const { value: seedIdx, stop } = useAutoCycle(SEEDS.length, 3000, 0);
+  const [userSeed, setUserSeed] = useState<number | null>(null);
+  const seed = userSeed ?? SEEDS[seedIdx];
 
   const generations = useMemo(
     () => Array.from({ length: N_GENERATIONS }, (_, i) => generationScores(i, seed)),
@@ -29,7 +32,7 @@ export default function SaturationDiagram() {
         {generations.map((gen, gi) => (
           <g key={gi}>
             {gen.map((score, i) => (
-              <circle key={i} cx={px(gi) + (i - gen.length / 2) * 4} cy={py(score)} r={4} fill={t.accentPrimary} fillOpacity={0.75} />
+              <circle key={i} cx={px(gi) + (i - gen.length / 2) * 4} cy={py(score)} r={4} fill={t.accentPrimary} fillOpacity={0.75} style={{ transition: 'cy 0.4s ease' }} />
             ))}
             <text x={px(gi)} y={height - 4} textAnchor="middle" fontSize={10} fill={t.textMuted}>gen {gi + 1}</text>
             <text x={px(gi)} y={16} textAnchor="middle" fontSize={9} fill={t.textSecondary}>spread {stddev(gen).toFixed(3)}</text>
@@ -37,7 +40,7 @@ export default function SaturationDiagram() {
         ))}
       </svg>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
-        <VizButton onClick={() => setSeed((s) => s + 1)}>Re-sample generations</VizButton>
+        <VizButton onClick={() => { stop(); setUserSeed(seed + 1); }}>Re-sample generations</VizButton>
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 4 }}>
         Benchmark saturation is why new, harder benchmarks keep replacing old ones as a field matures -- not fashion, a real measurement-validity problem visible in this shrinking spread.

@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { simulateDebate } from '../lib/oversight';
 
+const SEED_PRESETS = [11, 23, 37, 5, 42];
+
 export default function DebateConvergenceDiagram() {
   const t = useVizTokens();
-  const [seed, setSeed] = useState(11);
+  const { value: seedIdx, stop } = useAutoCycle(SEED_PRESETS.length, 3500, 0);
+  const [userSeed, setUserSeed] = useState<number | null>(null);
+  const seed = userSeed ?? SEED_PRESETS[seedIdx];
   const rounds = useMemo(() => simulateDebate(6, seed), [seed]);
   const final = rounds[rounds.length - 1];
 
@@ -42,7 +46,7 @@ export default function DebateConvergenceDiagram() {
         <span><span style={{ color: t.accentPrimary }}>⬤</span> con (correct side)'s argument strength</span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
-        <VizButton onClick={() => setSeed((s) => s + 1)}>Re-run debate</VizButton>
+        <VizButton onClick={() => { stop(); setUserSeed((s) => (s ?? seed) + 1); }}>Re-run debate</VizButton>
       </div>
     </VisualizationContainer>
   );

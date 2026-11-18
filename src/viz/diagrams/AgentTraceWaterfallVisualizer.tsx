@@ -1,12 +1,13 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle, FlowDots } from '../primitives';
 
 type ViewMode = 'trace_spans' | 'cost_attribution';
+const VIEWS: ViewMode[] = ['trace_spans', 'cost_attribution'];
 
 export default function AgentTraceWaterfallVisualizer() {
   const t = useVizTokens();
-  const [view, setView] = useState<ViewMode>('trace_spans');
+  const { value: viewIdx, pick, stop } = useAutoCycle(VIEWS.length, 3500, 0);
+  const view = VIEWS[viewIdx];
 
   return (
     <VisualizationContainer
@@ -27,7 +28,12 @@ export default function AgentTraceWaterfallVisualizer() {
         <PillSelect<ViewMode>
           label="Telemetry Lens"
           value={view}
-          onChange={setView}
+          onChange={(val) => {
+            const next = typeof val === 'function' ? val(view) : val;
+            const idx = VIEWS.indexOf(next);
+            if (idx >= 0) pick(idx);
+            stop();
+          }}
           options={[
             { value: 'trace_spans', label: '1. OpenTelemetry Span Hierarchy' },
             { value: 'cost_attribution', label: '2. Step Token & Cost Attribution' },
@@ -37,6 +43,7 @@ export default function AgentTraceWaterfallVisualizer() {
 
       {view === 'trace_spans' ? (
         <svg viewBox="0 0 680 250" width="100%" role="img" aria-label="OpenTelemetry Span Waterfall">
+          <FlowDots d="M 40 215 H 640" color={t.accentPrimary} dur={3} />
           {/* Root Span */}
           <rect x={40} y={25} width={600} height={26} rx={4} fill={t.accentPrimary} />
           <text x={50} y={43} fontSize={11} fontWeight={700} fill={t.background}>

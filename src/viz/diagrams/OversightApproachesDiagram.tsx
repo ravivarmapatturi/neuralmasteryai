@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const APPROACHES = [
@@ -11,16 +10,17 @@ const APPROACHES = [
 
 export default function OversightApproachesDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('debate');
-  const active = APPROACHES.find((a) => a.id === selected)!;
+  const { value: selectedIdx, pick: setSelected, stop } = useAutoCycle(APPROACHES.length, 3500, 0);
+  const active = APPROACHES[selectedIdx];
+  const selected = active.id;
 
   return (
     <VisualizationContainer footer={active.why}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {APPROACHES.map((a) => {
+        {APPROACHES.map((a, i) => {
           const isSelected = selected === a.id;
           return (
-            <div key={a.id} onClick={() => setSelected(a.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(a.id); } }} style={{
+            <div key={a.id} onClick={() => { stop(); setSelected(i); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stop(); setSelected(i); } }} style={{
               display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '0.7rem 0.9rem', borderRadius: 8,
               background: isSelected ? `${t.accentPrimary}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? t.accentPrimary : t.border}`,
             }}>

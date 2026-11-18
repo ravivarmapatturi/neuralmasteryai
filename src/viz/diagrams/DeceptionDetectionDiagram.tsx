@@ -1,13 +1,23 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, VisualizationMath } from '../primitives';
+import { VisualizationContainer, Slider, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { detectionProbability, samplesForConfidence } from '../lib/alignment';
 
+const PRESETS = [
+  { p: 0.02, n: 50 },
+  { p: 0.01, n: 120 },
+  { p: 0.05, n: 40 },
+  { p: 0.005, n: 250 },
+];
+
 export default function DeceptionDetectionDiagram() {
   const t = useVizTokens();
-  const [p, setP] = useState(0.02);
-  const [n, setN] = useState(50);
+  const { value: presetIdx, stop } = useAutoCycle(PRESETS.length, 3200, 0);
+  const [userP, setUserP] = useState<number | null>(null);
+  const [userN, setUserN] = useState<number | null>(null);
+  const p = userP ?? PRESETS[presetIdx].p;
+  const n = userN ?? PRESETS[presetIdx].n;
 
   const detectProb = useMemo(() => detectionProbability(p, n), [p, n]);
   const n95 = useMemo(() => samplesForConfidence(p, 0.95), [p]);
@@ -22,8 +32,8 @@ export default function DeceptionDetectionDiagram() {
   return (
     <VisualizationContainer footer={`With a real per-input misbehavior rate of p=${p.toFixed(3)}, testing n=${n} inputs catches it with probability ${(detectProb * 100).toFixed(1)}% -- computed from 1−(1−p)^n, not estimated. Reaching 95% confidence at this p needs ${Number.isFinite(n95) ? Math.ceil(n95) : '∞'} test inputs. A behavior rare enough to matter (small p) can trivially hide behind an evaluation suite too small to have real power against it.`}>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <Slider label="hidden misbehavior rate (p)" value={p} onChange={setP} min={0.001} max={0.15} step={0.001} format={(v) => v.toFixed(3)} />
-        <Slider label="number of eval inputs tested (n)" value={n} onChange={setN} min={1} max={500} step={1} />
+        <Slider label="hidden misbehavior rate (p)" value={p} onChange={(v) => { stop(); setUserP(v); }} min={0.001} max={0.15} step={0.001} format={(v) => v.toFixed(3)} />
+        <Slider label="number of eval inputs tested (n)" value={n} onChange={(v) => { stop(); setUserN(v); }} min={1} max={500} step={1} />
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>

@@ -331,39 +331,39 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 11
 - `src/content/docs/agent-observability/overview.mdx`
-  - [ ] `src/viz/diagrams/AgentTraceWaterfallVisualizer.tsx`
+  - [x] `src/viz/diagrams/AgentTraceWaterfallVisualizer.tsx`
 - `src/content/docs/ai-evaluation/evaluation-fundamentals.mdx`
-  - [ ] `src/viz/diagrams/ConstructValidityDiagram.tsx`
-  - [ ] `src/viz/diagrams/ContaminationDiagram.tsx`
-  - [ ] `src/viz/diagrams/GoldenDatasetCoverageDiagram.tsx`
-  - [ ] `src/viz/diagrams/SaturationDiagram.tsx`
+  - [x] `src/viz/diagrams/ConstructValidityDiagram.tsx`
+  - [x] `src/viz/diagrams/ContaminationDiagram.tsx`
+  - [x] `src/viz/diagrams/GoldenDatasetCoverageDiagram.tsx`
+  - [x] `src/viz/diagrams/SaturationDiagram.tsx`
 - `src/content/docs/ai-evaluation/human-and-adversarial-evaluation.mdx`
-  - [ ] `src/viz/diagrams/AdversarialRobustnessDiagram.tsx`
-  - [ ] `src/viz/diagrams/CohensKappaDiagram.tsx`
-  - [ ] `src/viz/diagrams/EloRatingDiagram.tsx`
-  - [ ] `src/viz/diagrams/StatisticalPowerDiagram.tsx`
+  - [x] `src/viz/diagrams/AdversarialRobustnessDiagram.tsx`
+  - [x] `src/viz/diagrams/CohensKappaDiagram.tsx`
+  - [x] `src/viz/diagrams/EloRatingDiagram.tsx`
+  - [x] `src/viz/diagrams/StatisticalPowerDiagram.tsx`
 - `src/content/docs/ai-evaluation/llm-rag-agent-evaluation.mdx`
-  - [ ] `src/viz/diagrams/AgentTrajectoryDiagram.tsx`
-  - [ ] `src/viz/diagrams/JudgeValidationDiagram.tsx`
-  - [ ] `src/viz/diagrams/JudgeVerbosityBiasDiagram.tsx`
+  - [x] `src/viz/diagrams/AgentTrajectoryDiagram.tsx`
+  - [x] `src/viz/diagrams/JudgeValidationDiagram.tsx`
+  - [x] `src/viz/diagrams/JudgeVerbosityBiasDiagram.tsx`
 - `src/content/docs/ai-safety/alignment-and-rlhf.mdx`
-  - [ ] `src/viz/diagrams/ConstitutionalAiLoopDiagram.tsx`
-  - [ ] `src/viz/diagrams/DeceptionDetectionDiagram.tsx`
-  - [ ] `src/viz/diagrams/RewardHackingSimulationDiagram.tsx`
-  - [ ] `src/viz/diagrams/SpecificationGamingDiagram.tsx`
+  - [x] `src/viz/diagrams/ConstitutionalAiLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/DeceptionDetectionDiagram.tsx`
+  - [x] `src/viz/diagrams/RewardHackingSimulationDiagram.tsx`
+  - [x] `src/viz/diagrams/SpecificationGamingDiagram.tsx`
 - `src/content/docs/ai-safety/scalable-oversight-and-frontier-safety.mdx`
-  - [ ] `src/viz/diagrams/CapabilityThresholdDiagram.tsx`
-  - [ ] `src/viz/diagrams/DebateConvergenceDiagram.tsx`
-  - [ ] `src/viz/diagrams/OversightApproachesDiagram.tsx`
-  - [ ] `src/viz/diagrams/ProcessVsOutcomeDiagram.tsx`
-  - [ ] `src/viz/diagrams/StagedDeploymentDiagram.tsx`
+  - [x] `src/viz/diagrams/CapabilityThresholdDiagram.tsx`
+  - [x] `src/viz/diagrams/DebateConvergenceDiagram.tsx`
+  - [x] `src/viz/diagrams/OversightApproachesDiagram.tsx`
+  - [x] `src/viz/diagrams/ProcessVsOutcomeDiagram.tsx`
+  - [x] `src/viz/diagrams/StagedDeploymentDiagram.tsx`
 - `src/content/docs/ai-security/ai-red-teaming.mdx`
-  - [ ] `src/viz/diagrams/AgenticTop10CoverageDiagram.tsx`
+  - [x] `src/viz/diagrams/AgenticTop10CoverageDiagram.tsx`
 - `src/content/docs/ai-security/model-and-data-attacks.mdx`
-  - [ ] `src/viz/diagrams/AdversarialPerturbationDiagram.tsx`
-  - [ ] `src/viz/diagrams/BackdoorTriggerDiagram.tsx`
-  - [ ] `src/viz/diagrams/MembershipInferenceDiagram.tsx`
-  - [ ] `src/viz/diagrams/ModelExtractionDiagram.tsx`
+  - [x] `src/viz/diagrams/AdversarialPerturbationDiagram.tsx`
+  - [x] `src/viz/diagrams/BackdoorTriggerDiagram.tsx`
+  - [x] `src/viz/diagrams/MembershipInferenceDiagram.tsx`
+  - [x] `src/viz/diagrams/ModelExtractionDiagram.tsx`
 
 ## Batch 12
 - `src/content/docs/ai-security/owasp-llm-top-10-and-prompt-attacks.mdx`

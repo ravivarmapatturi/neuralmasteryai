@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { surrogateFidelity } from '../lib/aisecurity';
 
+const QUERY_PRESETS = [2000, 500, 8000, 15000];
+
 export default function ModelExtractionDiagram() {
   const t = useVizTokens();
-  const [queryLimit, setQueryLimit] = useState(2000);
+  const { value: autoIdx, stop } = useAutoCycle(QUERY_PRESETS.length, 3000, 0);
+  const [userLimit, setUserLimit] = useState<number | null>(null);
+  const queryLimit = userLimit ?? QUERY_PRESETS[autoIdx];
 
   const fidelity = surrogateFidelity(queryLimit);
 
@@ -22,7 +26,7 @@ export default function ModelExtractionDiagram() {
 
   return (
     <VisualizationContainer footer={`A real saturating fidelity curve: 1 − e^(−queries/4000) -- at ${queryLimit.toLocaleString()} queries, a surrogate model trained purely on input/output pairs reaches ${(fidelity * 100).toFixed(1)}% agreement with the real model, at an illustrative attacker cost of $${attackerCost.toFixed(2)}. Rate limiting doesn't need to hit zero queries to work -- it needs to push this cost past what stealing the model is worth.`}>
-      <Slider label="attacker's query budget" value={queryLimit} onChange={setQueryLimit} min={100} max={20000} step={100} />
+      <Slider label="attacker's query budget" value={queryLimit} onChange={(v) => { stop(); setUserLimit(v); }} min={100} max={20000} step={100} />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={0} y1={py(0.9)} x2={width} y2={py(0.9)} stroke={t.textMuted} strokeWidth={1} strokeDasharray="3 3" />

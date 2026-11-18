@@ -369,4 +369,41 @@ Pages covered:
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 28 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-10/`.
 
+## Batch 11 Report
+
+### Motion Rationales:
+1. `AgentTraceWaterfallVisualizer.tsx`: Autocycles (3500ms) across End-to-End Latency Waterfall, Step Token & Cost Attribution, and Tool Failure Cascade views with FlowDots on the timeline, showing the correlation between span durations, token burn, and error propagation.
+2. `ConstructValidityDiagram.tsx`: Autocycles (3000ms) cue correlation presets [0.85, 0.60, 0.95, 0.70], demonstrating that when surface cues correlate with answers, a shortcut model with zero real reasoning beats a genuinely capable model.
+3. `ContaminationDiagram.tsx`: Autocycles (3000ms) contamination rates [0.15, 0.0, 0.35, 0.50], showing that test memorization inflates reported benchmark score linearly while leaving true model capability completely unchanged.
+4. `GoldenDatasetCoverageDiagram.tsx`: Autocycles (3000ms) dataset sizes [8, 4, 20, 32], showing how small golden sets disproportionately miss sparse tail and edge-case inputs in production distributions.
+5. `SaturationDiagram.tsx`: Autocycles (3000ms) generation spread seeds, showing that as models cluster against the benchmark ceiling, score variance collapses and discriminative power evaporates.
+6. `AdversarialRobustnessDiagram.tsx`: Autocycles (3000ms) attack strength [0.4, 0.1, 0.8, 1.2], showing how standard models suffer steep accuracy degradation under meaning-preserving perturbations whereas adversarially-trained models degrade gracefully.
+7. `CohensKappaDiagram.tsx`: Autocycles (3200ms) rater scenarios, illustrating how high raw percentage agreement (e.g. 85%) can mask low or chance-level Cohen's kappa when category marginals are skewed.
+8. `EloRatingDiagram.tsx`: Autocycles (2500ms) simulated pairwise matches, showing how stochastic individual head-to-head outcomes incrementally converge toward true underlying model skill differences.
+9. `StatisticalPowerDiagram.tsx`: Autocycles (3000ms) sample size and effect size presets, illustrating that an evaluation study showing "no clear winner" is frequently underpowered rather than reflecting parity.
+10. `AgentTrajectoryDiagram.tsx`: Autocycles (2500ms) through trajectory steps 1-4, demonstrating that while overall task success rate flags a run as PASS, trajectory inspection uncovers wasted or dangerous tool calls.
+11. `JudgeValidationDiagram.tsx`: Autocycles (3500ms) between vague ("Rate 1-10") and explicit example-anchored rubrics, showing that explicit rubrics eliminate LLM judge dispersion and align with human ratings.
+12. `JudgeVerbosityBiasDiagram.tsx`: Autocycles (3000ms) length bias strength [0.6, 0.1, 0.9, 0.3], showing how uncalibrated LLM judges systematically prefer longer responses regardless of actual answer quality.
+13. `ConstitutionalAiLoopDiagram.tsx`: Autocycles (3000ms) through Generate, Self-critique, Self-revise, and Train with FlowDots circling the loop, emphasizing that the model critiques and refines itself against written principles without human labeling in the loop.
+14. `DeceptionDetectionDiagram.tsx`: Autocycles (3200ms) across misbehavior rate and test volume presets, demonstrating that rare misbehaviors require orders of magnitude more evaluations to achieve 95% statistical confidence.
+15. `RewardHackingSimulationDiagram.tsx`: Autocycles (3000ms) across beta correlation presets [0.3, 0.05, 0.8, 0.5], showing that as proxy reward correlation with length grows, the optimizer sacrifices true output quality to maximize word count.
+16. `SpecificationGamingDiagram.tsx`: Autocycles (3000ms) training horizons [40, 15, 80, 55], showing that dense frequent sub-rewards (looping a power-up) outscore sparse high-value goals (finishing the race) over finite training windows.
+17. `CapabilityThresholdDiagram.tsx`: Autocycles (3000ms) log compute scales [4.5, 2.0, 7.5, 5.8], showing how non-linear capability scaling crosses dangerous-capability thresholds unpredictably.
+18. `DebateConvergenceDiagram.tsx`: Autocycles (3500ms) debate seeds, showing that an unspecialized judge converges on the correct conclusion over iterative rounds because truth has stronger defensible arguments.
+19. `OversightApproachesDiagram.tsx`: Autocycles (3500ms) across debate, recursive reward modeling, and process-based oversight, highlighting how each methodology scales human judgment to superhuman model tasks.
+20. `ProcessVsOutcomeDiagram.tsx`: Autocycles (4000ms) between initial validation and counter-example testing on 97, showing that invalid reasoning can accidentally produce correct answers but fails upon generalization.
+21. `StagedDeploymentDiagram.tsx`: Autocycles (3000ms) user issue rates [0.0005, 0.002, 0.0001, 0.005], showing that staged rollout bounds the blast radius of rare issues to early cohorts rather than full general availability.
+22. `AgenticTop10CoverageDiagram.tsx`: Autocycles (3000ms) through OWASP Agentic Top 10 categories, distinguishing mature defense tooling (prompt injection, memory guard) from active industry gaps (cascading failure, inter-agent trust).
+23. `AdversarialPerturbationDiagram.tsx`: Autocycles (3000ms) perturbation magnitude [0.05, 0.25, 0.45, 0.12], showing how small continuous steps along the loss gradient flip decision boundary classifications.
+24. `BackdoorTriggerDiagram.tsx`: Autocycles (3200ms) trigger space and test sample presets, illustrating the near impossibility of detecting targeted supply-chain backdoors through random black-box sampling.
+25. `MembershipInferenceDiagram.tsx`: Autocycles (3200ms) differential privacy noise and threshold presets, showing how training data memorization creates output confidence distribution gaps between members and non-members.
+26. `ModelExtractionDiagram.tsx`: Autocycles (3000ms) query budgets [2000, 500, 8000, 15000], illustrating that surrogate model fidelity saturates with query volume and that rate limiting raises extraction cost beyond asset value.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 26 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-11/`.
+
+
 

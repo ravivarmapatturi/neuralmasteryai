@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { playMatch, type EloModel } from '../lib/humanEval';
 
@@ -12,8 +12,10 @@ const INITIAL: EloModel[] = [
 
 export default function EloRatingDiagram() {
   const t = useVizTokens();
+  const prefersReduced = usePrefersReducedMotion();
   const [matchCount, setMatchCount] = useState(0);
   const [models, setModels] = useState(INITIAL);
+  const [autoSim, setAutoSim] = useState(!prefersReduced);
 
   const trueOrder = useMemo(() => [...INITIAL].sort((a, b) => b.trueSkill - a.trueSkill).map((m) => m.name), []);
   const currentOrder = [...models].sort((a, b) => b.rating - a.rating).map((m) => m.name);
@@ -25,6 +27,23 @@ export default function EloRatingDiagram() {
     setModels(current);
     setMatchCount((c) => c + n);
   };
+
+  useEffect(() => {
+    if (!autoSim || prefersReduced) return;
+    const timer = setInterval(() => {
+      setMatchCount((c) => {
+        if (c >= 40) {
+          setModels(INITIAL);
+          return 0;
+        }
+        let next = models;
+        for (let i = 0; i < 5; i++) next = playMatch(next, c + i + 1);
+        setModels(next);
+        return c + 5;
+      });
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [autoSim, prefersReduced, models]);
 
   const maxRating = Math.max(...models.map((m) => m.rating), 1300);
   const minRating = Math.min(...models.map((m) => m.rating), 1100);
@@ -45,11 +64,11 @@ export default function EloRatingDiagram() {
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
-        <VizButton onClick={() => runMatches(10)}>Play 10 matches</VizButton>
-        <VizButton variant="secondary" onClick={() => { setModels(INITIAL); setMatchCount(0); }}>Reset</VizButton>
+        <VizButton onClick={() => { setAutoSim(false); runMatches(10); }}>Play 10 matches</VizButton>
+        <VizButton variant="secondary" onClick={() => { setAutoSim(false); setModels(INITIAL); setMatchCount(0); }}>Reset</VizButton>
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 8 }}>
-        The exact rating-system math chess (Elo) uses, and directly what LMSYS's Chatbot Arena runs at scale on real human pairwise preferences.
+        Pairwise comparisons update ratings incrementally: true skill differences require sufficient match volume to emerge reliably from stochastic match outcomes. The exact rating-system math chess (Elo) uses, and directly what LMSYS's Chatbot Arena runs at scale on real human pairwise preferences.
       </div>
     </VisualizationContainer>
   );

@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { robustAccuracy } from '../lib/humanEval';
 
+const STRENGTHS = [0.4, 0.1, 0.9, 0.6];
+
 export default function AdversarialRobustnessDiagram() {
   const t = useVizTokens();
-  const [strength, setStrength] = useState(0.4);
+  const { value: strIdx, stop } = useAutoCycle(STRENGTHS.length, 3000, 0);
+  const [userStrength, setUserStrength] = useState<number | null>(null);
+  const strength = userStrength ?? STRENGTHS[strIdx];
 
   const standard = robustAccuracy(strength, false);
   const robust = robustAccuracy(strength, true);
@@ -21,7 +25,17 @@ export default function AdversarialRobustnessDiagram() {
 
   return (
     <VisualizationContainer footer={`At perturbation strength ${strength.toFixed(2)} (paraphrasing / distracting text / edge-case formatting, applied to an otherwise-identical input): standard model accuracy real-drops from 92% clean to ${(standard * 100).toFixed(1)}%; an adversarially-trained model drops only to ${(robust * 100).toFixed(1)}%. If the output changes substantially under a meaning-preserving perturbation, that's a real robustness gap, not a benchmark artifact.`}>
-      <Slider label="perturbation strength" value={strength} onChange={setStrength} min={0} max={1.5} step={0.05} />
+      <Slider
+        label="perturbation strength"
+        value={strength}
+        onChange={(v) => {
+          stop();
+          setUserStrength(v);
+        }}
+        min={0}
+        max={1.5}
+        step={0.05}
+      />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <polyline points={standardCurve.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke={t.accentDanger} strokeWidth={2.5} />

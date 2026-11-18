@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { capabilityAtScale } from '../lib/oversight';
 
 const THRESHOLD = 0.6;
+const COMPUTE_PRESETS = [4.5, 2.0, 7.5, 5.8];
 
 export default function CapabilityThresholdDiagram() {
   const t = useVizTokens();
-  const [logCompute, setLogCompute] = useState(4.5);
+  const { value: autoIdx, stop } = useAutoCycle(COMPUTE_PRESETS.length, 3000, 0);
+  const [userCompute, setUserCompute] = useState<number | null>(null);
+  const logCompute = userCompute ?? COMPUTE_PRESETS[autoIdx];
 
   const capability = capabilityAtScale(logCompute);
   const crossed = capability >= THRESHOLD;
@@ -24,7 +27,7 @@ export default function CapabilityThresholdDiagram() {
 
   return (
     <VisualizationContainer footer={`Dangerous-capability score at this scale: ${(capability * 100).toFixed(1)}% (threshold ${THRESHOLD * 100}%). ${crossed ? 'Crossed -- this real point on the curve triggers the additional safety measures required before release, evaluated against a specific, predefined threshold rather than a vague "seems capable" judgment.' : 'Below threshold -- standard evaluation applies, no additional gating required yet.'}`}>
-      <Slider label="training compute (log scale)" value={logCompute} onChange={setLogCompute} min={0} max={10} step={0.1} />
+      <Slider label="training compute (log scale)" value={logCompute} onChange={(v) => { stop(); setUserCompute(v); }} min={0} max={10} step={0.1} />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={0} y1={py(THRESHOLD)} x2={width} y2={py(THRESHOLD)} stroke={t.accentDanger} strokeWidth={1.5} strokeDasharray="4 3" />

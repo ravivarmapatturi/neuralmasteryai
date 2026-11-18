@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { classifierScore, classify, gradient } from '../lib/aisecurity';
 
 const BASE: [number, number] = [1.3, 0.4]; // sits just inside class 1's region (radius ≈1.36 > sqrt(1.6)≈1.265)
+const EPS_PRESETS = [0.05, 0.25, 0.45, 0.12];
 
 export default function AdversarialPerturbationDiagram() {
   const t = useVizTokens();
-  const [epsilon, setEpsilon] = useState(0.05);
+  const { value: autoIdx, stop } = useAutoCycle(EPS_PRESETS.length, 3000, 0);
+  const [userEpsilon, setUserEpsilon] = useState<number | null>(null);
+  const epsilon = userEpsilon ?? EPS_PRESETS[autoIdx];
 
   const { perturbed, baseScore, perturbedScore, baseClass, perturbedClass } = useMemo(() => {
     const [gx, gy] = gradient(...BASE);
@@ -42,7 +45,7 @@ export default function AdversarialPerturbationDiagram() {
 
   return (
     <VisualizationContainer footer={`Real decision boundary: x²+y²=1.6. Original point scores ${baseScore.toFixed(3)} (class ${baseClass}). A perturbation of magnitude ε=${epsilon.toFixed(2)}, moved exactly along the real gradient direction, changes the score to ${perturbedScore.toFixed(3)} ${perturbedClass !== baseClass ? '-- crossing the boundary, flipping the classification' : '-- not quite enough to flip it yet'}. Push ε up and watch the flip happen at a real, computable threshold, not an arbitrary one.`}>
-      <Slider label="perturbation magnitude (ε)" value={epsilon} onChange={setEpsilon} min={0} max={0.6} step={0.01} />
+      <Slider label="perturbation magnitude (ε)" value={epsilon} onChange={(v) => { stop(); setUserEpsilon(v); }} min={0} max={0.6} step={0.01} />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8, maxWidth: 320, margin: '8px auto 0' }}>
         <polygon points={circlePts.map(([x, y]) => `${px(x)},${py(y)}`).join(' ')} fill={t.accentSecondary} fillOpacity={0.08} stroke={t.accentSecondary} strokeWidth={1.5} strokeDasharray="4 3" />
