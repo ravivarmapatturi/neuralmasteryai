@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect, Slider } from '../primitives';
+import { VisualizationContainer, PillSelect, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { foldAssignment } from '../lib/workflow';
 
@@ -9,9 +9,11 @@ const N = 30;
 
 export default function SplitCrossValidationDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('single');
+  const modeCycle = useAutoCycle(2, 1400);
+  const mode: Mode = modeCycle.value === 0 ? 'single' : 'kfold';
   const [k, setK] = useState(5);
-  const [activeFold, setActiveFold] = useState(0);
+  const foldCycle = useAutoCycle(k, 1200);
+  const activeFold = foldCycle.value;
 
   const cellW = 100 / N;
   const singleSplit = useMemo(() => Array.from({ length: N }, (_, i) => (i < N * 0.7 ? 'train' : i < N * 0.85 ? 'validation' : 'test')), []);
@@ -27,11 +29,11 @@ export default function SplitCrossValidationDiagram() {
         : `Real fold ${activeFold + 1}/${k}: ${kfoldSplit.filter((r) => r === 'validation').length} examples held out this round, ${kfoldSplit.filter((r) => r === 'train').length} trained on. Step through every fold and every example gets used for validation exactly once, and for training in every other round.`
     }>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <PillSelect label="Mode" value={mode} onChange={(v) => setMode(v as Mode)} options={[
+        <PillSelect label="Mode" value={mode} onChange={(v) => modeCycle.pick(v === 'single' ? 0 : 1)} options={[
           { value: 'single', label: 'Single train/val/test split' },
           { value: 'kfold', label: 'K-fold cross-validation' },
         ]} />
-        {mode === 'kfold' && <Slider label="k" value={k} onChange={(v) => { setK(v); setActiveFold(0); }} min={3} max={8} step={1} />}
+        {mode === 'kfold' && <Slider label="k" value={k} onChange={(v) => { foldCycle.stop(); setK(v); }} min={3} max={8} step={1} />}
       </div>
 
       <div style={{ display: 'flex', width: '100%', height: 36, marginTop: 12, borderRadius: 6, overflow: 'hidden' }}>
@@ -43,7 +45,7 @@ export default function SplitCrossValidationDiagram() {
       {mode === 'kfold' && (
         <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
           {Array.from({ length: k }, (_, i) => (
-            <button key={i} type="button" onClick={() => setActiveFold(i)} style={{
+            <button key={i} type="button" onClick={() => { modeCycle.stop(); foldCycle.pick(i); }} style={{
               padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
               border: `1px solid ${activeFold === i ? t.accentPrimary : t.border}`,
               background: activeFold === i ? t.accentPrimary : 'transparent',

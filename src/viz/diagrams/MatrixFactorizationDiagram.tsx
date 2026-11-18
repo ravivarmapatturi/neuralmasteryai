@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 import { RATINGS, trainMatrixFactorization } from '../lib/specializedSupervised';
 
@@ -25,13 +25,14 @@ function Grid({ data, observedMask }: { data: number[][]; observedMask: (number 
 
 export default function MatrixFactorizationDiagram() {
   const t = useVizTokens();
-  const [epochs, setEpochs] = useState(200);
+  const epochCycle = useAutoCycle(51, 120, 20);
+  const epochs = epochCycle.value * 10;
 
   const { reconstructed, mse } = useMemo(() => trainMatrixFactorization(2, epochs, 0.05, 0.02, 3), [epochs]);
 
   return (
     <VisualizationContainer footer={`Real 2D latent factors, trained via real gradient descent for ${epochs} epochs on ONLY the amber-bordered observed cells. Real MSE on those observed cells = ${mse.toFixed(4)}. Every other cell (thin border) is what U·Vᵀ predicts despite never being trained on directly -- filled in purely from the learned latent structure shared with the cells that WERE observed.`}>
-      <Slider label="training epochs" value={epochs} onChange={setEpochs} min={0} max={500} step={10} />
+      <Slider label="training epochs" value={epochs} onChange={(v) => epochCycle.pick(Math.round(v / 10))} min={0} max={500} step={10} />
 
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
         <Grid data={reconstructed} observedMask={RATINGS} />

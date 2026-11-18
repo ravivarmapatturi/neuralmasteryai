@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generateClasses, discriminantScore } from '../lib/classifiers';
 
@@ -8,7 +8,8 @@ type Mode = 'lda' | 'qda';
 
 export default function LdaQdaBoundaryDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('qda');
+  const modeCycle = useAutoCycle(2, 1400, 1);
+  const mode: Mode = modeCycle.value === 0 ? 'lda' : 'qda';
   const sameCovariance = false; // class 1 genuinely has a different spread -- the real case QDA is for
 
   const points = useMemo(() => generateClasses(9, sameCovariance), []);
@@ -27,7 +28,7 @@ export default function LdaQdaBoundaryDiagram() {
 
   return (
     <VisualizationContainer footer={`Real fitted Gaussians from the 120 points below. ${mode === 'lda' ? 'LDA forces both classes to share one covariance matrix (averaged from the two real fitted covariances) -- the quadratic terms cancel algebraically, producing a real straight-line boundary even though the data itself is NOT equally spread.' : 'QDA fits each class its own real covariance matrix -- since class 1 is genuinely more spread out along x than class 0, the real boundary curves to follow that actual difference in shape.'}`}>
-      <PillSelect label="Model" value={mode} onChange={(v) => setMode(v as Mode)} options={[
+      <PillSelect label="Model" value={mode} onChange={(v) => modeCycle.pick(v === 'lda' ? 0 : 1)} options={[
         { value: 'lda', label: 'LDA (shared covariance)' },
         { value: 'qda', label: 'QDA (per-class covariance)' },
       ]} />

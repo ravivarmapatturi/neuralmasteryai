@@ -1,5 +1,5 @@
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { RESIDUALS } from '../lib/linearRegressionDemoData';
 
@@ -9,6 +9,7 @@ import { RESIDUALS } from '../lib/linearRegressionDemoData';
 export default function ResidualPlotDiagram() {
   const t = useVizTokens();
   const color = getConceptColor(t, 'attention');
+  const cursor = useAutoCycle(RESIDUALS.length, 700);
 
   const width = 500;
   const height = 220;
@@ -33,8 +34,9 @@ export default function ResidualPlotDiagram() {
         <text x={width - padR} y={height - 6} textAnchor="end" fontSize={10} fill={t.textMuted}>{xMax}h</text>
         <text x={12} y={padT + plotH / 2} textAnchor="middle" fontSize={10} fill={t.textMuted} transform={`rotate(-90 12 ${padT + plotH / 2})`}>residual</text>
 
+        <line x1={xFor(RESIDUALS[cursor.value].x)} y1={padT} x2={xFor(RESIDUALS[cursor.value].x)} y2={padT + plotH} stroke={color} strokeWidth={1} strokeDasharray="3 4" opacity={0.55} />
         {RESIDUALS.map((p, i) => (
-          <circle key={i} cx={xFor(p.x)} cy={yFor(p.residual)} r={5} fill={color} fillOpacity={0.75} stroke={color} strokeWidth={1.5} />
+          <circle key={i} cx={xFor(p.x)} cy={yFor(p.residual)} r={cursor.value === i ? 7 : 5} fill={color} fillOpacity={cursor.value === i ? 1 : 0.6} stroke={color} strokeWidth={cursor.value === i ? 2.5 : 1.5} style={{ transition: 'r 250ms, fill-opacity 250ms' }} />
         ))}
       </svg>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 4 }}>

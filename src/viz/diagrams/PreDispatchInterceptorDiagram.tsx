@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle, FlowDots } from '../primitives';
 
 type CommandType = 'valid' | 'exfil' | 'destroy';
 
@@ -48,9 +47,12 @@ const SCENARIOS: Record<CommandType, Scenario> = {
   },
 };
 
+const SCENARIO_KEYS: CommandType[] = ['valid', 'exfil', 'destroy'];
+
 export default function PreDispatchInterceptorDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<CommandType>('valid');
+  const { value: index, pick, stop } = useAutoCycle(SCENARIO_KEYS.length, 3000, 0);
+  const selected = SCENARIO_KEYS[index];
   const sc = SCENARIOS[selected];
   const isBlocked = sc.verdict === 'BLOCKED';
 
@@ -69,7 +71,12 @@ export default function PreDispatchInterceptorDiagram() {
         <PillSelect<CommandType>
           label="Tool Call Input"
           value={selected}
-          onChange={setSelected}
+          onChange={(val) => {
+            const next = typeof val === 'function' ? val(selected) : val;
+            const idx = SCENARIO_KEYS.indexOf(next);
+            if (idx >= 0) pick(idx);
+            stop();
+          }}
           options={[
             { value: 'valid', label: SCENARIOS.valid.label },
             { value: 'exfil', label: SCENARIOS.exfil.label },
@@ -98,6 +105,7 @@ export default function PreDispatchInterceptorDiagram() {
 
         {/* Arrow to Interceptor */}
         <line x1={200} y1={52} x2={248} y2={52} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#pdi-arrow-primary)" />
+        <FlowDots d="M 200,52 L 248,52" color={t.accentPrimary} dur={2} />
 
         {/* Step 2: Supervisor Pre-Dispatch Interceptor */}
         <rect x={250} y={15} width={200} height={74} rx={8} fill={t.surfaceAlt} stroke={t.accentPrimary} strokeWidth={2} />
@@ -126,6 +134,11 @@ export default function PreDispatchInterceptorDiagram() {
           strokeWidth={2}
           markerEnd={!isBlocked ? 'url(#pdi-arrow-primary)' : 'url(#pdi-arrow-border)'}
         />
+        {isBlocked ? (
+          <FlowDots d="M 350,89 L 350,125 L 180,125 L 180,148" color={t.accentDanger} dur={2.2} />
+        ) : (
+          <FlowDots d="M 350,89 L 350,125 L 520,125 L 520,148" color={t.accentPrimary} dur={2.2} />
+        )}
 
         {/* Left Branch: Blocked */}
         <rect

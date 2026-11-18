@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle, FlowDots } from '../primitives';
 
 type LayerKey = 'layer1' | 'layer2' | 'layer3' | 'passed';
+const LAYER_KEYS: LayerKey[] = ['layer1', 'layer2', 'layer3', 'passed'];
 
 interface FunnelLayer {
   key: LayerKey;
@@ -60,7 +60,8 @@ const LAYERS: Record<LayerKey, FunnelLayer> = {
 
 export default function VerificationFunnelDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<LayerKey>('layer1');
+  const { value: index, pick, stop } = useAutoCycle(LAYER_KEYS.length, 2800, 0);
+  const selected = LAYER_KEYS[index];
   const active = LAYERS[selected];
 
   return (
@@ -78,7 +79,12 @@ export default function VerificationFunnelDiagram() {
         <PillSelect<LayerKey>
           label="Verification Gate"
           value={selected}
-          onChange={setSelected}
+          onChange={(val) => {
+            const next = typeof val === 'function' ? val(selected) : val;
+            const idx = LAYER_KEYS.indexOf(next);
+            if (idx >= 0) pick(idx);
+            stop();
+          }}
           options={[
             { value: 'layer1', label: '1. Static Audit' },
             { value: 'layer2', label: '2. Unit Suites' },
@@ -89,6 +95,7 @@ export default function VerificationFunnelDiagram() {
       </div>
 
       <svg viewBox="0 0 680 250" width="100%" role="img" aria-label="3-Layer Verification Funnel Diagram">
+        <FlowDots d="M 340,20 L 340,209" color={t.accentPrimary} dur={3} />
         {/* Funnel Trapezoid 1: Static */}
         <polygon
           points="40,20 640,20 580,75 100,75"

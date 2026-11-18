@@ -272,3 +272,22 @@ Pages covered:
 - Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 31 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-6/`. Note: `ThreePillarsIncidentDiagram` fallback mount was utilized during batch capture due to an upstream unclosed code fence typo (` ```output ` instead of ` ``` ` at line 346) in `src/content/docs/mlops/observability.mdx`. The MDX page itself was left untouched per lane rules; a ticket/fix should be applied by the page owner.
+
+## Batch 7 Report
+
+### Motion Rationales:
+1. `AgentHarnessArchitectureVisualizer.tsx`: Autocycles (3000ms) across the 5 harness stages (context assembler, reasoning engine, execution sandbox, 3-layer verifier, state compactor), because the cybernetic formula (Agent = Model + Harness) functions as a staged pipeline isolating raw model proposals from host execution.
+2. `PreDispatchInterceptorDiagram.tsx`: Autocycles (3000ms) across valid, exfiltration, and root deletion scenarios, with FlowDots routing permitted calls to isolated sandboxes and blocked probes directly to security violation error envelopes, because malicious commands must be aborted before process allocation.
+3. `HarnessCurriculumDiagram.tsx`: Autocycles (2500ms) through 5 curriculum stages with FlowDots along the curriculum pipeline, because mastery of autonomous harnesses proceeds sequentially from execution boundaries to deterministic verification loops.
+4. `TwoPassCompactionFlowDiagram.tsx`: Autocycles (3000ms) across raw, pass 1 (old tool pruning), and pass 2 (final compaction), dynamically collapsing the token budget bar from 551 to 76 tokens while preserving 100% of system invariants, because uncompacted terminal logs cause attention collapse.
+5. `VerificationFunnelDiagram.tsx`: Autocycles (2800ms) down the 4 verification gates with FlowDots cascading down the funnel, because cheap static audits filter trivial syntax errors before expensive unit and behavioral test suites run.
+6. `AutoscalingBacklogExplorer.tsx`: Autocycles (3000ms) across startup delays [30s, 60s, 90s, 120s] with FlowDots tracing queue backlog accumulation and subsequent drainage, because cold-start delay directly determines peak queue depth before spare capacity catches up.
+7. `ErrorBudgetExplorer.tsx`: Autocycles (3000ms) across failure percentages [0.2%, 0.5%, 2.0%, 5.0%], dynamically expanding monthly budget consumption from 0.28% to 6.94% per hour, because high burn rates deplete monthly error budgets in hours rather than weeks.
+8. `CacheInvalidationRaceExplorer.tsx`: Autocycles (3500ms) between delete-only and fenced invalidation policies with FlowDots down the timeline, showing how version floor fencing rejects stale asynchronous refills after newer database writes commit.
+9. `PartitionDecisionExplorer.tsx`: Autocycles (3500ms) between return-local-value (progress) and require-linearizable-read (waiting/refusal), because network partitions force distributed nodes to choose between stale availability and consistency.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 9 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-7/`.

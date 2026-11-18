@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { biasVarianceAt } from '../lib/modelEvaluation';
 
@@ -9,6 +9,7 @@ const DEGREES = [1, 2, 3, 5, 8, 12];
 export default function BiasVarianceDecompositionDiagram() {
   const t = useVizTokens();
   const [testX, setTestX] = useState(1.2);
+  const degreeCursor = useAutoCycle(DEGREES.length, 900, 2);
 
   const results = useMemo(() => DEGREES.map((d) => ({ degree: d, ...biasVarianceAt(d, testX, 150, 9) })), [testX]);
   const maxTotal = Math.max(...results.map((r) => r.total));
@@ -28,6 +29,10 @@ export default function BiasVarianceDecompositionDiagram() {
         <polyline points={results.map((r, i) => `${px(i)},${py(r.bias2)}`).join(' ')} fill="none" stroke={t.accentSecondary} strokeWidth={2} />
         <polyline points={results.map((r, i) => `${px(i)},${py(r.variance)}`).join(' ')} fill="none" stroke={t.accentWarn} strokeWidth={2} />
         <polyline points={results.map((r, i) => `${px(i)},${py(r.total)}`).join(' ')} fill="none" stroke={t.accentPrimary} strokeWidth={2.5} />
+        <line x1={px(degreeCursor.value)} y1={8} x2={px(degreeCursor.value)} y2={152} stroke={t.textMuted} strokeWidth={1} strokeDasharray="3 4" />
+        <circle cx={px(degreeCursor.value)} cy={py(results[degreeCursor.value].bias2)} r={5} fill={t.accentSecondary} />
+        <circle cx={px(degreeCursor.value)} cy={py(results[degreeCursor.value].variance)} r={5} fill={t.accentWarn} />
+        <circle cx={px(degreeCursor.value)} cy={py(results[degreeCursor.value].total)} r={6} fill={t.accentPrimary} />
         {results.map((r, i) => (
           <text key={i} x={px(i)} y={170} textAnchor="middle" fontSize={9.5} fill={t.textMuted}>
             deg {r.degree}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 /** Both paths start from the same point in (w,b)-space and land on the
@@ -10,6 +10,7 @@ import { DIAGRAM_TYPE } from './diagramSystem';
 export default function TwoPathsDiagram() {
   const t = useVizTokens();
   const [show, setShow] = useState<'both' | 'normal' | 'gd'>('both');
+  const progress = useAutoCycle(5, 900);
   const normalColor = t.accentSecondary;
   const gdColor = t.accentWarn;
 
@@ -35,9 +36,9 @@ export default function TwoPathsDiagram() {
   return (
     <VisualizationContainer footer="Both paths start in the same place and land on the identical minimum -- convexity guarantees there's only one to find. The difference is entirely in how they get there, not where they end up.">
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
-        <VizButton variant={show === 'both' ? 'primary' : 'secondary'} onClick={() => setShow('both')}>Both</VizButton>
-        <VizButton variant={show === 'normal' ? 'primary' : 'secondary'} onClick={() => setShow('normal')}>Normal Equation</VizButton>
-        <VizButton variant={show === 'gd' ? 'primary' : 'secondary'} onClick={() => setShow('gd')}>Gradient Descent</VizButton>
+        <VizButton variant={show === 'both' ? 'primary' : 'secondary'} onClick={() => { progress.stop(); setShow('both'); }}>Both</VizButton>
+        <VizButton variant={show === 'normal' ? 'primary' : 'secondary'} onClick={() => { progress.stop(); setShow('normal'); }}>Normal Equation</VizButton>
+        <VizButton variant={show === 'gd' ? 'primary' : 'secondary'} onClick={() => { progress.stop(); setShow('gd'); }}>Gradient Descent</VizButton>
       </div>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
         <defs>
@@ -55,12 +56,13 @@ export default function TwoPathsDiagram() {
         ))}
         <text x={cx + 152} y={cy + 4} fontSize={9} fill={t.textMuted}>J(w,b) contours</text>
 
-        {(show === 'both' || show === 'normal') && (
+        {(show === 'both' || show === 'normal') && progress.value >= 1 && (
           <line x1={startX} y1={startY} x2={cx - 11} y2={cy - 7} stroke={normalColor} strokeWidth={2.5} markerEnd="url(#tp-arrow-normal)" />
         )}
 
         {(show === 'both' || show === 'gd') &&
           gdPoints.slice(0, -1).map((p, i) => {
+            if (i >= progress.value) return null;
             const next = gdPoints[i + 1];
             const dx = next.x - p.x;
             const dy = next.y - p.y;
@@ -71,7 +73,7 @@ export default function TwoPathsDiagram() {
             return <line key={i} x1={p.x} y1={p.y} x2={x2} y2={y2} stroke={gdColor} strokeWidth={2} markerEnd="url(#tp-arrow-gd)" />;
           })}
         {(show === 'both' || show === 'gd') &&
-          gdPoints.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={3.5} fill={gdColor} />)}
+          gdPoints.map((p, i) => i <= progress.value && <circle key={i} cx={p.x} cy={p.y} r={3.5} fill={gdColor} />)}
 
         <circle cx={startX} cy={startY} r={5} fill={t.textSecondary} stroke={t.surface} strokeWidth={1.5} />
         <text x={startX - 8} y={startY - 10} textAnchor="middle" fontSize={9} fill={t.textMuted}>start (w₀, b₀)</text>

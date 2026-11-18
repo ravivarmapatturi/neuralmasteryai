@@ -148,28 +148,28 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 5
 - `src/content/docs/machine-learning/learning-to-rank.mdx`
-  - [ ] `src/viz/diagrams/NdcgDiagram.tsx`
+  - [x] `src/viz/diagrams/NdcgDiagram.tsx`
 - `src/content/docs/machine-learning/linear-regression.mdx`
-  - [ ] `src/viz/diagrams/GradientDescentLoopDiagram.tsx`
-  - [ ] `src/viz/diagrams/LinearRegressionAtAGlance.tsx`
-  - [ ] `src/viz/diagrams/ResidualPlotDiagram.tsx`
-  - [ ] `src/viz/diagrams/ScatterFitDiagram.tsx`
-  - [ ] `src/viz/diagrams/TwoPathsDiagram.tsx`
+  - [x] `src/viz/diagrams/GradientDescentLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/LinearRegressionAtAGlance.tsx`
+  - [x] `src/viz/diagrams/ResidualPlotDiagram.tsx`
+  - [x] `src/viz/diagrams/ScatterFitDiagram.tsx`
+  - [x] `src/viz/diagrams/TwoPathsDiagram.tsx`
 - `src/content/docs/machine-learning/ml-workflow-fundamentals.mdx`
-  - [ ] `src/viz/diagrams/DataLeakageDiagram.tsx`
-  - [ ] `src/viz/diagrams/SplitCrossValidationDiagram.tsx`
+  - [x] `src/viz/diagrams/DataLeakageDiagram.tsx`
+  - [x] `src/viz/diagrams/SplitCrossValidationDiagram.tsx`
 - `src/content/docs/machine-learning/model-evaluation-metrics.mdx`
-  - [ ] `src/viz/diagrams/BiasVarianceDecompositionDiagram.tsx`
-  - [ ] `src/viz/diagrams/CalibrationDiagram.tsx`
-  - [ ] `src/viz/diagrams/RocPrCurveDiagram.tsx`
+  - [x] `src/viz/diagrams/BiasVarianceDecompositionDiagram.tsx`
+  - [x] `src/viz/diagrams/CalibrationDiagram.tsx`
+  - [x] `src/viz/diagrams/RocPrCurveDiagram.tsx`
 - `src/content/docs/machine-learning/naive-bayes-lda-qda.mdx`
-  - [ ] `src/viz/diagrams/LdaQdaBoundaryDiagram.tsx`
+  - [x] `src/viz/diagrams/LdaQdaBoundaryDiagram.tsx`
 - `src/content/docs/machine-learning/pca-svd.mdx`
-  - [ ] `src/viz/diagrams/PcaProjectionDiagram.tsx`
+  - [x] `src/viz/diagrams/PcaProjectionDiagram.tsx`
 - `src/content/docs/machine-learning/random-forest.mdx`
-  - [ ] `src/viz/diagrams/BaggingVarianceDiagram.tsx`
+  - [x] `src/viz/diagrams/BaggingVarianceDiagram.tsx`
 - `src/content/docs/machine-learning/recommender-systems.mdx`
-  - [ ] `src/viz/diagrams/MatrixFactorizationDiagram.tsx`
+  - [x] `src/viz/diagrams/MatrixFactorizationDiagram.tsx`
 
 ## Batch 6
 - `src/content/docs/machine-learning/ridge-regression.mdx`

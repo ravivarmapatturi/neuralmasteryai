@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 
 const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
@@ -101,9 +101,8 @@ await harness.persist_state(
 export default function AgentHarnessArchitectureVisualizer() {
   const t = useVizTokens();
   const [mode, setMode] = useState<'harness' | 'naked'>('harness');
-  const [selectedStageId, setSelectedStageId] = useState<string>('verifier');
-
-  const selectedStage = HARNESS_STAGES.find((s) => s.id === selectedStageId) ?? HARNESS_STAGES[3];
+  const { value: stageIndex, pick, stop } = useAutoCycle(HARNESS_STAGES.length, 3000, 3);
+  const selectedStage = HARNESS_STAGES[stageIndex];
 
   return (
     <VisualizationContainer
@@ -117,7 +116,11 @@ export default function AgentHarnessArchitectureVisualizer() {
         <PillSelect<'harness' | 'naked'>
           label="Architecture"
           value={mode}
-          onChange={setMode}
+          onChange={(m) => {
+            const next = typeof m === 'function' ? m(mode) : m;
+            setMode(next);
+            stop();
+          }}
           options={[
             { value: 'harness', label: 'Full Production Harness' },
             { value: 'naked', label: 'Naked Model (Prompt Only)' },
@@ -177,14 +180,15 @@ export default function AgentHarnessArchitectureVisualizer() {
         <div>
           {/* Production Harness Pipeline Flow */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 16 }}>
-            {HARNESS_STAGES.map((s) => {
+            {HARNESS_STAGES.map((s, idx) => {
               const color = t[s.colorKey];
-              const isSelected = selectedStageId === s.id;
+              const isSelected = stageIndex === idx;
               return (
                 <button
                   key={s.id}
                   type="button"
-                  onClick={() => setSelectedStageId(s.id)}
+                  onClick={() => pick(idx)}
+                  onMouseEnter={() => pick(idx)}
                   style={{
                     padding: '12px 8px',
                     borderRadius: 6,

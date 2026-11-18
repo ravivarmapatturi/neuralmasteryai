@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, FlowDots } from '../primitives';
 
 const STAGES = [
   { label: '1. Foundations', href: '/docs/harness-engineering/overview', desc: 'The core cybernetic loop: Agent = Model + Harness. Why prompt engineering fails.' },
@@ -12,7 +11,7 @@ const STAGES = [
 
 export default function HarnessCurriculumDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState(0);
+  const { value: active, pick } = useAutoCycle(STAGES.length, 2500, 0);
   const color = t.accentPrimary;
   const width = 640;
   const stepX = (i: number) => 55 + i * ((width - 110) / (STAGES.length - 1));
@@ -29,10 +28,11 @@ export default function HarnessCurriculumDiagram() {
         {STAGES.map((_, i) => i > 0 && (
           <line key={i} x1={stepX(i - 1) + 38} y1={y} x2={stepX(i) - 38} y2={y} stroke={t.border} strokeWidth={1.5} markerEnd="url(#harness-arrow)" />
         ))}
+        <FlowDots d={`M ${stepX(0)} ${y} L ${stepX(STAGES.length - 1)} ${y}`} color={color} dur={3.5} />
         {STAGES.map((p, i) => {
           const isActive = active === i;
           return (
-            <g key={p.label} onClick={() => setActive(i)} onMouseEnter={() => setActive(i)} style={{ cursor: 'pointer' }}>
+            <g key={p.label} onClick={() => pick(i)} onMouseEnter={() => pick(i)} style={{ cursor: 'pointer' }}>
               <circle cx={stepX(i)} cy={y} r={34} fill={isActive ? `${color}25` : t.surfaceAlt} stroke={isActive ? color : t.border} strokeWidth={isActive ? 2.5 : 1.5} />
               <text x={stepX(i)} y={y + 4} textAnchor="middle" fontSize={8} fontWeight={700} fill={isActive ? color : t.textPrimary}>{p.label}</text>
               <text x={stepX(i)} y={y + 46} textAnchor="middle" fontSize={9} fill={t.textSecondary}>Stage {i + 1}</text>

@@ -1,5 +1,5 @@
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -18,16 +18,19 @@ const CARDS = [
  * derives one of these four lines in full. */
 export default function LinearRegressionAtAGlance() {
   const t = useVizTokens();
+  const cycle = useAutoCycle(CARDS.length, 1400);
   return (
     <VisualizationContainer footer="The whole page in four lines: the hypothesis produces a prediction, the cost function measures how wrong it is, the gradient says which direction reduces that cost, and the update rule is that direction applied to the weights -- every section below derives one of these four lines in full.">
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-        {CARDS.map((c) => (
-          <SketchBox key={c.label} color={t[c.color]} strokeWidth={1.5}>
-            <div style={{ background: t.surfaceAlt, padding: '14px 12px', textAlign: 'center' }}>
-              <div style={{ fontSize: DIAGRAM_TYPE.label.size, fontWeight: 700, fontFamily: HAND_FONT, color: t[c.color], marginBottom: 8, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{c.label}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
+        {CARDS.map((c, i) => (
+          <div key={c.label} onPointerDown={() => cycle.pick(i)} style={{ opacity: cycle.value === i ? 1 : 0.58, transform: cycle.value === i ? 'translateY(-3px)' : 'none', transition: 'opacity 300ms, transform 300ms' }}>
+          <SketchBox color={t[c.color]} strokeWidth={cycle.value === i ? 2.5 : 1.5}>
+            <div style={{ background: cycle.value === i ? `${t[c.color]}18` : t.surfaceAlt, padding: '14px 12px', textAlign: 'center', transition: 'background 300ms' }}>
+              <div style={{ fontSize: DIAGRAM_TYPE.label.size, fontWeight: 700, fontFamily: HAND_FONT, color: t[c.color], marginBottom: 8 }}>{c.label}</div>
               <VisualizationMath latex={c.latex} />
             </div>
           </SketchBox>
+          </div>
         ))}
       </div>
     </VisualizationContainer>

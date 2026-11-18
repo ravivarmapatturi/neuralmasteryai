@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, PulseRect, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const STEPS = [
@@ -13,7 +12,8 @@ const STEPS = [
 /** The training loop as a readable, keyboard-selectable sequence. */
 export default function GradientDescentLoopDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<number | null>(null);
+  const cycle = useAutoCycle(STEPS.length, 1300);
+  const active = cycle.value;
   const color = getConceptColor(t, 'attention');
   const initColor = t.textSecondary;
   const stepY = (i: number) => 98 + i * 82;
@@ -48,16 +48,17 @@ export default function GradientDescentLoopDiagram() {
               tabIndex={0}
               aria-label={step.desc}
               aria-pressed={isActive}
-              onClick={() => setActive(isActive ? null : i)}
+              onClick={() => cycle.pick(i)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
-                  setActive(isActive ? null : i);
+                  cycle.pick(i);
                 }
               }}
               style={{ cursor: 'pointer' }}
             >
               <rect x="40" y={y} width="280" height="46" rx="8" fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
+              {isActive && <PulseRect x={40} y={y} w={280} h={46} color={color} dur={1.3} blink />}
               <text x="180" y={y + 29} textAnchor="middle" fontSize="16" fontWeight="700" fill={color}>{step.label}</text>
               {i < STEPS.length - 1 && <line x1="180" y1={y + 46} x2="180" y2={y + 74} stroke={t.textMuted} strokeWidth="1.5" markerEnd="url(#gdloop-arrow)" />}
             </g>
@@ -72,8 +73,8 @@ export default function GradientDescentLoopDiagram() {
           strokeDasharray="4 3"
           markerEnd="url(#gdloop-arrow)"
         />
-        <text x="180" y="444" textAnchor="middle" fontSize="14" fill={active !== null ? color : t.textMuted}>
-          {active !== null ? STEPS[active].desc : 'Repeat until the cost stops meaningfully decreasing.'}
+        <text x="180" y="444" textAnchor="middle" fontSize="14" fill={color}>
+          {STEPS[active].desc}
         </text>
       </svg>
     </VisualizationContainer>

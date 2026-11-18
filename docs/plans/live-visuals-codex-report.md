@@ -114,3 +114,21 @@
 - `HyperparamSearchDiagram`: Evaluated points appear in search order because each strategy spends the same budget on a different sequence of hyperparameter trials.
 - `IcaCocktailPartyDiagram`: One time cursor sweeps all four signals together because each microphone mixture is formed from the source samples at that same instant.
 - `LassoRegressionStudio`: The lambda cursor travels along the coefficient paths because increasing L1 regularization soft-thresholds features to exactly zero at different strengths.
+
+## Batch 5
+
+- `NdcgDiagram`: The highlighted rank moves down the result list because NDCG applies a different logarithmic discount at each position.
+- `GradientDescentLoopDiagram`: The active stage advances around the loop because gradient descent repeatedly predicts, measures cost, finds the gradient, and updates the parameters in that order.
+- `LinearRegressionAtAGlance`: The highlight advances from hypothesis through update because each training step consumes the result of the preceding calculation.
+- `ResidualPlotDiagram`: The cursor inspects residuals from left to right because diagnosing a fit means checking whether errors stay patternless across the input range.
+- `ScatterFitDiagram`: The fitted line draws across the observations because least squares turns the point cloud into one prediction line that minimizes their squared vertical distances.
+- `TwoPathsDiagram`: The normal-equation path reaches the minimum in one jump while gradient descent reveals successive hops because the two solvers reach the same convex optimum directly and iteratively.
+- `DataLeakageDiagram`: Emphasis alternates between the leaky and deployable scores because leakage creates an apparently strong evaluation that must be compared with the honest feature set.
+- `SplitCrossValidationDiagram`: The view alternates from one fixed split to successive held-out folds because cross-validation rotates which examples validate the model while a train/validation/test split stays fixed.
+- `BiasVarianceDecompositionDiagram`: The degree cursor moves across all three curves because increasing model complexity trades falling bias for rising variance and produces a middle error minimum.
+- `CalibrationDiagram`: The active reliability bin advances and exposes its vertical gap because calibration compares predicted confidence with observed frequency at each confidence level.
+- `RocPrCurveDiagram`: The operating point travels along the curve because changing the classification threshold changes the confusion counts and therefore the plotted rates.
+- `LdaQdaBoundaryDiagram`: The fitted boundary alternates between LDA and QDA because shared covariance cancels the quadratic terms while per-class covariance preserves a curved separator.
+- `PcaProjectionDiagram`: Each point drops onto PC1 and appears on the one-dimensional strip because PCA replaces the original point with its coordinate along the maximum-variance direction.
+- `BaggingVarianceDiagram`: The cursor moves from one tree toward the full forest because averaging more correlated estimators reduces variance before approaching a correlation-imposed floor.
+- `MatrixFactorizationDiagram`: Training epochs advance automatically because gradient descent progressively adjusts the latent factors to reconstruct observed ratings and infer missing cells.

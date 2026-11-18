@@ -235,22 +235,22 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 7
 - `src/content/docs/harness-engineering/harness-architecture.mdx`
-  - [ ] `src/viz/diagrams/AgentHarnessArchitectureVisualizer.tsx`
-  - [ ] `src/viz/diagrams/PreDispatchInterceptorDiagram.tsx`
+  - [x] `src/viz/diagrams/AgentHarnessArchitectureVisualizer.tsx`
+  - [x] `src/viz/diagrams/PreDispatchInterceptorDiagram.tsx`
 - `src/content/docs/harness-engineering/roadmap.mdx`
-  - [ ] `src/viz/diagrams/HarnessCurriculumDiagram.tsx`
+  - [x] `src/viz/diagrams/HarnessCurriculumDiagram.tsx`
 - `src/content/docs/harness-engineering/state-continuity-and-memory.mdx`
-  - [ ] `src/viz/diagrams/TwoPassCompactionFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/TwoPassCompactionFlowDiagram.tsx`
 - `src/content/docs/harness-engineering/verification-loops.mdx`
-  - [ ] `src/viz/diagrams/VerificationFunnelDiagram.tsx`
+  - [x] `src/viz/diagrams/VerificationFunnelDiagram.tsx`
 - `src/content/docs/software-system-design/autoscaling.mdx`
-  - [ ] `src/viz/diagrams/AutoscalingBacklogExplorer.tsx`
+  - [x] `src/viz/diagrams/AutoscalingBacklogExplorer.tsx`
 - `src/content/docs/software-system-design/availability-and-slos.mdx`
-  - [ ] `src/viz/diagrams/ErrorBudgetExplorer.tsx`
+  - [x] `src/viz/diagrams/ErrorBudgetExplorer.tsx`
 - `src/content/docs/software-system-design/caching-and-invalidation.mdx`
-  - [ ] `src/viz/diagrams/CacheInvalidationRaceExplorer.tsx`
+  - [x] `src/viz/diagrams/CacheInvalidationRaceExplorer.tsx`
 - `src/content/docs/software-system-design/cap-and-pacelc.mdx`
-  - [ ] `src/viz/diagrams/PartitionDecisionExplorer.tsx`
+  - [x] `src/viz/diagrams/PartitionDecisionExplorer.tsx`
 
 ## Batch 8
 - `src/content/docs/software-system-design/capacity-estimation.mdx`

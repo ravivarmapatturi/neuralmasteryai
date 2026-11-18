@@ -432,6 +432,57 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  7: [
+    {
+      route: '/docs/harness-engineering/harness-architecture',
+      diagrams: [
+        { name: 'AgentHarnessArchitectureVisualizer', match: 'Full Production Harness' },
+        { name: 'PreDispatchInterceptorDiagram', match: 'Tool Call Input' },
+      ],
+    },
+    {
+      route: '/docs/harness-engineering/roadmap',
+      diagrams: [
+        { name: 'HarnessCurriculumDiagram', match: 'Click any stage' },
+      ],
+    },
+    {
+      route: '/docs/harness-engineering/state-continuity-and-memory',
+      diagrams: [
+        { name: 'TwoPassCompactionFlowDiagram', match: 'Compaction Stage' },
+      ],
+    },
+    {
+      route: '/docs/harness-engineering/verification-loops',
+      diagrams: [
+        { name: 'VerificationFunnelDiagram', match: 'Verification Gate' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/autoscaling',
+      diagrams: [
+        { name: 'AutoscalingBacklogExplorer', match: 'Useful startup delay' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/availability-and-slos',
+      diagrams: [
+        { name: 'ErrorBudgetExplorer', match: 'Observed failures' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/caching-and-invalidation',
+      diagrams: [
+        { name: 'CacheInvalidationRaceExplorer', match: 'Fill policy' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/cap-and-pacelc',
+      diagrams: [
+        { name: 'PartitionDecisionExplorer', match: 'Partition-time read policy' },
+      ],
+    },
+  ],
 };
 
 async function main() {

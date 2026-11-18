@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generatePcaPoints, pcaFit, projectOntoPc1 } from '../lib/dimreduction';
 
@@ -11,6 +11,9 @@ export default function PcaProjectionDiagram() {
   const points = useMemo(() => generatePcaPoints(6, correlation), [correlation]);
   const { mean, pc1, pc2, varianceExplained } = useMemo(() => pcaFit(points), [points]);
   const projected = useMemo(() => projectOntoPc1(points, mean, pc1), [points, mean, pc1]);
+  const pointCursor = useAutoCycle(points.length, 140);
+  const activePoint = points[pointCursor.value];
+  const activeProjection = [mean[0] + pc1[0] * projected[pointCursor.value], mean[1] + pc1[1] * projected[pointCursor.value]];
 
   const width = 300, height = 260, scale = 55, ox = width / 2, oy = height / 2;
   const px = (x: number) => ox + x * scale;
@@ -26,6 +29,9 @@ export default function PcaProjectionDiagram() {
         ))}
         <line x1={px(mean[0] - pc1[0] * 3)} y1={py(mean[1] - pc1[1] * 3)} x2={px(mean[0] + pc1[0] * 3)} y2={py(mean[1] + pc1[1] * 3)} stroke={t.accentPrimary} strokeWidth={2.5} />
         <line x1={px(mean[0] - pc2[0] * 1.2)} y1={py(mean[1] - pc2[1] * 1.2)} x2={px(mean[0] + pc2[0] * 1.2)} y2={py(mean[1] + pc2[1] * 1.2)} stroke={t.accentWarn} strokeWidth={2} />
+        <line x1={px(activePoint.x)} y1={py(activePoint.y)} x2={px(activeProjection[0])} y2={py(activeProjection[1])} stroke={t.accentPrimary} strokeWidth={1.5} strokeDasharray="3 3" />
+        <circle cx={px(activePoint.x)} cy={py(activePoint.y)} r={5} fill={t.textSecondary} />
+        <circle cx={px(activeProjection[0])} cy={py(activeProjection[1])} r={5} fill={t.accentPrimary} />
       </svg>
 
       <div style={{ marginTop: 8 }}>
@@ -33,7 +39,7 @@ export default function PcaProjectionDiagram() {
         <svg width="100%" viewBox={`0 0 ${width} 30`} style={{ display: 'block' }}>
           <line x1={10} y1={15} x2={width - 10} y2={15} stroke={t.border} strokeWidth={1} />
           {projected.map((v, i) => (
-            <circle key={i} cx={width / 2 + v * 20} cy={15} r={2.5} fill={t.accentPrimary} fillOpacity={0.6} />
+            <circle key={i} cx={width / 2 + v * 20} cy={15} r={pointCursor.value === i ? 5 : 2.5} fill={t.accentPrimary} fillOpacity={pointCursor.value === i ? 1 : 0.5} />
           ))}
         </svg>
       </div>

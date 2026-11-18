@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, PillSelect } from '../primitives';
+import { VisualizationContainer, Slider, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generateScoredExamples, rocCurve, metricsAtThreshold } from '../lib/modelEvaluation';
 
@@ -9,7 +9,8 @@ type Mode = 'roc' | 'pr';
 export default function RocPrCurveDiagram() {
   const t = useVizTokens();
   const [mode, setMode] = useState<Mode>('roc');
-  const [threshold, setThreshold] = useState(0.5);
+  const thresholdCycle = useAutoCycle(51, 120, 25);
+  const threshold = thresholdCycle.value / 50;
 
   const examples = useMemo(() => generateScoredExamples(6, 200), []);
   const curve = useMemo(() => rocCurve(examples), [examples]);
@@ -31,7 +32,7 @@ export default function RocPrCurveDiagram() {
           { value: 'roc', label: 'ROC' },
           { value: 'pr', label: 'Precision-Recall' },
         ]} />
-        <Slider label="threshold" value={threshold} onChange={setThreshold} min={0} max={1} step={0.02} />
+        <Slider label="threshold" value={threshold} onChange={(v) => thresholdCycle.pick(Math.round(v * 50))} min={0} max={1} step={0.02} />
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8, maxWidth: 260, margin: '8px auto 0' }}>

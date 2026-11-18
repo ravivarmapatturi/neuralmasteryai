@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 
 type StageKey = 'raw' | 'pass1' | 'pass2';
+const STAGE_KEYS: StageKey[] = ['raw', 'pass1', 'pass2'];
 
 interface Stage {
   key: StageKey;
@@ -61,7 +61,8 @@ const STAGES: Record<StageKey, Stage> = {
 
 export default function TwoPassCompactionFlowDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<StageKey>('pass2');
+  const { value: index, pick, stop } = useAutoCycle(STAGE_KEYS.length, 3000, 2);
+  const selected = STAGE_KEYS[index];
   const stage = STAGES[selected];
 
   return (
@@ -79,7 +80,12 @@ export default function TwoPassCompactionFlowDiagram() {
         <PillSelect<StageKey>
           label="Compaction Stage"
           value={selected}
-          onChange={setSelected}
+          onChange={(val) => {
+            const next = typeof val === 'function' ? val(selected) : val;
+            const idx = STAGE_KEYS.indexOf(next);
+            if (idx >= 0) pick(idx);
+            stop();
+          }}
           options={[
             { value: 'raw', label: STAGES.raw.label },
             { value: 'pass1', label: STAGES.pass1.label },

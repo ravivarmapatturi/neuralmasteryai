@@ -1,5 +1,5 @@
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { POINTS, SLOPE, INTERCEPT, predict } from '../lib/linearRegressionDemoData';
 
@@ -9,6 +9,7 @@ export default function ScatterFitDiagram() {
   const t = useVizTokens();
   const pointColor = getConceptColor(t, 'embedding');
   const lineColor = getConceptColor(t, 'attention');
+  const reduced = usePrefersReducedMotion();
 
   const width = 500;
   const height = 260;
@@ -34,7 +35,9 @@ export default function ScatterFitDiagram() {
         <text x={width - padR} y={height - 6} textAnchor="end" fontSize={10} fill={t.textMuted}>{xMax}h</text>
         <text x={12} y={padT + plotH / 2} textAnchor="middle" fontSize={10} fill={t.textMuted} transform={`rotate(-90 12 ${padT + plotH / 2})`}>exam score</text>
 
-        <line x1={xFor(0)} y1={yFor(predict(0))} x2={xFor(xMax)} y2={yFor(predict(xMax))} stroke={lineColor} strokeWidth={2.5} />
+        <line x1={xFor(0)} y1={yFor(predict(0))} x2={xFor(xMax)} y2={yFor(predict(xMax))} stroke={lineColor} strokeWidth={2.5} pathLength={1} strokeDasharray={1} strokeDashoffset={0}>
+          {!reduced && <animate attributeName="stroke-dashoffset" values="1;0;0" keyTimes="0;0.55;1" dur="4s" repeatCount="indefinite" />}
+        </line>
 
         {POINTS.map((p, i) => (
           <circle key={i} cx={xFor(p.x)} cy={yFor(p.y)} r={5} fill={pointColor} fillOpacity={0.7} stroke={pointColor} strokeWidth={1.5} />
