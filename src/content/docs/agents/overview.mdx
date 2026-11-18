@@ -12,6 +12,9 @@ import AutonomySpectrumDiagram from '../../../viz/diagrams/AutonomySpectrumDiagr
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # AI Agents, The Big Picture
 
 [LLMs & GenAI](/docs/llms-genai/overview) ended with a model that answers questions well: prompted, grounded in your documents, served efficiently. This section is about what happens when the model stops only answering and starts *doing*: searching, running code, editing files, calling other systems and other agents, several steps in a row, deciding each step from the result of the last. This page is the map. It explains what separates an agent from a chatbot or a fixed pipeline, the loop every agent runs, the two capabilities everything else rests on, how architectures and protocols organize that loop, how agents fail, why a long agent run costs far more than its step count suggests, and when an agent is the wrong tool. Each part links to the page that covers it in depth.
@@ -23,6 +26,17 @@ A calculator answers exactly what you type. A knowledgeable friend on the phone 
 An AI agent is the third one. The underlying model is the same knowledgeable friend; what makes it an agent is being allowed to act, seeing what happened, and choosing the next step itself. That freedom is what makes agents useful, and also what makes them slower, more expensive and harder to trust than a single answer. Everything below is that trade-off made exact.
 
 </ELI5>
+
+## Why it exists
+
+Each agent step adds to the history sent on the next call. This overview computes how input tokens and illustrative cost grow over longer runs, then shows the effect of prompt caching.
+
+## The big picture
+
+<PenFlow title="Agent loop with growing history" ariaLabel="Agent loop with growing history" rows={[{ steps: { title: 'Observe', lines: ['Read current state'], tone: 'blue' } }, { steps: { title: 'Act', lines: ['Call a scoped tool'], tone: 'purple' } }, { steps: { title: 'Append result', lines: ['History grows'], tone: 'orange' } }, { steps: { title: 'Repeat or stop', lines: ['Bound cost and autonomy'], tone: 'green' } }]} caption="Each call carries history unless the harness caches or compacts it." />
+
+<Worksheet title="Agent input-token cost" ariaLabel="Agent input-token cost" stages={[{ tag: 'Printed output', color: 'yellow', note: 'Token counts and costs copied from the page execution.', grid: { head: ['', 'Uncached'], rows: [{ label: '1 step', cells: ['6,000 tokens; $0.02'] }, { label: '10 steps', cells: ['127,500 tokens; $0.38'] }, { label: '50 steps', cells: ['2,137,500 tokens; $6.41'] }, { label: '100 steps', cells: ['8,025,000 tokens; $24.07'] }] } }]} />
+
 
 ## 1. From a Single Call to an Agent
 
@@ -114,7 +128,7 @@ for steps in (1, 10, 50, 100):
     print(f"{steps:3d} steps: {total:>10,} input tokens  ${total * PRICE_IN:6.2f} uncached  ${cached_cost:5.2f} with caching")
 ```
 
-```text
+```output
   1 steps:      6,000 input tokens  $  0.02 uncached  $ 0.02 with caching
  10 steps:    127,500 input tokens  $  0.38 uncached  $ 0.09 with caching
  50 steps:  2,137,500 input tokens  $  6.41 uncached  $ 0.86 with caching
@@ -167,7 +181,31 @@ The result is that coding agents, research agents and computer-use agents now co
 
 </GoDeeper>
 
-## 10. When *Not* to Build an Agent
+## Worked example
+
+The run uses a 6,000-token fixed prompt and 1,500 tokens added per step. Ten steps print 127,500 input tokens and $0.38 uncached. One hundred steps print 8,025,000 tokens and $24.07 uncached; caching reduces that printed total to $2.82.
+
+## Try it yourself
+
+Change the step count and compare the uncached and cached totals. Identify which term grows quadratically.
+
+```python
+# Try it: Change the step count and compare the uncached and cached totals. Identify which term grows quadratically.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Estimate cost as steps times one call | Later calls resend earlier history | Sum the input across calls |
+| Assume caching solves all costs | Tokens still occupy context and latency | Combine caching with compact results and bounds |
+| Leave autonomy unbounded | Retries can grow spend | Set step, time, and token budgets |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+
 
 | Situation | Better choice |
 |---|---|

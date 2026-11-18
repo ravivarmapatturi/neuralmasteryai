@@ -8,6 +8,9 @@ import ContextEngineeringStrategiesDiagram from '../../../viz/diagrams/ContextEn
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Context Engineering
 
 [Agent Fundamentals](/docs/agents/agent-fundamentals#agent-memory) ended with a problem it didn't solve: a model's only working memory is its context window, which is finite, while useful agent tasks touch far more information than fits. **Context engineering** is the discipline of deciding, at every step, what that window should contain. Anthropic defines it as the set of strategies for curating and maintaining the optimal set of tokens during inference, including everything that lands in the context besides the prompt. This page explains why the window degrades as it fills, what an agent's context is actually made of and what each part costs, the four strategies for managing it, the specific techniques behind each (compaction, memory files, just-in-time retrieval, sub-agents), **Agent Skills**, the standard way to give an agent many procedures without loading them all, measured below, and how to keep the context friendly to the provider's cache.
@@ -21,6 +24,17 @@ Context engineering is keeping the AI's desk tidy. Put the task and the importan
 Everything below is those habits made exact.
 
 </ELI5>
+
+## Why it exists
+
+Context limits and changing tasks make indiscriminate prompt stuffing unreliable. This example compares loading all skill bodies at startup with indexing descriptions and loading only the matched procedure.
+
+## The big picture
+
+<PenFlow title="Progressive context loading" ariaLabel="Progressive context loading" rows={[{ steps: { title: 'Index', lines: ['Keep descriptions at startup'], tone: 'blue' } }, { steps: { title: 'Match', lines: ['Select release-notes skill'], tone: 'purple' } }, { steps: { title: 'Load', lines: ['Read one instruction body'], tone: 'orange' } }, { steps: { title: 'Act', lines: ['Leave unused bodies out'], tone: 'green' } }]} caption="Load details when the task needs them." />
+
+<Worksheet title="Progressive disclosure token trace" ariaLabel="Progressive disclosure token trace" stages={[{ tag: 'Printed values', color: 'yellow', note: 'Copied from the execution output.', grid: { head: ['', 'Tokens'], rows: [{ label: 'All instructions', cells: ['3,317'] }, { label: 'Startup index', cells: ['98'] }, { label: 'After selection', cells: ['1,098'] }, { label: '50 skills', cells: ['55,283 always vs 1,633 indexed'] }] } }]} />
+
 
 ## 1. Why a Fuller Context Is a Worse Context
 
@@ -133,7 +147,7 @@ print(f"after choosing '{chosen}':      {count(startup) + count(loaded):5d} toke
 print(f"with 50 skills like these: {50 * count(everything) // 3:,} tokens always loaded, vs about {50 * count(startup) // 3:,} for the descriptions")
 ```
 
-```text
+```output
 all instructions always in the prompt:   3317 tokens on every call
 progressive disclosure, at startup:        98 tokens (3 descriptions)
 after choosing 'release-notes':       1098 tokens
@@ -178,7 +192,31 @@ The fixes mirror the rest of this page. **Fewer, broader tools**: one `search_is
 
 </GoDeeper>
 
-## 9. When *Not* to Over-Engineer Context
+## Worked example
+
+The run prints 3,317 tokens for all instruction bodies, 98 for the three-description index, and 1,098 after loading the matching release-notes instructions. At 50 skills, it estimates 55,283 tokens always loaded versus about 1,633 indexed.
+
+## Try it yourself
+
+Change the requested task to match another skill. Compare startup tokens with the count after loading that skill.
+
+```python
+# Try it: Change the requested task to match another skill. Compare startup tokens with the count after loading that skill.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Load every procedure at startup | Unused details consume context | Index descriptions and load a matched procedure |
+| Treat skill scripts as harmless | Scripts run with agent permissions | Inspect code and scope permissions |
+| Match by one brittle keyword | Task phrasing varies | Test descriptions on varied requests |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+
 
 | Situation | Better choice |
 |---|---|

@@ -8,6 +8,9 @@ import ClusterNodeAssemblyDiagram from '../../../viz/diagrams/ClusterNodeAssembl
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # No-Code and Low-Code Agent Builders
 
 Every agent pattern in this section so far, the [agent loop](/docs/agents/agent-fundamentals), [graphs](/docs/agents/loops-and-graphs), [multi-agent systems](/docs/agents/multi-agent-systems), is something you write in code. A large share of real-world agents are built a different way: by dragging boxes onto a canvas and connecting them, in tools such as n8n, Zapier, Make, Microsoft Copilot Studio or OpenAI's Agent Builder. This page explains what those tools actually are underneath: a workflow is a graph stored as data, and the "AI agent" box is the same loop of model, tools and memory covered in [Agent Fundamentals](/docs/agents/agent-fundamentals), wrapped in a node. It covers how that node is assembled, what a visual builder buys you over code and what it costs, a workflow interpreted and version-controlled in a few lines of Python, and how to choose.
@@ -19,6 +22,17 @@ Think of building with LEGO instead of carving wood. Each LEGO brick is already 
 Visual agent builders are LEGO for automations. Each brick is a ready-made step: "when an email arrives", "ask the AI to sort it", "post to Slack". Snapping them together is fast and readable. Writing the same thing in code is carving wood: slower, but anything is possible. Everything below is what the bricks really are, and when to carve instead.
 
 </ELI5>
+
+## Why it exists
+
+Visual builders make integrations and simple control flow available without writing an orchestration program. The printed run shows that an unmatched model label can end quietly when a switch has no fallback.
+
+## The big picture
+
+<PenFlow title="Trace the workflow" ariaLabel="Trace the workflow" rows={[{ steps: { title: 'Receive', lines: ['New email event'], tone: 'blue' } }, { steps: { title: 'Classify', lines: ['Model returns a label'], tone: 'purple' } }, { steps: { title: 'Route', lines: ['Switch selects a branch'], tone: 'orange' } }, { steps: { title: 'Catch all', lines: ['Alert on unmatched labels'], tone: 'green' } }]} caption="Every classifier label needs a route or fallback." />
+
+<Worksheet title="Workflow interpreter trace" ariaLabel="Workflow interpreter trace" stages={[{ tag: 'Printed execution', color: 'yellow', note: 'Copied from the page output.', grid: { head: ['', 'Result'], rows: [{ label: 'Invoice', cells: ['Route to #billing'] }, { label: 'Error 500', cells: ['Open bug ticket'] }, { label: 'Thank-you', cells: ['No matching route; run ends'] }, { label: 'Prompt diff', cells: ['Adds refund label only'] }] } }]} />
+
 
 ## 1. What a Visual Workflow Is
 
@@ -103,7 +117,7 @@ diff = difflib.unified_diff(json.dumps(workflow, indent=1).splitlines(), json.du
 print("\n".join(line for line in diff if line.startswith(("+ ", "- ", "+  ", "-  "))))
 ```
 
-```text
+```output
 My invoice is wrong              New email -> Classify -> Route -> Post to #billing
 The app shows error 500          New email -> Classify -> Route -> Open bug ticket
 Thanks for the great support!    New email -> Classify -> Route
@@ -160,7 +174,31 @@ The choice isn't binary. Several patterns sit in between, and they're often the 
 | High volume, where per-run pricing adds up | Code on your own infrastructure |
 | A mix | Builder for triggers and integrations, a coded agent behind an HTTP or MCP node |
 
-## 7. When *Not* to Use a Visual Builder
+## Worked example
+
+The interpreter routes the invoice email to #billing and the error email to a bug ticket. The thank-you email has no matching branch, so the run ends. The printed diff adds refund to the prompt but does not add a switch branch.
+
+## Try it yourself
+
+Add a refund label to the prompt, then trace the workflow before and after adding a matching branch and fallback.
+
+```python
+# Try it: Add a refund label to the prompt, then trace the workflow before and after adding a matching branch and fallback.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Add a label without a branch | Prompt and switch can drift | Test every label against a branch or fallback |
+| Assume the canvas validates behavior | Runs can end without an error | Add checks and alerts for unmatched states |
+| Review only the prompt diff | Downstream routing may not change with it | Review the full workflow behavior |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+
 
 | Situation | Better choice |
 |---|---|
