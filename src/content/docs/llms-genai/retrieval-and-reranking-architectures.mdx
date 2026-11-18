@@ -12,6 +12,9 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import { Remember } from '../../../components/content/Remember';
 import RunnableCode from '../../../components/content/RunnableCode';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Retrieval & Reranking Architectures: Bi-Encoder, Cross-Encoder, Late Interaction
 
 [RAG's Re-ranking section](/docs/llms-genai/rag#re-ranking-with-cross-encoders) introduces bi-encoders and cross-encoders as the two-stage retrieve-then-rank shape. There's a real third point on that spectrum — **late interaction**, best known via **ColBERT** — that's neither of the other two: it keeps a bi-encoder's precomputability *and* recovers much of a cross-encoder's token-level precision, by never pooling embeddings down to one vector per document in the first place.
@@ -23,6 +26,17 @@ Imagine judging how well a recipe matches a grocery list. A **bi-encoder** appro
 Everything below makes that exact: the real formula, and a real worked example with actual numbers.
 
 </ELI5>
+
+## Why it exists
+
+## The big picture
+
+<PenFlow title="Retrieve candidates, then rank with more detail" ariaLabel="Retrieve candidates, then rank with more detail" rows={[{ steps: { title: 'Search corpus', lines: ['Bi-encoder or sparse retrieval'], tone: 'blue' } }, { steps: { title: 'Shortlist', lines: ['Keep candidate documents'], tone: 'purple' } }, { steps: { title: 'Rerank', lines: ['Cross-encoder or late interaction'], tone: 'orange' } }, { steps: { title: 'Check recall', lines: ['A reranker cannot recover missed items'], tone: 'green' } }]} caption="First-stage recall constrains every later ranking stage." />
+
+<Worksheet title="ColBERT retrieval tradeoff" ariaLabel="ColBERT retrieval tradeoff" stages={[{ tag: 'Reported MS MARCO comparison', color: 'yellow', note: 'Table values are from the cited paper on this page.', grid: { head: ['', 'MRR@10', 'Latency', 'FLOPs/query'], rows: [{ label: 'BM25', cells: ['16.7', '—', '—'] }, { label: 'BERT base cross-encoder', cells: ['36.0', '10,700 ms', '97 trillion'] }, { label: 'ColBERT', cells: ['34.9', '61 ms', '7 billion'] }, { label: 'Relative cost', cells: ['1.1 MRR points lower', 'about 175× faster', 'about 13,900× fewer'] }] } }]} />
+
+
+Retrieval architectures trade corpus-wide speed, pairwise interaction, token-level detail, and index storage. A bi-encoder finds candidates cheaply, a cross-encoder scores a shortlist jointly, and late interaction keeps token-level matches.
 
 All three architectures, same visual grammar, stepped through the same story — what goes in, what happens, what's lost or kept, and why it matters:
 
@@ -266,4 +280,28 @@ Not a repeat of the architecture explanations above — the concrete jobs each o
 - As a **middle-ground reranker**: more accurate than a bi-encoder's cosine similarity, meaningfully cheaper than running a full cross-encoder over the same candidates — the ~175× latency / ~13,900× FLOPs gap from the ColBERT paper's own numbers above.
 - As the **first-stage retriever itself**, when the storage budget allows: **RAGatouille** (already mentioned above) wraps ColBERT/PLAID specifically to make this deployable, and **Vespa** — a production search engine — ships a native `colbert-embedder` with built-in MaxSim ranking and int8 document-vector compression (a real ~32× storage reduction) for exactly this use case, not a research-only pattern.
 
-Next: back to [RAG](/docs/llms-genai/rag) for how retrieval and reranking fit into the full pipeline, or [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) for embedding/reranker inference in production.
+## Worked example
+
+The cited MS MARCO table gives ColBERT 34.9 MRR@10 versus 36.0 for the BERT base cross-encoder, with 61 ms versus 10,700 ms latency and 7 billion versus 97 trillion FLOPs per query. The page calculates about 175× faster and about 13,900× fewer FLOPs.
+
+## Try it yourself
+
+Compare the two rerankers’ quality and cost. Then describe what happens if the relevant document is missing from the retrieved candidate set.
+
+```python
+# Try it: Compare the two rerankers’ quality and cost. Then describe what happens if the relevant document is missing from the retrieved candidate set.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Compare ranking quality without retrieval recall | Rerankers only see candidates they receive | Measure whether relevant documents enter the shortlist |
+| Use cross-encoder on the entire corpus | Joint scoring is expensive per pair | Retrieve first, then rerank a bounded candidate set |
+| Ignore late-interaction index size | It stores token-level vectors | Budget storage and compression alongside latency |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+(/docs/llms-genai/rag) for how retrieval and reranking fit into the full pipeline, or [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) for embedding/reranker inference in production.

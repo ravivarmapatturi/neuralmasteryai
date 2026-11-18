@@ -18,6 +18,9 @@ import SamplingStrategiesDiagram from '../../../viz/diagrams/SamplingStrategiesD
 import ContextWindowScalingDiagram from '../../../viz/diagrams/ContextWindowScalingDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Foundation Model & Transformer Internals
 
 The engineering details that turn the Transformer architecture (see [Attention & Transformers](/docs/deep-learning/attention-transformers)) into a model you can actually run efficiently at billions of parameters.
@@ -30,44 +33,32 @@ Everything below makes each of those engineering pieces exact.
 
 </ELI5>
 
+## Why it exists
+
+## The big picture
+
+<PenFlow title="Trace a token through a Transformer" ariaLabel="Trace a token through a Transformer" rows={[{ steps: { title: 'Represent input', lines: ['Tokenize, embed, add position'], tone: 'blue' } }, { steps: { title: 'Transform state', lines: ['Attention and SwiGLU layers'], tone: 'purple' } }, { steps: { title: 'Compute logits', lines: ['Project final hidden state'], tone: 'orange' } }, { steps: { title: 'Sample output', lines: ['Temperature and top-k/top-p'], tone: 'green' } }]} caption="The model repeatedly transforms representations before one token is selected." />
+
+<Worksheet title="Sampling boundary cases" ariaLabel="Sampling boundary cases" stages={[{ tag: 'Values stated in the chapter', color: 'yellow', note: 'Limiting cases and threshold taken from the sampling section.', grid: { head: ['', 'Distribution behavior'], rows: [{ label: 'Temperature T → 0', cells: ['Collapses to greedy argmax'] }, { label: 'Temperature T → infinity', cells: ['Uniform probability 1/|V|'] }, { label: 'Top-p example', cells: ['0.9; retain smallest cumulative-probability set'] }] } }]} />
+
+
+A foundation model transforms token IDs into hidden states and logits, then samples a next token. Tokenization, position, attention variants, MLPs, cache design, and sampling each affect quality or inference cost.
+
 ## The Full Pipeline: Text to Token
 
 Every section below is one step of this same pipeline — worth seeing end to end once before the pieces are covered individually:
 
-```
-Text
- ↓
-Tokenizer (BPE/WordPiece/SentencePiece)
- ↓
-Token IDs
- ↓
-Embeddings (learned lookup table)
- ↓
-+ Positional Encoding (RoPE / ALiBi)
- ↓
-┌─────────────────────────────┐
-│  Transformer Block × N       │
-│  Q K V projections           │
-│   ↓                          │
-│  Self-Attention (+ GQA/MQA/MLA, masking) │
-│   ↓                          │
-│  Residual + RMSNorm          │
-│   ↓                          │
-│  MLP / SwiGLU (or MoE router)│
-│   ↓                          │
-│  Residual + RMSNorm          │
-└─────────────────────────────┘
- ↓
-LM Head (linear projection to vocab size)
- ↓
-Logits
- ↓
-Softmax → probability distribution
- ↓
-Sampling (temperature / top-k / top-p)
- ↓
-Token  →  fed back in as the next input, autoregressively
-```
+> Text
+> Tokenizer (BPE/WordPiece/SentencePiece)
+> Token IDs
+> Embeddings (learned lookup table)
+> + Positional Encoding (RoPE / ALiBi)
+> Transformer Block × N: Q K V projections → Self-Attention (+ GQA/MQA/MLA, masking) → Residual + RMSNorm → MLP / SwiGLU (or MoE router) → Residual + RMSNorm
+> LM Head (linear projection to vocab size)
+> Logits
+> Softmax → probability distribution
+> Sampling (temperature / top-k / top-p)
+> Token → fed back as next input, autoregressively
 
 Every arrow above is one section of this page or [Attention & Transformers](/docs/deep-learning/attention-transformers) — the goal of what follows is that none of these steps stay a black box.
 
@@ -206,4 +197,28 @@ The maximum sequence length a model can process at once. Limited fundamentally b
 
 <ContextWindowScalingDiagram />
 
-Next: [Training Pipeline](/docs/llms-genai/training-pipeline) — how a raw Transformer becomes a helpful, aligned assistant.
+## Worked example
+
+At the low-temperature limit, non-maximum logits vanish and sampling becomes greedy argmax. As temperature grows without bound, each vocabulary token approaches probability 1/|V|. Top-p 0.9 keeps the smallest candidate set whose cumulative probability reaches the threshold.
+
+## Try it yourself
+
+Take a small set of logits from the sampling section. Predict the effect of lowering temperature, then compare with the softmax limit derivation.
+
+```python
+# Try it: Take a small set of logits from the sampling section. Predict the effect of lowering temperature, then compare with the softmax limit derivation.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat temperature as a confidence guarantee | Near-tied floating-point logits can still flip | Treat zero temperature as low variance, not guaranteed determinism |
+| Confuse top-k with top-p | One fixes candidate count; the other fixes cumulative mass | Choose the rule that matches the desired candidate set |
+| Ignore cache architecture | KV memory scales with layers, heads, dimensions, and tokens | Estimate cache before setting context and batch limits |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+(/docs/llms-genai/training-pipeline) — how a raw Transformer becomes a helpful, aligned assistant.

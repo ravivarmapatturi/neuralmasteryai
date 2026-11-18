@@ -11,6 +11,9 @@ import PagedAttentionDiagram from '../../../viz/diagrams/PagedAttentionDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # LLM Evaluation and Serving
 
 [Calling the LLM API](/docs/llms-genai/calling-the-llm-api) got a model answering; [RAG](/docs/llms-genai/rag) gave it your data. Two questions decide whether that system can go to production. **Is it good?** That means measuring quality in a way you can trust enough to make decisions with, which is harder for open-ended text than for a classifier. **Can you afford to run it?** That means generating tokens fast enough for users and cheaply enough for the business, which is a memory problem more than a compute problem. This page covers both: how to build an eval set and read its results with error bars, how LLM judges work and where they're biased, then how inference actually runs on a GPU, why the KV cache dominates it, and the techniques serving engines use (continuous batching, PagedAttention, speculative decoding, quantization) with the arithmetic behind each.
@@ -24,6 +27,17 @@ Then the restaurant has to serve hundreds of people a night without a three-hour
 Evaluation is the tasting; serving is running the kitchen. Everything below is those two ideas made exact.
 
 </ELI5>
+
+## Why it exists
+
+## The big picture
+
+<PenFlow title="Evaluate quality, then size serving" ariaLabel="Evaluate quality, then size serving" rows={[{ steps: { title: 'Build paired test set', lines: ['Run both systems on the same inputs'], tone: 'blue' } }, { steps: { title: 'Estimate uncertainty', lines: ['Bootstrap paired differences'], tone: 'purple' } }, { steps: { title: 'Compute memory', lines: ['Calculate KV cache per sequence'], tone: 'orange' } }, { steps: { title: 'Choose serving strategy', lines: ['Batch within memory and latency limits'], tone: 'green' } }]} caption="Quality claims need uncertainty; deployment claims need memory and latency measurements." />
+
+<Worksheet title="Evaluation and KV-cache results" ariaLabel="Evaluation and KV-cache results" stages={[{ tag: 'Printed results', color: 'yellow', note: 'Confidence intervals and memory outputs copied from the page.', grid: { head: ['', 'Recorded value'], rows: [{ label: '50 paired questions', cells: ['difference +0.020; 95% CI (-0.040, +0.100)'] }, { label: '1,000 paired questions', cells: ['difference +0.045; 95% CI (+0.021, +0.069)'] }, { label: 'KV per token', cells: ['128 KiB'] }, { label: '4,096 tokens', cells: ['0.5 GiB per sequence; 119 fit in 64 GB'] }] } }]} />
+
+
+An evaluation score is a sample estimate, and model quality also has to fit the serving system’s memory and latency budget. The examples pair bootstrap intervals with KV-cache arithmetic so both quality and deployment capacity are visible.
 
 ## 1. Why LLM Evaluation Is Hard
 
@@ -117,9 +131,9 @@ for n in (50, 1000):
 
 Output:
 
-```text
-n=  50  v1 0.680  v2 0.700  difference +0.020, 95% CI [-0.040, +0.100]
-n=1000  v1 0.639  v2 0.684  difference +0.045, 95% CI [+0.021, +0.069]
+```output
+n=  50  v1 0.680  v2 0.700  difference +0.020, 95% CI (-0.040, +0.100)
+n=1000  v1 0.639  v2 0.684  difference +0.045, 95% CI (+0.021, +0.069)
 ```
 
 v2 really is better here, by construction. With 50 questions the interval for the difference runs from $-4$ to $+10$ points: the data can't rule out that v2 is worse. With 1,000 it runs from $+2$ to $+7$, and the improvement is real. Two other details are worth noticing. v1's own score moved four points between the two samples, which is ordinary sampling noise. And pairing helps: comparing two separate accuracies at $n = 1000$ would give an interval of about $\pm 4$ points on the difference, while the paired interval is about $\pm 2.4$.
@@ -177,7 +191,7 @@ free = 80 - 16                                                # 80 GB GPU minus 
 print(f"sequences of 4,096 tokens that fit in {free} GB: {int(free * 1e9 // kv_cache_bytes(32, 8, 128, 4096))}")
 ```
 
-```text
+```output
 per token: 128 KiB
    4096 tokens:   0.5 GiB per sequence
   32768 tokens:   4.0 GiB per sequence
@@ -240,7 +254,7 @@ for alpha in (0.6, 0.8, 0.9):
     print(f"alpha={alpha}: k=4 -> formula {expected_tokens(alpha, 4):.2f}, simulated {simulate(alpha, 4):.2f} tokens per pass")
 ```
 
-```text
+```output
 alpha=0.6: k=4 -> formula 2.31, simulated 2.31 tokens per pass
 alpha=0.8: k=4 -> formula 3.36, simulated 3.35 tokens per pass
 alpha=0.9: k=4 -> formula 4.10, simulated 4.09 tokens per pass
@@ -307,7 +321,31 @@ A model's own safety training is one layer of defence, not the whole system. Pro
 
 Each guardrail is itself a classifier with false positives and false negatives, so each needs its own eval set. A guardrail that blocks 5% of legitimate requests is a product bug.
 
-## 11. When *Not* to Use These Techniques
+## Worked example
+
+On 50 paired questions, the measured gain is +0.020 with interval (-0.040, +0.100), so the sample cannot rule out a regression. At 1,000 questions the gain is +0.045 with interval (+0.021, +0.069). The serving example uses 128 KiB per token and fits 119 4,096-token sequences in 64 GB.
+
+## Try it yourself
+
+Compare the 50 and 1,000-question confidence intervals. Then change sequence length in the KV-cache example and see how many sequences fit.
+
+```python
+# Try it: Compare the 50 and 1,000-question confidence intervals. Then change sequence length in the KV-cache example and see how many sequences fit.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Report a point estimate alone | Sampling noise can reverse the apparent winner | Include a confidence interval or paired comparison |
+| Size batching from weights alone | KV cache consumes substantial memory | Calculate cache per sequence and reserve headroom |
+| Optimize latency without task quality | Faster output can still be wrong | Keep an evaluation gate in serving changes |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+
 
 | Situation | Better choice |
 |---|---|
@@ -331,7 +369,7 @@ Each guardrail is itself a classifier with false positives and false negatives, 
 | KV cache | $2 \times$ layers $\times$ KV heads $\times$ head dim $\times$ bytes per token; it limits batch size |
 | Continuous batching | Schedule per decode step; finished requests leave, new ones join |
 | PagedAttention | KV cache in fixed blocks allocated on demand; enables prefix sharing |
-| Speculative decoding | Draft $k$, verify in one pass; $\frac{1-\alpha^{k+1}}{1-\alpha}$ tokens per pass; same output distribution |
+| Speculative decoding | Draft $k$, verify in one pass; $(1-alpha^(k+1))/(1-alpha)$ tokens per pass; same output distribution |
 | Quantization | Fewer bits per weight, faster decode; measure the quality loss on your eval |
 
 ---

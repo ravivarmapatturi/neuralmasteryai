@@ -9,6 +9,9 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Calling the LLM API in Practice
 
 <ELI5>
@@ -17,11 +20,18 @@ Calling a hosted model is like ordering from a busy kitchen over the phone. You 
 
 </ELI5>
 
-## Why This Exists
+## Why it exists
 
 [Prompt Engineering](/docs/llms-genai/prompt-engineering) covers what to put in the request. This page covers everything around it: the parameters that are not prompt text, how to read a streamed response, what to do when the call fails, how to pay less for repeated prompts, and what to log on every call. A correct prompt still fails in production if the response is silently truncated, if a thousand clients retry in lockstep after an outage, or if nobody can say why last week's bill doubled.
 
 Every major hosted API (Anthropic, OpenAI, Google) shares the same basic shape, so the ideas carry over even where field names differ.
+
+
+## The big picture
+
+<PenFlow title="Build and check an API call" ariaLabel="Build and check an API call" rows={[{ steps: { title: 'Send request', lines: ['Messages and generation parameters'], tone: 'blue' } }, { steps: { title: 'Read response', lines: ['Check content and stop reason'], tone: 'purple' } }, { steps: { title: 'Handle failures', lines: ['Retry with jitter and idempotency'], tone: 'orange' } }, { steps: { title: 'Measure usage', lines: ['Log tokens, latency, and cost'], tone: 'green' } }]} caption="A successful HTTP response still needs a stop-reason and usage check." />
+
+<Worksheet title="Temperature and top-p probabilities" ariaLabel="Temperature and top-p probabilities" stages={[{ tag: 'Worked token distribution', color: 'yellow', note: 'Probabilities are copied from the page explanation.', grid: { head: ['', 'Recorded probability'], rows: [{ label: 'T=1 cache', cells: ['0.580'] }, { label: 'T=1 memory', cells: ['0.261'] }, { label: 'Top-p 0.8', cells: ['cache and memory survive; renormalize to 0.690 and 0.310'] }, { label: 'T=0.3 cache', cells: ['0.929'] }, { label: 'T=1.5 cache', cells: ['0.474'] }] } }]} />
 
 ## The Request and the Response
 
@@ -219,7 +229,31 @@ Without these, "why did costs spike last week" and "why was this answer cut off"
 | Prompt cache never hits | A timestamp or user ID near the start of the prompt | Move all variable content after the stable prefix |
 | Costs jump with no traffic change | A model change, or answers getting longer | Log model and output tokens per call; alert on the daily total |
 
-## When *Not* to Use It
+## Worked example
+
+At temperature 1, cache and memory hold probabilities 0.580 and 0.261. Top-p 0.8 keeps those two because their cumulative probability is 0.841, then renormalizes them to 0.690 and 0.310. At temperature 0.3 cache rises to 0.929; at 1.5 it falls to 0.474.
+
+## Try it yourself
+
+Set temperature to 1.5 and top_p to 0.8 in the runnable example. Count which tokens remain before renormalization.
+
+```python
+# Try it: Set temperature to 1.5 and top_p to 0.8 in the runnable example. Count which tokens remain before renormalization.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Trust text without checking stop_reason | A truncated response can look complete | Check whether generation ended or hit max_tokens |
+| Retry every failed request immediately | Clients can synchronize into a retry storm | Use exponential backoff with jitter and a cap |
+| Ignore token usage | Long outputs and repeated prompts drive cost | Log input/output tokens and cached usage |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+
 
 | Situation | Better choice |
 | --- | --- |

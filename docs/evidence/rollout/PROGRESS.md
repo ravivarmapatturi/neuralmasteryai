@@ -229,3 +229,9 @@ Static checks passed on the combined worktree: notebook (12 changed pages/0 viol
 Standardized MCP overview, MCP Protocol Deep Dive, and A2A overview. The minimal implementation sections were renamed to Try it yourself and each runnable code example received the requested `# Try it:` edit. Worksheets use the actual note server outputs, HTTP validation/confirmation/signature trace, and FX task lifecycle. Scorecard: `agents-5/scorecard.md`.
 
 Static checks passed on the combined worktree: notebook (15 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the low-memory rule. No push.
+
+## LLMs & GenAI batch 2 — four pages
+
+Standardized Calling the LLM API, Evaluation and Serving, Foundation Model Internals, and Retrieval/Reranking Architectures. Worksheets reuse the sampling probabilities, paired evaluation intervals and KV-cache outputs, exact temperature/top-p limits, and cited MS MARCO latency/FLOP/MRR values. Flattened the speculative-decoding fraction inside the evaluation Remember table. Scorecard: `llm-2/scorecard.md`.
+
+Static checks passed on the combined worktree: notebook (23 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the low-memory rule. No push.
