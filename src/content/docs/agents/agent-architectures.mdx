@@ -13,8 +13,27 @@ import ShortTermVsLongTermMemoryDiagram from '../../../viz/diagrams/ShortTermVsL
 import MemoryAsRetrievalDiagram from '../../../viz/diagrams/MemoryAsRetrievalDiagram';
 import HumanInTheLoopDiagram from '../../../viz/diagrams/HumanInTheLoopDiagram';
 import AgentEvolutionDiagram from '../../../viz/diagrams/AgentEvolutionDiagram';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Agent Architectures
+
+## Why it exists
+
+The page compares agent patterns because a single loop, a plan, a supervisor, and a graph make different tradeoffs in adaptation, coordination, and recovery. The right structure follows the task’s dependencies and failure paths.
+
+## The big picture
+
+<PenFlow title="Choose structure from task shape" ariaLabel="Choose structure from task shape" rows={[{ steps: { title: 'One changing observation', lines: ['Use a ReAct loop'], tone: 'blue' } }, { steps: { title: 'Known sequence', lines: ['Plan, execute, replan on failure'], tone: 'purple' } }, { steps: { title: 'Distinct specialists', lines: ['Route or supervise with explicit handoffs'], tone: 'orange' } }, { steps: { title: 'Branches and parallel work', lines: ['Represent dependencies as a graph'], tone: 'green' } }]} caption="Each architectural step adds coordination to handle a task feature." />
+
+<Worksheet title="Architecture choice" ariaLabel="Architecture choice" stages={[{ tag: 'Task properties', color: 'yellow', note: 'Match each requirement to the smallest suitable pattern.', grid: { head: ['', 'Requirement'], rows: [{ label: 'Adapt', cells: ['Next action depends on the latest tool result → ReAct'] }, { label: 'Sequence', cells: ['Stable steps with occasional failure → plan-and-execute'] }, { label: 'Specialize', cells: ['Different expertise or tools → router or supervisor'] }, { label: 'Branch', cells: ['Explicit dependencies / parallel units → graph'] }] } }]} />
+
+
+<ELI5>
+
+A simple agent is one worker following a repeated loop. Architectures add structure when a task needs planning, checking, specialist routing, or recovery. Each extra role or edge has a coordination cost, so choose only the structure the work needs.
+
+</ELI5>
 
 Different ways to structure the loop between reasoning and acting, each with different tradeoffs between reliability, cost, and how much the agent can handle on its own.
 
@@ -114,5 +133,34 @@ Named categories of agent, each with a characteristic tool set and environment:
 - **Coding agents**: operate on a codebase — reading files, writing/editing code, running tests, using version control — the category this very assistant belongs to, typically sandboxed to a specific repository/environment.
 - **Computer-use agents**: control a full desktop environment directly (mouse, keyboard, screen) rather than a scoped API or browser — the most general and highest-risk category, since the action space is "anything a human could do on this computer," making sandboxing and approval gates especially important.
 - **Autonomous research agents**: given an open-ended research question, iteratively search, read, synthesize, and refine their own follow-up questions over an extended run — the long-running-agent pattern above, applied specifically to information-gathering-and-synthesis tasks rather than code or UI actions.
+
+## Worked example
+
+For a task where each search result determines the next query, ReAct adapts step by step. For a predictable sequence with a known recovery point, a plan-and-execute pattern can reduce repeated planning. When work splits into independent units, a graph exposes dependencies and parallelism.
+
+## Try it yourself
+
+Pick one task you know. Mark which next steps depend on new observations, which are fixed, and which can run in parallel; select the simplest matching architecture.
+
+```python
+# Try it: Pick one task you know. Mark which next steps depend on new observations, which are fixed, and which can run in parallel; select the simplest matching architecture.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Choosing a multi-agent design by default | More roles sound more capable | Add specialists only for a real separation of tools or expertise |
+| Treating a plan as fixed | New evidence can invalidate later steps | Define a replanning condition |
+| Calling a sequence a graph | Edges may encode no actual dependency | Name the state each edge carries; parallelize the rest |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+| One predictable, bounded operation | Direct code or a workflow |
+| A task needs only one adaptive tool loop | ReAct without a supervisor |
+| No distinct specialists or parallel units | Avoid multi-agent coordination |
+
 
 Next: [MCP (Model Context Protocol)](/docs/agents/mcp/overview) and [A2A (Agent-to-Agent)](/docs/agents/a2a/overview) — the standards that let agents connect to tools and to each other without custom integration for every pair.

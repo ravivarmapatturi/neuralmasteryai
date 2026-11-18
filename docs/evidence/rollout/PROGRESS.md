@@ -199,3 +199,9 @@ Static checks pass: notebook (14 changed pages/0 violations across current tree)
 Standardized Deep Learning Overview and Roadmap plus Linear Attention/State-Space Models and Recurrent Looped Transformers. Added the Why/flow/Worksheet structure, Worked example, Try it yourself with a concrete edit, Common mistakes, and When not to use it. The Overview and Roadmap preserve their survey paths. Numeric examples come from their recorded output or direct arithmetic from the pages' stated sequence lengths and block counts. Added a third RLT drawing to satisfy the page's existing >1,500-word visual-density rule.
 
 Static gates pass: notebook (18 changed pages/0 violations on current tree), math (1,991), MDX (2,019/2,019), links (2,147 routes/no broken links or anchors), typecheck, tracker and diff check. Browser screenshots, widget execution, overlap guard, full Vitest and build remain deferred because available RAM is 0 GiB. See `dl-3/scorecard.md`. No push.
+
+## Agents batch 1 — four pages
+
+Standardized Agent Fundamentals, Agent Architectures, ReAct Agents in Production, and Loops and Graphs using their existing output traces and numeric examples. The order lookup worksheet preserves the malformed/valid IDs, carrier, and ETA; the ReAct Worksheet recomputes the page's 42,500-token total; the graph worksheet records four worker calls. Agent Architectures uses the page's qualitative pattern choices without inventing benchmark values. Scorecard: `agents-1/scorecard.md`.
+
+Static checks passed on the combined worktree: notebook (22 pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the documented low-memory gate. No push.

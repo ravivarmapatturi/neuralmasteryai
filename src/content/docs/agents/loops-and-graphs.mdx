@@ -11,6 +11,17 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Loops and Graphs
 
+## Why it exists
+
+A loop makes one unit of work pass a real check; a graph coordinates which units run and how their state flows. Keeping those jobs separate prevents a graph from multiplying unchecked work.
+
+## The big picture
+
+<PenFlow title="Loop within graph coordination" ariaLabel="Loop within graph coordination" rows={[{ steps: { title: 'Split units', lines: ['Create independent work items'], tone: 'blue' } }, { steps: { title: 'Run worker loop', lines: ['Produce, check, correct one unit'], tone: 'purple' } }, { steps: { title: 'Gate each result', lines: ['Route only rejected units back'], tone: 'orange' } }, { steps: { title: 'Merge', lines: ['Combine passing units in code'], tone: 'green' } }]} caption="The loop checks one unit; the graph routes and combines units." />
+
+<Worksheet title="Graph run trace" ariaLabel="Graph run trace" stages={[{ tag: 'Recorded worker calls', color: 'yellow', note: 'Counts and gate results copied from the execution output.', grid: { head: ['', 'Result'], rows: [{ label: 'overview', cells: ['1 worker call; passed'] }, { label: 'pricing', cells: ['2 worker calls; rejected then passed'] }, { label: 'risks', cells: ['1 worker call; passed'] }] } }]} />
+
+
 [Agent Architectures](/docs/agents/agent-architectures#how-we-got-here-prompt-context-harness-loop-graph) narrated *why* the field moved from a single loop to a graph of them. This page stops narrating and gets precise: what is actually inside a Loop, what is actually inside a Graph, and where each one earns its keep. It ends with a small graph built and run in LangGraph, where a gate rejects one unit of work and sends only that unit back, so every idea on the page is visible in a real execution trace.
 
 <ELI5>
@@ -119,6 +130,8 @@ Here are the pieces above in one small LangGraph graph: a **splitter** fans a re
 
 ```python
 import operator
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 from typing import Annotated, TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
@@ -165,7 +178,7 @@ g.compile().invoke({"sections": ["overview", "pricing", "risks"], "drafts": []})
 print("worker calls per unit:", attempts)
 ```
 
-```text
+```output
 gate: rejected ['pricing']; returning only those, with the reason
 gate: all units pass
 merged: overview summary [1] | pricing summary [1] | risks summary [1]
@@ -186,7 +199,35 @@ The trace shows the rules from this page holding. The three workers ran in paral
   explanation="Returning the batch re-runs units that already passed, paying for them again, and since model outputs vary, a unit that passed can fail on the redo, which can send the whole batch round again. Returning only the failed unit keeps cost proportional to failures and lets the run converge."
 />
 
-## When *Not* to Build a Graph
+## Worked example
+
+The printed run has three units. `overview` and `risks` each pass in one worker call. `pricing` is rejected and retried once, then passes. The gate returns only that unit, so the run uses four worker calls total.
+
+## Try it yourself
+
+Change the gate so it returns the entire batch when one unit fails. Trace which passing units get recomputed.
+
+```python
+# Try it: Change the gate so it returns the entire batch when one unit fails. Trace which passing units get recomputed.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Returning the whole batch after one rejection | Passing units are recomputed unnecessarily | Return only the failed unit with its reason |
+| Treating an edge as mere ordering | Unneeded dependencies serialize work | Name the variable carried by each edge |
+| Using model confidence as a gate | Confidence is not a correctness condition | Use a deterministic, task-specific pass/fail check |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+| One bounded unit with a clear check | One loop |
+| Steps have no dependency | Parallel workers |
+| No meaningful pass/fail condition exists | Define a check before adding graph structure |
+
+
 
 | Situation | Better choice |
 |---|---|

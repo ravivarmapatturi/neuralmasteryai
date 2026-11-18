@@ -8,8 +8,21 @@ import reactLoopDark from './img/react-loop.png';
 import reactLoopLight from './img/react-loop-light.png';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # ReAct Agents in Production
+
+## Why it exists
+
+A ReAct loop uses each tool observation to choose the next action. Production systems must bound that loop, validate tool calls, control transcript growth, and record enough trace data to diagnose failures.
+
+## The big picture
+
+<PenFlow title="A guarded ReAct iteration" ariaLabel="A guarded ReAct iteration" rows={[{ steps: { title: 'Choose action', lines: ['Model emits a typed tool call'], tone: 'blue' } }, { steps: { title: 'Check contract', lines: ['Validate schema and permissions'], tone: 'purple' } }, { steps: { title: 'Run with limits', lines: ['Apply timeout, retry policy, and idempotency'], tone: 'orange' } }, { steps: { title: 'Record observation', lines: ['Prune payload; trace the next decision'], tone: 'green' } }]} caption="Every model decision crosses a checked tool boundary and a bounded execution step." />
+
+<Worksheet title="ReAct trace budget" ariaLabel="ReAct trace budget" stages={[{ tag: 'Recorded figures', color: 'yellow', note: 'Numbers are copied from the worked analysis on this page.', grid: { head: ['', 'Calculation'], rows: [{ label: 'Prompt', cells: ['10 iterations × 2,000 tokens = 20,000'] }, { label: 'History', cells: ['45 prior step pairs × 500 = 22,500'] }, { label: 'Total', cells: ['20,000 + 22,500 = 42,500 tokens'] }] } }]} />
+
 
 [Agent Architectures](/docs/agents/agent-architectures#react-reasoning-acting) introduces the ReAct pattern — interleaving reasoning with action, one step at a time. Formalized by [Yao et al. (2022)](https://arxiv.org/abs/2210.03629), ReAct is the workhorse control loop of autonomous AI systems. While a toy script can demonstrate the loop in 20 lines, taking a ReAct agent to production requires solving hard distributed systems problems: enforcing strict tool-calling schemas, recovering from malformed model outputs without crashing, managing the quadratic token cost of accumulating transcripts, preventing runaway loop thrashing, and capturing structured traces for observability.
 
@@ -55,7 +68,7 @@ A ReAct agent does not loop indefinitely; it runs until one of two conditions is
 ### Prompt Anatomy: Text Scraping vs. Native Chat Roles
 
 In the original 2022 research paper, ReAct was driven entirely by raw text prompting with custom stop sequences:
-```text
+```output
 Question: What is the elevation of the city where the 2024 Summer Olympics took place?
 Thought 1: I need to find the host city of the 2024 Summer Olympics.
 Action 1: Search[2024 Summer Olympics host city]
@@ -77,7 +90,7 @@ In production systems, this raw text format is obsolete. Modern foundation model
 
 In a production harness, the model never directly executes code or contacts external networks. Instead, the model acts strictly as a **structured argument generator**, and the host runtime acts as the **privileged executor**.
 
-```
+```output
 ┌─────────────────┐             tool_calls: { name, args }              ┌──────────────────────┐
 │                 │ ──────────────────────────────────────────────────> │  Host Harness Engine │
 │                 │                                                     │  - Schema Validation │
@@ -118,7 +131,7 @@ Foundation models will occasionally emit malformed JSON, omit a required paramet
 
 In a brittle system, this unhandled exception crashes the runtime. In a production ReAct harness, **parse and validation failures are caught and fed back to the model as an Observation**:
 
-```
+```output
 Model Thought:  "Looking up order details."
 Model Action:   lookup_customer_order(id="ORD-1234")   <-- Error: schema expected 'order_id', not 'id'
 Runtime Catch:  Catches ValidationError('Missing required field: order_id')
@@ -414,7 +427,35 @@ In [LangGraph](https://langchain-ai.github.io/langgraph/), the ReAct loop is mod
 4. **`tools` Node (`ToolNode`)**: Executes the requested tool calls and appends `ToolMessage` results. It routes unconditionally back to `agent` to complete the cycle.
 5. **Durable Checkpointing**: By attaching a checkpointer (such as `MemorySaver` or `PostgresSaver`), LangGraph records the full state at every turn. If a tool call requires human authorization or a container crashes mid-task, execution can resume from the exact last checkpoint without re-running earlier steps.
 
-## When to Reach for ReAct
+## Worked example
+
+The page’s 10-iteration example starts with a 2,000-token prompt and adds 500 tokens per step. Repeatedly resending the prompt costs 20,000 tokens; accumulated prior step pairs add 22,500, for 42,500 total.
+
+## Try it yourself
+
+Change the iteration count in the formula and recalculate both the repeated prompt and accumulated-history terms.
+
+```python
+# Try it: Change the iteration count in the formula and recalculate both the repeated prompt and accumulated-history terms.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Retry a side effect after a timeout | The response may be lost after the action succeeded | Use idempotency keys for mutations |
+| Keep raw tool payloads in context | Later calls resend the transcript | Filter, cap, summarize, or offload observations |
+| Let the loop run without limits | A bad tool response can cause thrashing | Bound iterations, time, and token spend |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+| Steps are known and do not depend on observations | A deterministic workflow |
+| One model call is enough | Direct completion |
+| Actions are irreversible and lack a human checkpoint | Add approval before execution |
+
+
 
 - **ReAct's Dominant Domain**: Dynamic, exploratory tasks where the outcome of step $N$ determines what step $N+1$ should even be (e.g., automated debugging, customer service triage, interactive SQL investigations).
 - **When to Choose [Plan-and-Execute](/docs/agents/plan-and-execute)**: Structured, predictable multi-step tasks (e.g., *"Search three competitor websites, download their pricing PDFs, and generate a markdown table"*). Upfront planning eliminates the latency and token cost of invoking a heavy reasoning model after every single action.
