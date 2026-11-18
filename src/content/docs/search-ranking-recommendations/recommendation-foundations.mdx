@@ -12,12 +12,31 @@ import { RecommendationFoundationsExplorer } from '../../../viz/diagrams/Recomme
 import { SearchVsRecLanesDiagram } from '../../../viz/diagrams/SearchVsRecLanesDiagram';
 import { UserItemMatrixDiagram } from '../../../viz/diagrams/UserItemMatrixDiagram';
 import { ColdStartDiagram } from '../../../viz/diagrams/ColdStartDiagram';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Recommendation Foundations: Interactions & Neighborhoods
 
 <ELI5>
 In search, the user tells us what they want by typing an explicit query ("learning to rank algorithms"). In recommendations, there is no search query. The system must infer intent from history: what items the user clicked, purchased, skipped, or rated. Collaborative filtering solves this by identifying shared taste. If Alice and Bob both read chapters on matrix algebra and vector search, and Bob also reads two-tower retrieval, the system recommends two-tower retrieval to Alice without needing to understand the underlying prose.
 </ELI5>
+
+## Why it exists
+
+Recommendations have no typed query to state the user's immediate goal. Interaction patterns give the system evidence about taste, and similarities among users or items let it estimate preferences that have not been observed directly.
+
+## The big picture
+
+Collaborative filtering starts from shared user-item interactions, compares users or items, then estimates an unseen preference. The worksheet uses Alice and Bob's two shared ratings from the matrix below; their uncentered cosine is 40/41, about 0.9756.
+
+<UserItemMatrixDiagram />
+
+Notice that blank cells mean the user has not rated that item; they do not mean the user disliked it.
+
+<Worksheet title="Compare two readers" ariaLabel="Recommendation worksheet comparing Alice and Bob on two shared items" stages={[
+  { tag: 'Shared ratings', color: 'yellow', note: 'Both readers rated Matrix Algebra and Vector Search.', grid: { head: ['', 'Matrix Algebra', 'Vector Search'], rows: [{ label: 'Alice', cells: ['5', '4'] }, { label: 'Bob', cells: ['4', '5'] }] } },
+  { tag: 'Products', color: 'blue', note: 'Multiply ratings in matching item positions.', grid: { head: ['', 'item 1', 'item 2'], rows: [{ label: 'Alice × Bob', cells: ['20', '20'] }] } },
+  { tag: 'Similarity', color: 'green', note: 'The dot product is 40 and each vector has norm √41.', grid: { head: ['', 'dot product', 'cosine'], rows: [{ label: 'Alice, Bob', cells: ['40', '0.9756'] }], hide: [[0, 0], [0, 1]] } },
+]} />
 
 For a broader architectural overview of recommendation baselines, global biases, and full-funnel retrieval pipelines, review our dedicated guide in [Recommender Systems](/docs/machine-learning/recommender-systems). In this chapter, we explore how recommender systems match users to items, trace the shift from star ratings to clicks and watch time, and explain why an unseen item must never be treated as a disliked item.
 
@@ -37,7 +56,7 @@ The central challenge in recommendations is sparsity. In a catalog with millions
 
 ---
 
-## The Hand-Checkable Interaction Matrix
+## Worked example
 
 To make every equation hand-checkable, we define a concrete toy universe of $m=4$ users and $n=4$ items:
 
@@ -283,7 +302,7 @@ Items 1 and 2 share an exceptionally high similarity of **0.9661**. When any use
 
 ---
 
-## Executable Verification: Computing Similarities in Python
+## Try it yourself
 
 The following Python script implements user-user and item-item collaborative filtering on our exact 4x4 matrix, reproducing every number derived above.
 
@@ -444,7 +463,7 @@ $$
 
 ---
 
-## Common Failure Modes in Production Neighborhoods
+## Common mistakes
 
 | Failure Mode | Root Cause | System Manifestation | Production Fix |
 | :--- | :--- | :--- | :--- |
@@ -455,7 +474,7 @@ $$
 
 ---
 
-## When Not to Use Neighborhood Collaborative Filtering
+## When not to use it
 
 | Scenario | Preferred Alternative | Why Neighborhood Methods Fail |
 | :--- | :--- | :--- |

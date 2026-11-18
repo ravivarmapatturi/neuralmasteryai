@@ -9,6 +9,7 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import { Bm25ScoringDiagram } from '../../../viz/diagrams/Bm25ScoringDiagram';
+import Worksheet from '../../../components/notebook/Worksheet';
 import { Bm25SaturationExplorer } from '../../../viz/diagrams/Bm25SaturationExplorer';
 import { Bm25ScoringExplorer } from '../../../viz/diagrams/Bm25ScoringExplorer';
 import { HybridSearchFusionDiagram } from '../../../viz/diagrams/HybridSearchFusionDiagram';
@@ -18,6 +19,24 @@ import { HybridSearchFusionDiagram } from '../../../viz/diagrams/HybridSearchFus
 <ELI5>
 Imagine reading product reviews for a digital camera. If Review A mentions the word "battery" once, it is somewhat relevant. If Review B mentions "battery" three times, it is noticeably more informative. But if Review C mentions "battery" one hundred times in a row, is it thirty-three times more helpful than Review B? Of course not—it is almost certainly spam or an excessively long manual. BM25 is the mathematical formula that fixes this: it rewards words for appearing a few times, but flattens out so that repeating a word dozens of times yields diminishing returns.
 </ELI5>
+
+## Why it exists
+
+TF-IDF grows in proportion to term frequency, so repeating a word can keep raising a document's score. BM25 limits that gain and adjusts it for document length, giving search a more stable lexical score.
+
+## The big picture
+
+BM25 turns a term count into a bounded contribution, adjusts it for document length, then weights it by how rare the term is. The worksheet previews the same benchmark values used in the full derivation below.
+
+<Bm25ScoringDiagram />
+
+Notice that BM25 limits the gain from repeated terms and adjusts for document length.
+
+<Worksheet title="One BM25 term score" ariaLabel="BM25 worksheet using the benchmark fixture values" stages={[
+  { tag: 'Given', color: 'yellow', note: 'The benchmark document is average length.', grid: { head: ['', 'N', 'df', 'tf', 'length / avg'], rows: [{ label: 'Fixture', cells: ['1,000', '100', '3', '100 / 100'] }] } },
+  { tag: 'Parameters', color: 'orange', note: 'Use the page fixture settings.', grid: { head: ['', 'k₁', 'b'], rows: [{ label: 'BM25', cells: ['1.2', '0.75'] }] } },
+  { tag: 'Score', color: 'green', note: 'Check the hand calculation, then reveal the result.', grid: { head: ['', 'IDF', 'TF factor', 'term score'], rows: [{ label: 'Query term', cells: ['2.2986', '1.5714', '3.6121'] }], hide: [[0, 0], [0, 1], [0, 2]] } },
+]} />
 
 ## The Two Critical Flaws of TF-IDF
 
@@ -73,7 +92,7 @@ $$
 ### Parameter Heuristics in Production
 
 <NotebookCallout color="cobalt" title="Parameter Heuristics in Production">
-The canonical defaults $k_1 \in [1.2, 1.5]$ and $b = 0.75$ originated from historical TREC evaluations on newswire and web benchmark corpora. In modern production systems, these serve as empirical baselines rather than universal constants:
+The common starting values $k_1 \in [1.2, 1.5]$ and $b = 0.75$ originated from historical TREC evaluations on newswire and web benchmark corpora. In modern production systems, these serve as empirical baselines rather than universal constants:
 - For short, homogeneous text (such as product titles or FAQ headers), length normalization is often dialed down ($b \approx 0.3 - 0.5$ or $b = 0$) to avoid unfairly penalizing descriptive titles.
 - For heterogeneous collections mixing short abstracts with 50-page technical manuals, higher $b$ values ($b \approx 0.75 - 0.85$) ensure long documents do not dominate.
 </NotebookCallout>
@@ -100,9 +119,9 @@ Because $\frac{N - \text{df} + 0.5}{\text{df} + 0.5} \ge 0$ for all valid $\text
 
 ---
 
-## Detailed Walkthrough: The BM25 Benchmark Fixture
+## Worked example
 
-To verify BM25 calculations independently, consider a canonical test scenario specified across information retrieval literature:
+To verify BM25 calculations independently, consider a standard test fixture used in information retrieval:
 
 **Benchmark Parameters:**
 - Corpus size: $N = 1{,}000$ documents
@@ -231,7 +250,7 @@ In many retrieval tasks, lexical and semantic methods provide complementary stre
 
 ---
 
-## Run It Yourself: Pure Python BM25 Calculator
+## Try it yourself
 
 Execute the complete BM25 calculator below. The code implements the exact Robertson/Lucene smoothed IDF formula, reproducing our worked fixture ($N=1000, \text{df}=100, \text{tf}=3 \implies 3.612$) to four decimal places.
 
@@ -336,7 +355,15 @@ for doc_id, score in results:
     print(f"  {doc_id} -> BM25 Score: {score}")
 `} />
 
-## When Not to Use BM25
+## Common mistakes
+
+| Mistake | Why it fails | Fix |
+| :--- | :--- | :--- |
+| Treating BM25 as a semantic matcher | It scores token overlap and cannot infer synonyms by itself. | Add dense retrieval when meaning must cross wording differences. |
+| Copying one corpus's `k₁` and `b` as universal defaults | Term distributions and document lengths differ by collection. | Tune with held-out queries and report the evaluation set. |
+| Applying BM25 to untrusted query syntax | Operators or malformed tokens can change parsing or increase work. | Normalize and bound queries before scoring. |
+
+## When not to use it
 
 | Scenario | Recommended Alternative | Core Reason |
 | :--- | :--- | :--- |

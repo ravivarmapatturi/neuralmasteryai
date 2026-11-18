@@ -10,12 +10,31 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import LearningToRankDiagram from '../../../viz/diagrams/LearningToRankDiagram';
 import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Learning to Rank
 
 <ELI5>
 Imagine a panel of judges evaluating an Olympic gymnastics final. A pointwise judge gives each athlete a standalone grade out of 10 without looking at anyone else, which often produces ties and misjudges tight head-to-head showdowns. A pairwise judge looks at every pair of gymnasts and decides who performed better ("Gymnast A beat Gymnast B"). A listwise judge looks at the podium as an entire ordered slate. The listwise judge concentrates maximum effort on getting the Gold and Silver medals right, because confusing 1st and 2nd place is a catastrophic error, whereas swapping 14th and 15th place barely matters to the competition outcome. Learning to Rank algorithms mathematically structure this exact transition.
 </ELI5>
+
+## Why it exists
+
+Predicting each document's label independently does not guarantee that the most relevant result appears first. Learning to rank trains on the ordering that readers actually see, so an inversion between two useful results matters directly.
+
+## The big picture
+
+A ranking model produces scores, but the useful question is whether the order respects graded relevance. This worksheet previews the three-document query carried through the worked example.
+
+<LearningToRankDiagram />
+
+Notice how the model objective changes from scoring one document to comparing pairs or whole ranked lists.
+
+<Worksheet title="Three documents, one ranking error" ariaLabel="Learning to rank worksheet with relevance labels and model scores" stages={[
+  { tag: 'Relevance', color: 'yellow', note: 'The labels describe how useful each result is.', grid: { head: ['', 'D1', 'D2', 'D3'], rows: [{ label: 'grade', cells: ['3', '2', '0'] }] } },
+  { tag: 'Model score', color: 'blue', note: 'Sort these scores from largest to smallest.', grid: { head: ['', 'D1', 'D2', 'D3'], rows: [{ label: 'score', cells: ['1.2', '2.1', '0.4'] }] } },
+  { tag: 'Order', color: 'green', note: 'D2 is incorrectly ahead of the more relevant D1.', grid: { head: ['', 'rank 1', 'rank 2', 'rank 3'], rows: [{ label: 'result', cells: ['D2', 'D1', 'D3'] }], hide: [[0, 0], [0, 1], [0, 2]] } },
+]} />
 
 ## Why Standard Loss Functions Fail at Ranking
 
@@ -188,7 +207,7 @@ Wu et al. (2010) unified LambdaRank gradients with **Multiple Additive Regressio
 Gradient Boosted Decision Trees (GBDT) handle missing feature values natively, require zero monotonic feature scaling (unlike neural networks, tree split points are invariant to monotonic transformations of single features), and efficiently discover non-linear feature interactions (such as combining PageRank with query length).
 </NotebookCallout>
 
-## A Full Worked Example: 3-Document Query
+## Worked example
 
 Let us trace a concrete worked example with identical numbers across prose, visualizer, and code.
 
@@ -254,7 +273,7 @@ Now we compute the metric gain of swapping $(D_1, D_2)$:
 
 The negative gradient exerts an upward force on $D_1$ (and by anti-symmetry, a positive force $+0.1180$ pushing $D_2$ downward), driving the model to flip their order.
 
-## The Shape of It: Interactive LTR Objective Explorer
+## Try it yourself
 
 Use the visualizer below to step through Pointwise MSE, Pairwise RankNet, LambdaRank, and LambdaMART tree splitting on our worked example. Toggle the inversion state to observe how resolving the top-slot swap drives lambda forces to near zero.
 
@@ -370,7 +389,7 @@ A common source of confusion in interview and systems engineering is conflating 
 
 For deep-dive formulations of NDCG, MRR, and MAP across evaluation splits, consult [Ranking Evaluation Metrics](/docs/search-ranking-recommendations/ranking-evaluation-metrics). For the feature engineering families that feed these models, see [Ranking Fundamentals & Link Analysis](/docs/search-ranking-recommendations/ranking-fundamentals).
 
-## Common Problems & Fixes
+## Common mistakes
 
 | Failure Mode | Root Cause | Engineering Fix |
 | :--- | :--- | :--- |
@@ -379,7 +398,7 @@ For deep-dive formulations of NDCG, MRR, and MAP across evaluation splits, consu
 | **Pairwise models encounter conflicting preference cycles** | Training logs contain noisy user click feedback where preference signals conflict across sessions ($A \succ B$, $B \succ C$, $C \succ A$). | Aggregate repeated pair impressions across sessions; filter out ambiguous pairs that lack statistically significant preference margins. |
 | **Serving latency exceeds SLA during high-traffic spikes** | Scoring large candidate sets through deep boosted tree ensembles strains the inference budget. | Prune ensemble depth, compile trees with native inference runtimes (such as Treelite), or restrict deep ensemble scoring to an illustrative top candidate pool (e.g. top 50). |
 
-## When Not to Use Complex Learning to Rank
+## When not to use it
 
 | Situation | Recommended Alternative | Reason |
 | :--- | :--- | :--- |

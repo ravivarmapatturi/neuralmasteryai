@@ -10,12 +10,31 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import MatrixFactorizationExplorer from '../../../viz/diagrams/MatrixFactorizationExplorer';
 import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Matrix Factorization & Latent Factor Embeddings
 
 <ELI5>
 Imagine placing every student and textbook on a 2D map with axes for "Mathematical Rigor" and "Visual Intuition". Alice has high rigor and low visual preference; Textbook 1 has high rigor and low visual examples. By multiplying Alice's two coordinates by the textbook's two coordinates (their dot product), we predict whether Alice will like the book. Matrix factorization is the algorithm that discovers these hidden coordinates automatically from a sparse table of past reviews.
 </ELI5>
+
+## Why it exists
+
+Most users rate or open only a small part of a catalog, leaving the interaction matrix mostly empty. Matrix factorization learns compact user and item vectors from observed entries so it can estimate preferences for unobserved pairs.
+
+## The big picture
+
+Matrix factorization explains observed ratings with short user and item vectors. This worksheet follows Alice's three observed items from the page's 4-by-4 example through the regularized ALS update matrix.
+
+<MatrixFactorizationExplorer />
+
+Notice that different factor coordinates can produce the same user-item predictions.
+
+<Worksheet title="Alice's ALS update" ariaLabel="Matrix factorization worksheet with the 4 by 4 example factor values" stages={[
+  { tag: 'Observed items', color: 'yellow', note: 'Alice rated Items 1, 2, and 4 as 5, 4, and 1.', grid: { head: ['', 'Item 1', 'Item 2', 'Item 4'], rows: [{ label: 'rating', cells: ['5', '4', '1'] }] } },
+  { tag: 'Item factors', color: 'blue', note: 'Use the three rows selected for Alice.', grid: { head: ['', 'factor 1', 'factor 2'], rows: [{ label: 'Item 1', cells: ['0.9', '0.1'] }, { label: 'Item 2', cells: ['0.8', '0.2'] }, { label: 'Item 4', cells: ['0.1', '0.9'] }] } },
+  { tag: 'Regularized system', color: 'green', note: 'With lambda = 0.1, reveal the matrix used in the user update.', grid: { head: ['', 'column 1', 'column 2'], rows: [{ label: 'row 1', cells: ['1.56', '0.34'] }, { label: 'row 2', cells: ['0.34', '0.96'] }], hide: [[0, 0], [0, 1], [1, 0], [1, 1]] } },
+]} />
 
 For an end-to-end Python implementation of alternating least squares on synthetic interaction data and baseline bias adjustments, see [Recommender Systems](/docs/machine-learning/recommender-systems). In this chapter, we derive matrix factorization from first principles, prove why learned latent dimensions are mathematically unidentifiable, contrast explicit squared loss with implicit confidence and pairwise ranking (BPR), and compare Alternating Least Squares against Stochastic Gradient Descent.
 
@@ -161,7 +180,7 @@ Because $\left(V_{\mathcal{I}_u}^T V_{\mathcal{I}_u} + \lambda I_k\right)$ is a 
 
 ---
 
-## The Hand-Checkable 4x4 Factorization Example
+## Worked example
 
 To ground the ALS mechanics, we evaluate our 4x4 matrix with rank $k=2$ and regularizer $\lambda = 0.1$:
 
@@ -268,7 +287,7 @@ Alice's updated 2D embedding is **$u_1 \approx [4.88, 0.56]^T$**. Dimension 1 do
   title="Active Recall: Geometric Factor Identifiability"
   question="Suppose we train rank-2 factor matrices U and V that minimize squared loss. If we apply an orthogonal 2D rotation matrix Q(θ) to every user vector and every item vector, what happens to the training loss and predicted ratings?"
   options={[
-    "Training loss increases because rotated embeddings no longer match the canonical axes.",
+    "Training loss increases because rotated embeddings no longer match the shared coordinates.",
     "Training loss and all predicted ratings remain 100% identical.",
     "Only user predictions remain unchanged; item predictions change.",
     "Loss decreases because rotation adds an extra degree of freedom."
@@ -390,7 +409,7 @@ When the model correctly ranks $i$ far above $j$ ($\hat{x}_{uij} \gg 0$), $\sigm
 
 ---
 
-## Executable Verification: Matrix Factorization in Python
+## Try it yourself
 
 The following runnable Python script implements both closed-form ALS on our exact 4x4 matrix and validates rotational invariance with NumPy.
 
@@ -524,14 +543,14 @@ In production recommender engineering, two optimization paradigms dominate matri
 | Dimension | Alternating Least Squares (ALS) | Stochastic Gradient Descent (SGD) |
 | :--- | :--- | :--- |
 | **Optimization Nature** | Solves closed-form linear systems iteratively. Guaranteed monotonic loss descent. | Steps along noisy negative gradient estimates per interaction sample. |
-| **Hyperparameter Sensitivity** | Requires tuning rank $k$ and regularizer $\lambda$. Robust to convergence failures. | Highly sensitive to learning rate $\eta$, decay schedules, and momentum. |
+| **Hyperparameter Sensitivity** | Requires tuning rank $k$ and regularizer $\lambda$. Less prone to convergence failures. | Sensitive to learning rate $\eta$, decay schedules, and momentum. |
 | **Parallelization** | Embarrassingly parallel across CPU sockets. Each user and item updates independently. | Requires Hogwild! style asynchronous lock-free shared memory or distributed parameter servers. |
 | **Handling Implicit Zeros** | Uses the $V^T (C^u - I) V$ sparse trick to train over all $m \times n$ unobserved pairs in $O(|R| k^2)$. | Cannot evaluate all zeros; must rely on negative sampling or BPR pairwise triplets. |
 | **Hardware Fit** | High-memory multicore CPU clusters (BLAS matrix inversion libraries). | GPUs / TPUs with dense mini-batch GEMM accelerators. |
 
 ---
 
-## Common Failure Modes in Latent Factor Models
+## Common mistakes
 
 | Failure Mode | Root Cause | Production Symptom | Engineering Solution |
 | :--- | :--- | :--- | :--- |
@@ -541,7 +560,7 @@ In production recommender engineering, two optimization paradigms dominate matri
 
 ---
 
-## When Not to Use Classical Matrix Factorization
+## When not to use it
 
 | Scenario | Preferred Alternative | Why Matrix Factorization Fails |
 | :--- | :--- | :--- |

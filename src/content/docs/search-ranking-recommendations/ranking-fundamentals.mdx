@@ -11,12 +11,31 @@ import RunnableCode from '../../../components/content/RunnableCode';
 import PageRankVisualizer from '../../../viz/diagrams/PageRankVisualizer';
 import PenFlow from '../../../components/notebook/PenFlow';
 import PageRankToyGraph from '../../../viz/diagrams/PageRankToyGraph';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Ranking Fundamentals & Link Analysis
 
 <ELI5>
 Imagine a university admissions office reviewing hundreds of applicants. The committee does not just read each student's personal essay (text keyword match). They also look at standardized test scores, letters of recommendation from recognized professors (link authority / PageRank), whether grades improved over time (freshness), and whether earlier admissions officers spent more time reading applications at the top of the stack simply because they were fresh and awake in the morning (position bias). Ranking models combine these diverse signals into a single score while mathematically removing display-order unfairness.
 </ELI5>
+
+## Why it exists
+
+Retrieval can find plausible candidates without knowing which one should lead the list. Ranking combines evidence about the query, item, user, and session; link analysis adds the authority carried by connections between pages.
+
+## The big picture
+
+A ranker combines query, document, user, and context signals; link analysis adds authority that flows along directed links. This worksheet uses the exact four-node PageRank example below.
+
+<PageRankToyGraph />
+
+Notice that node C collects probability from three incoming links, while node D receives only the uniform teleport share.
+
+<Worksheet title="One PageRank iteration" ariaLabel="PageRank worksheet with the four-node example initialization and first iteration" stages={[
+  { tag: 'Start', color: 'yellow', note: 'Four nodes begin with equal probability mass.', grid: { head: ['', 'A', 'B', 'C', 'D'], rows: [{ label: 'p₀', cells: ['0.2500', '0.2500', '0.2500', '0.2500'] }] } },
+  { tag: 'First update', color: 'blue', note: 'Use damping d = 0.85 and teleport mass 0.0375.', grid: { head: ['', 'A', 'B', 'C', 'D'], rows: [{ label: 'p₁', cells: ['0.2500', '0.1438', '0.5688', '0.0375'] }] } },
+  { tag: 'Steady state', color: 'green', note: 'After repeated updates, C has the largest share.', grid: { head: ['', 'A', 'B', 'C', 'D'], rows: [{ label: 'PR', cells: ['0.3725', '0.1958', '0.3941', '0.0375'] }], hide: [[0, 0], [0, 1], [0, 2], [0, 3]] } },
+]} />
 
 ## What a Ranker Scores
 
@@ -143,7 +162,7 @@ Because $\mathbb{E}_{E_i}[c_{q, d, i} / p_i] = P(R = 1 \mid d)$, the expected lo
 
 ## Link Analysis & The PageRank Algorithm
 
-In open web search, malicious publishers actively manipulate textual content and keyword density to inflate BM25 scores (term spamming). To identify authoritative sources, Google's founders (Brin & Page, 1998; Page et al., 1999) introduced link analysis via **PageRank**.
+In open web search, malicious publishers actively manipulate textual content and keyword density to inflate BM25 scores (term spamming). To identify trusted sources, Google's founders (Brin & Page, 1998; Page et al., 1999) introduced link analysis via **PageRank**.
 
 PageRank models the hyperlink topology of the World Wide Web as a directed graph $G = (V, E)$, where web pages are vertices and hyperlinks are directed edges.
 
@@ -195,7 +214,7 @@ $$
 This theoretical upper bound on iteration count is determined by damping factor $d$ and target precision $\epsilon$, independent of graph size $N$. In practice, the observed convergence rate depends on the graph's specific spectral gap and the chosen stopping criterion.
 </GoDeeper>
 
-## A Full Worked Example: 4-Node Directed Graph
+## Worked example
 
 Let us trace PageRank power iteration on a concrete 4-node directed graph $\{A, B, C, D\}$ with identical numbers across prose, visualizer, and code:
 
@@ -256,7 +275,7 @@ Substituting yields the exact steady-state probability vector:
 
 Node $C$ ranks highest ($0.3941$) because it aggregates inbound links from three distinct nodes ($A, B, D$). Node $A$ ranks second ($0.3725$) because it receives the entirety of $C$'s concentrated link authority. Node $D$ finishes with lowest authority ($0.0375$) because no node links to it.
 
-## The Shape of It: Interactive PageRank Visualizer
+## Try it yourself
 
 Interact with the directed graph below. Step through power iteration steps or jump to the converged steady-state. Observe how altering the damping factor $d$ redistributes probability mass.
 
@@ -368,7 +387,7 @@ While PageRank serves as an effective global quality prior in hyperlinked corpor
 2. **E-Commerce & Private Catalogs**: Product catalogs (e.g. Amazon or retail stores) have no organic hyperlink graphs. Products do not link to competing products. Relying on link analysis is meaningless; item graphs must instead be constructed from user co-purchase sessions ("customers who viewed $X$ also purchased $Y$").
 3. **Commercial Link Farms & SEO Manipulation**: Spammers construct circular link networks to artificially inflate PageRank. Production search engines rely heavily on TrustRank (Gyöngyi et al., 2004)—biasing the random teleport vector $\mathbf{v}$ toward known reputable seed domains.
 
-## Common Problems & Fixes
+## Common mistakes
 
 | Failure Mode | Root Cause | Engineering Fix |
 | :--- | :--- | :--- |
@@ -377,7 +396,7 @@ While PageRank serves as an effective global quality prior in hyperlinked corpor
 | **PageRank mass leaks to zero during power iteration** | Graph contains dangling nodes with zero outgoing links ($L(v) = 0$). | Redistribute dangling node probability mass $(d/N) \cdot PR(v)$ uniformly across all $N$ nodes at each iteration step. |
 | **Newly added catalog items starve of traffic** | Zero logged historical clicks causes ranker to rank items at the bottom of the funnel. | Implement $\epsilon$-greedy or Thompson Sampling exploration bands to allocate guaranteed baseline impressions. |
 
-## When Not to Use Complex Ranking
+## When not to use it
 
 | Situation | Recommended Alternative | Reason |
 | :--- | :--- | :--- |

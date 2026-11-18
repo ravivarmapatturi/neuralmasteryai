@@ -9,12 +9,31 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import ExplorationFeedbackLoopExplorer from '../../../viz/diagrams/ExplorationFeedbackLoopExplorer';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Exploration, Feedback Loops & Counterfactual Evaluation
 
 <ELI5>
 Imagine a music streaming app that only plays songs you have already listened to twenty times. You might enjoy the first afternoon, but within a week you hear no new artists, the catalog feels stale, and talented new musicians never get discovered. If the system only exploits what it already knows, it creates a closed echo chamber. To break this loop, production engines deliberately spend a small fraction of their recommendations exploring uncertain items. By recording the exact probability of each recommendation, they can later evaluate new algorithms on historical logs without risking live users.
 </ELI5>
+
+## Why it exists
+
+Logged clicks only describe items a previous policy chose to show. That creates a loop: popular items get more exposure and more evidence, while unseen items remain uncertain. Exploration gives some exposure to uncertain choices so the system can learn from them.
+
+<ExplorationFeedbackLoopExplorer />
+
+Notice that uncertain items receive measured exposure, and their outcomes update the next decision.
+
+## The big picture
+
+LinUCB adds an uncertainty bonus to each predicted reward, so a less-tested option can earn a trial. These are the exact context, parameter, and confidence values from the worked decision example below.
+
+<Worksheet title="LinUCB chooses among three arms" ariaLabel="LinUCB worksheet with the worked example upper confidence scores" stages={[
+  { tag: 'Context', color: 'yellow', note: 'The current user context is [0.8, 0.4].', grid: { head: ['', 'tech', 'audio'], rows: [{ label: 'x', cells: ['0.8', '0.4'] }] } },
+  { tag: 'Predicted reward', color: 'orange', note: 'Use x dot theta for each arm.', grid: { head: ['', 'Arm 1', 'Arm 2', 'Arm 3'], rows: [{ label: 'mean', cells: ['0.0480', '0.0520', '0.0280'] }] } },
+  { tag: 'Upper bound', color: 'green', note: 'With alpha = 1, Arm 3 has the largest score.', grid: { head: ['', 'Arm 1', 'Arm 2', 'Arm 3'], rows: [{ label: 'UCB', cells: ['0.0569', '0.0878', '0.1085'] }] } },
+]} />
 
 ## The Exposure Feedback Problem
 
@@ -40,7 +59,7 @@ For a full formal derivation of multi-armed bandit regret bounds (including UCB1
 
 ### Contextual LinUCB Formulation
 
-In large catalogs, arms share underlying contextual features (user category affinity, time of day, device type). The canonical production algorithm is **LinUCB** (Li et al., 2010), which assumes the expected reward of arm $a$ is linear in the context vector $x$:
+In large catalogs, arms share underlying contextual features (user category affinity, time of day, device type). A commonly used production algorithm is **LinUCB** (Li et al., 2010), which assumes the expected reward of arm $a$ is linear in the context vector $x$:
 
 $$
 \mathbb{E}[r_t \mid x_t, a] = x_t^\top \theta_a^*
@@ -76,7 +95,7 @@ When an arm has rarely been displayed for a specific user context, its covarianc
   explanation="With 50,000 impressions, Arm A's covariance matrix is large, driving its confidence bonus close to zero (bound ≈ 5.01%). Arm B has only 30 impressions, so its inverse covariance yields a wide uncertainty interval (e.g. +3.5%, bound ≈ 8.3%). LinUCB prioritizes Arm B to test whether its true mean exceeds 5.0%."
 />
 
-## A Hand-Checkable Worked Decision Example
+## Worked example
 
 To verify the mathematical mechanics across prose, diagram, and code, consider a concrete, reproducible decision scenario with three candidate items and a 2-dimensional user context vector $x = [0.8, 0.4]$ (representing $[ \text{tech affinity}, \text{audio affinity} ]$):
 
@@ -200,7 +219,7 @@ Thus, reweighting each observed reward by the **propensity ratio** $w_i = \frac{
 Propensities must be logged at the exact moment of decision. If your serving infrastructure logs user clicks without logging the denominator $\pi_{\text{log}}(a \mid x)$, offline counterfactual estimation is mathematically impossible. You cannot reconstruct propensities after the fact because model weights, feature store values, and context vectors will have shifted.
 </NotebookCallout>
 
-## Runnable Python Example: LinUCB & IPS Verification
+## Try it yourself
 
 The following script simulates the worked 3-arm bandit, computes the exact LinUCB bounds, and performs offline counterfactual IPS evaluation using NumPy.
 
@@ -293,7 +312,7 @@ print(f"Clipped IPS (cap=5.0):   {clipped_ips:6.4f}")
 print(f"Self-Normalized (SNIPS): {snips_score:6.4f}")
 print(f"Rounds displaying Arm 2: {int(np.sum(logged_actions == 1))} of {len(logged_actions)}")`} />
 
-## Common Problems & Fixes
+## Common mistakes
 
 | Problem | Root Cause | Engineering Fix |
 | :--- | :--- | :--- |
@@ -303,7 +322,7 @@ print(f"Rounds displaying Arm 2: {int(np.sum(logged_actions == 1))} of {len(logg
 | **Cold-Start Arm Explosion** | Thousands of new items added daily overwhelm the bandit arm set | Group long-tail items into hierarchical clusters or use Two-Tower vector representations for contextual bandits. |
 | **Position Bias Confounding** | Clicks on top slots are attributed entirely to item relevance rather than screen real estate | De-bias training clicks with inverse examination propensities: $P(\text{click}) = P(\text{examine} \mid \text{rank}) \times P(\text{relevant})$. |
 
-## When Not to Use Bandits & Counterfactual Replay
+## When not to use it
 
 | Architecture / Scenario | Recommended Alternative | Rationale |
 | :--- | :--- | :--- |

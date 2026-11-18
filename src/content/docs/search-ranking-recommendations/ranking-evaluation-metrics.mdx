@@ -9,12 +9,31 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import RankingMetricsExplorer from '../../../viz/diagrams/RankingMetricsExplorer';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Ranking Evaluation Metrics
 
 <ELI5>
 Imagine searching for a doctor's clinic. If a search engine gives you five addresses on a page, and the real doctor's clinic is buried down at the very bottom in fifth place while four closed pet shops appear above it, you will probably be annoyed and leave. Standard classification metrics like accuracy or precision only ask: "Did the list contain the doctor?" They do not care whether the doctor was at the top or at the bottom. Ranking metrics exist because in real life, nobody wants to dig to the bottom of the list.
 </ELI5>
+
+## Why it exists
+
+An unordered accuracy score can say whether relevant results exist while missing that readers may never reach them. Ranking metrics include position so a relevant result at rank one counts differently from one near the bottom.
+
+## The big picture
+
+Set metrics count relevant results, while rank-aware metrics also care where those results appear. The worksheet uses the first three grades from the runnable example, `[3, 0, 2]`, with `k = 3` and three relevant items overall.
+
+<RankingMetricsExplorer />
+
+Notice that moving a relevant result down the list changes rank-aware metrics even when the same results remain in the top three.
+
+<Worksheet title="Evaluate the first three results" ariaLabel="Ranking metrics worksheet for the first three grades in the runnable example" stages={[
+  { tag: 'Grades', color: 'yellow', note: 'Grades at least 1 count as relevant.', grid: { head: ['', 'rank 1', 'rank 2', 'rank 3'], rows: [{ label: 'grade', cells: ['3', '0', '2'] }] } },
+  { tag: 'Binary relevance', color: 'blue', note: 'Convert each grade to relevant or not relevant.', grid: { head: ['', 'rank 1', 'rank 2', 'rank 3'], rows: [{ label: 'relevant', cells: ['1', '0', '1'] }] } },
+  { tag: 'Metrics', color: 'green', note: 'Two of three shown are relevant; the first relevant result is at rank 1.', grid: { head: ['', 'Precision@3', 'Recall@3', 'MRR'], rows: [{ label: 'value', cells: ['0.6667', '0.6667', '1.0000'] }], hide: [[0, 0], [0, 1], [0, 2]] } },
+]} />
 
 ## Why Ranking Demands Order-Aware Metrics
 
@@ -172,7 +191,7 @@ Experiment with the interactive calculator below to see how set-based metrics (P
 
 <RankingMetricsExplorer />
 
-## Worked Mathematical Comparison
+## Worked example
 
 Consider an illustrative 5-item judged candidate pool for a query where the corpus contains exactly **$R_{\text{total}} = 3$** known relevant documents:
 - **Doc A**: Grade 3 (Highly relevant, $r = 1$)
@@ -195,6 +214,8 @@ Let us evaluate at cutoff **$k = 3$** across two candidate rankings:
 | **DCG@3 (exp)** | **$8.5000$** | **$5.9165$** | Order 1: $7/\log_2(2) + 0 + 3/\log_2(4) = 7 + 1.5 = 8.5$. Order 2: $0 + 7/\log_2(3) + 3/\log_2(4) = 4.4165 + 1.5 = 5.9165$. |
 | **IDCG@3 (exp)** | $9.3928$ | $9.3928$ | Ideal ranking `[A, B, C]` with grades `[3, 2, 1]`: $7/\log_2(2) + 3/\log_2(3) + 1/\log_2(4) = 7 + 1.8928 + 0.5 = 9.3928$. |
 | **NDCG@3 (exp)** | **$0.9049$** | **$0.6299$** | Order 1: $8.5 / 9.3928 \approx 0.9049$. Order 2: $5.9165 / 9.3928 \approx 0.6299$. |
+
+## Try it yourself
 
 <RunnableCode code={`import math
 
@@ -370,7 +391,15 @@ Running an independent-arm A/B test with statistical significance often requires
 
 By presenting both models' candidates within the same user session, interleaving controls for inter-user variance, achieving comparable statistical sensitivity with significantly fewer queries than traditional independent-arm A/B tests (Chapelle et al., 2012).
 
-## When Not to Use Complex Ranking Metrics
+## Common mistakes
+
+| Mistake | Why it fails | Fix |
+| :--- | :--- | :--- |
+| Reporting Precision@k without the cutoff | The same system can look different at a different list depth. | Name the cutoff and show more than one when the product has multiple screen depths. |
+| Treating unjudged documents as irrelevant | Missing labels can make a useful result look like a failure. | State the judgment policy and report coverage. |
+| Comparing offline NDCG as if it were a causal effect | A held-out set does not remove exposure or position bias. | Confirm impact with a randomized online experiment. |
+
+## When not to use it
 
 | Situation | Recommended Metric | Reason |
 | :--- | :--- | :--- |

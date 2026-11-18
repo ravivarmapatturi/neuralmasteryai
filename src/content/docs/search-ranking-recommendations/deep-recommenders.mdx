@@ -10,12 +10,31 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import DeepRecommendersArchitectureExplorer from '../../../viz/diagrams/DeepRecommendersArchitectureExplorer';
 import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Deep Recommenders: Two-Tower to Sequential Models
 
 <ELI5>
 Imagine a catalog with 50 million videos. When a user opens their app, we have roughly 15 milliseconds to choose what to show. We cannot evaluate a complex neural network on all 50 million candidates. Instead, we use two separate networks: one compresses the user into a 64-dimensional vector, while another precomputes vectors for all videos offline. We retrieve the top 500 candidates using fast geometric vector search (Two-Tower retrieval). Then, and only then, do we run an expressive deep model with full cross-feature interactions (Wide & Deep, DLRM) to rank the final 20 results.
 </ELI5>
+
+## Why it exists
+
+A catalog can contain far more items than a detailed model can score during one request. Recommenders split retrieval from ranking so a fast model narrows the candidates before a richer model compares them.
+
+## The big picture
+
+Retrieval uses a compact dot product to search a large catalog; a smaller candidate set can then go through richer interaction models. The worksheet uses Alice and Item 2 from the runnable scoring example.
+
+<DeepRecommendersArchitectureExplorer />
+
+Notice that retrieval can precompute item vectors, while ranking can compare each live user-item pair in more detail.
+
+<Worksheet title="A two-tower retrieval score" ariaLabel="Two-tower score worksheet using the runnable example vectors" stages={[
+  { tag: 'Vectors', color: 'yellow', note: 'The user and item towers each return three values.', grid: { head: ['', 'dimension 1', 'dimension 2', 'dimension 3'], rows: [{ label: 'Alice u', cells: ['0.6', '0.8', '0.1'] }, { label: 'Item 2 v', cells: ['0.7', '0.5', '0.2'] }] } },
+  { tag: 'Multiply', color: 'blue', note: 'Multiply matching dimensions.', grid: { head: ['', '1', '2', '3'], rows: [{ label: 'u × v', cells: ['0.42', '0.40', '0.02'] }] } },
+  { tag: 'Score', color: 'green', note: 'Add the three products to get the retrieval score.', grid: { head: ['', 'dot product'], rows: [{ label: 'Alice · Item 2', cells: ['0.84'] }], hide: [[0, 0]] } },
+]} />
 
 For architectural coverage of end-to-end production pipelines and sampled softmax loss formulations, see [Recommender Systems](/docs/machine-learning/recommender-systems). For the mathematical derivation of causal multi-head self-attention projection matrices, see [Attention & Transformers](/docs/deep-learning/attention-transformers). In this chapter, we compare the primary deep learning recommender architectures, examine why two-tower models decouple representations for Approximate Nearest Neighbor (ANN) search, analyze why downstream ranking models re-introduce explicit cross-feature interactions, and trace the rise of self-attentive sequential models (SASRec).
 
@@ -242,7 +261,7 @@ In the interactive diagram below, select between Two-Tower retrieval, Wide & Dee
 
 ---
 
-## Executable Verification: Scoring Architectures in Python
+## Worked example
 
 The following Python script implements both Two-Tower inner product scoring and DLRM pairwise embedding interactions on our shared candidate example.
 
@@ -282,6 +301,8 @@ for i in range(num_vectors):
 
 print(f"Total DLRM Interaction Dimension: {len(pairwise_products)} scalar terms")
 ```
+
+## Try it yourself
 
 <RunnableCode
   code={`import numpy as np
@@ -396,7 +417,7 @@ This mathematically neutralizes the frequency sampling bias, recovering the true
 
 ---
 
-## Common Failure Modes in Deep Recommenders
+## Common mistakes
 
 | Failure Mode | Root Cause | System Symptom | Engineering Solution |
 | :--- | :--- | :--- | :--- |
@@ -407,7 +428,7 @@ This mathematically neutralizes the frequency sampling bias, recovering the true
 
 ---
 
-## When Not to Use Deep Recommenders
+## When not to use it
 
 | Scenario | Preferred Alternative | Why Deep Models Fail |
 | :--- | :--- | :--- |
