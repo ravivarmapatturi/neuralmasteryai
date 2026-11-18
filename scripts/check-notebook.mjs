@@ -90,6 +90,12 @@ function scan(file) {
     offset += line.length + 1;
   }
   for (const match of source.matchAll(/<\s*(table|pre)\b/gi)) add(violations, file, source, match.index, 9, `Raw <${match[1].toLowerCase()}> element; use notebook components.`);
+  // Worksheet grids: one heading per cell plus the corner over the row labels.
+  for (const m of original.matchAll(/head: \[([^\]]*)\]/g)) {
+    const q = /'[^']*'|"[^"]*"/g; const nh = (m[1].match(q) || []).length;
+    const c = original.slice(m.index + m[0].length).match(/cells: \[([^\]]*)\]/);
+    if (c && (c[1].match(q) || []).length + 1 !== nh) add(violations, file, source, m.index, 9, 'Worksheet grid headings do not line up with its cells (need one per cell plus the corner).');
+  }
   const words = wordCount(original); const visuals = countVisuals(original);
   if (words > 1500 && visuals < 3) add(violations, file, source, 0, 5, `Page has ${words} words and ${visuals} visual(s); pages over 1,500 words need at least 3.`);
   const allow = loadAllowlist();
