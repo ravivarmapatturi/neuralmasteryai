@@ -198,6 +198,9 @@ async function main() {
           }
         }
 
+        // Non-doc pages match '#root' at once; also give their real heading time to appear
+        // (an interview question page was once saved before it rendered).
+        if (!isDocRoute) await page.waitForSelector('h1, h2', { timeout: 15000 }).catch(() => {});
         // '#root' matches before a lazy route's chunk arrives, so wait out its Suspense fallback.
         await page.waitForFunction(() => ![...document.querySelectorAll('[role="status"]')].some((el) => /^Loading/.test(el.textContent ?? '')), undefined, { timeout: 15000 }).catch(() => {});
 
