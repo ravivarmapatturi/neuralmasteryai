@@ -6,6 +6,8 @@ description: "The real mechanism behind attention's quadratic-cost fix -- the ke
 
 import LinearAttentionFactorizationDiagram from '../../../viz/diagrams/LinearAttentionFactorizationDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 import { Remember } from '../../../components/content/Remember';
 
 # Linear Attention & State-Space Models (Mamba)
@@ -17,6 +19,17 @@ import { Remember } from '../../../components/content/Remember';
 Standard attention answers "which earlier words matter to this word?" by comparing every word to every other word — for a 10,000-word document, that's 100 million comparisons, and the cost keeps growing as the square of the length. Linear attention and state-space models both attack this the same fundamental way: instead of keeping every past word around to re-compare against, compress everything seen so far into one fixed-size running summary, and update that summary one word at a time — closer to how a person reading a book doesn't re-read every prior page to understand the current sentence, but keeps a working memory that gets updated as they go. That fixed-size summary is what makes these models fast and cheap at long context — and, as you'll see, it's also exactly what they give up compared to attention's ability to look back at any single word perfectly.
 
 </ELI5>
+
+## Why it exists
+
+Standard attention compares every pair of tokens, so a 10,000-token sequence creates 100 million pair scores. Linear attention and state-space models compress history into fixed-size state, trading exact access to every past token for lower memory and sequence cost.
+
+## The big picture
+
+<PenFlow title="Compress history into an updateable state" ariaLabel="Compress history into an updateable state" rows={[{ steps: { title: 'Standard attention', lines: ['Compare each query with every key'], tone: 'blue' } }, { steps: { title: 'Reorder products', lines: ['Compute a fixed-size key/value summary'], tone: 'purple' } }, { steps: { title: 'Update state', lines: ['Process tokens through a recurrence'], tone: 'orange' } }, { steps: { title: 'Choose the trade-off', lines: ['Use exact retrieval or constant-memory speed'], tone: 'green' } }]} caption="Associativity changes an n-by-n interaction into a fixed-size state update, with a different memory trade-off." />
+
+<Worksheet title="Illustrative attention pair counts" ariaLabel="Illustrative attention pair counts" stages={[{ tag: 'Worked values', color: 'yellow', note: 'Values copied from the page example or computed from its stated setup.', grid: { head: ['', 'Measured result'], rows: [{ label: '1,000 tokens', cells: ['1,000,000 pair scores'] }, { label: '10,000 tokens', cells: ['100,000,000 pair scores'] }] } }]} />
+
 
 ## Linear Attention: Reordering the Multiplication
 
@@ -135,6 +148,32 @@ The post [Kimi K3.1 and the Road From Softmax Attention to Kimi Delta Attention]
 **Why is it useful?** Both designs make the same bet the copying-benchmark result above predicts: put cheap, constant-memory SSM/recurrent layers where long-range mixing is enough, and reserve the small number of full/local-attention layers for the positions that need precise, exact retrieval — capturing most of attention's retrieval quality at a fraction of its memory cost.
 
 **Limitation:** hybrid designs add a real architecture-search dimension pure Transformers don't have — which layers should be attention vs. SSM, and in what ratio, is now a genuine design choice with no universally correct answer yet, tuned empirically per model rather than derived from first principles.
+
+## Worked example
+
+Standard attention compares every pair of tokens, so a 10,000-token sequence creates 100 million pair scores. Linear attention and state-space models compress history into fixed-size state, trading exact access to every past token for lower memory and sequence cost.
+
+## Try it yourself
+
+Use the example and the printed or calculated values above as a starting point.
+
+```python
+# Try it: double token count from 1,000 to 2,000 and recompute pair scores.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Assuming linear attention equals softmax attention | The kernel feature map changes the similarity function | Check retrieval quality on the target task |
+| Calling a state-space model an attention replacement in every setting | Compressed state may not retain exact token details | Use full attention when exact retrieval is central |
+| Ignoring hardware costs | Asymptotic complexity does not guarantee fast kernels | Benchmark the actual sequence lengths and device |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| The stated trade-off is not a bottleneck for your task | Use the simpler architecture and measure its quality and cost first |
 
 ## Where This Fits Today
 

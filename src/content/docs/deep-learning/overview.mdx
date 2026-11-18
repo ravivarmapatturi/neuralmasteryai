@@ -6,6 +6,8 @@ description: "What deep learning is and why it works: learned features instead o
 
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Deep Learning, The Big Picture
 
@@ -20,6 +22,17 @@ Deep learning lets the learner write their own checklist. The first layer learns
 Everything in this section is about how that works: how the layers compute, how they learn, and which arrangements of layers suit which kinds of data.
 
 </ELI5>
+
+## Why it exists
+
+Deep learning is useful when a model must discover features that are hard to hand-code. In the recorded ring example, logistic regression reaches 0.51 on raw coordinates, while an eight-unit network and a learned hidden representation both reach 1.00.
+
+## The big picture
+
+<PenFlow title="See how representations change a task" ariaLabel="See how representations change a task" rows={[{ steps: { title: 'Raw coordinates', lines: ['A straight boundary misses the ring'], tone: 'blue' } }, { steps: { title: 'Hidden layer', lines: ['Learns a useful representation'], tone: 'purple' } }, { steps: { title: 'Simple classifier', lines: ['Separates the transformed points'], tone: 'green' } }]} caption="The hidden layer turns a curved problem into one a linear classifier can solve." />
+
+<Worksheet title="The ring classification check" ariaLabel="The ring classification check" stages={[{ tag: 'Worked values', color: 'yellow', note: 'Values copied from the page example or computed from its stated setup.', grid: { head: ['', 'Measured result'], rows: [{ label: 'Raw coordinates', cells: ['0.51 test accuracy'] }, { label: 'Network with 8 hidden units', cells: ['1.00 test accuracy'] }, { label: 'Hidden features + logistic regression', cells: ['1.00 test accuracy'] }, { label: 'Hand-made radius + logistic regression', cells: ['1.00 test accuracy'] }] } }]} />
+
 
 ## 1. Learned Features, Not Hand-Made Ones
 
@@ -51,7 +64,7 @@ print(f"logistic regression on a hand-made radius feature:   test accuracy "
       f"{LogisticRegression().fit(radius(X_train), y_train).score(radius(X_test), y_test):.2f}")
 ```
 
-```text
+```output
 logistic regression on the raw (x, y) coordinates:   test accuracy 0.51
 network with one hidden layer of 8 units:            test accuracy 1.00
 logistic regression on the hidden layer's features:  test accuracy 1.00
@@ -148,6 +161,32 @@ Read the foundations in order; everything after assumes you can follow a forward
 **In practice, start from a pretrained model.** Very few projects train a network from random weights any more. For images, text, audio and code, models pretrained on huge datasets are freely available, and fine-tuning one on a few thousand examples of your task usually beats training from scratch on far more. The pages here explain what is inside those models, so you can choose, adapt and debug them.
 
 **Prerequisites.** The derivations use the chain rule, gradients and matrix multiplication; [Mathematics for AI](/docs/mathematics-for-ai/overview) covers them. The classical toolkit (linear and logistic regression, overfitting, regularization) is in [Machine Learning](/docs/machine-learning/overview), and deep learning builds directly on it.
+
+## Worked example
+
+Deep learning is useful when a model must discover features that are hard to hand-code. In the recorded ring example, logistic regression reaches 0.51 on raw coordinates, while an eight-unit network and a learned hidden representation both reach 1.00.
+
+## Try it yourself
+
+Use the example and the printed or calculated values above as a starting point.
+
+```python
+# Try it: change the ring dataset seed and compare raw-coordinate accuracy with hidden-feature accuracy.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Using a neural network for a simple linear task | Extra parameters add cost without changing the needed boundary | Start with a linear baseline |
+| Reading training accuracy as generalization | A network can memorize the examples | Use held-out data |
+| Choosing depth before defining the problem | Architecture should follow data structure and constraints | Start from the smallest useful model |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| The stated trade-off is not a bottleneck for your task | Use the simpler architecture and measure its quality and cost first |
 
 ## 8. When *Not* to Use Deep Learning
 

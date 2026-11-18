@@ -5,6 +5,8 @@ description: "The real throughline from RNNs' sequential bottleneck, through the
 ---
 
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 import { Remember } from '../../../components/content/Remember';
 
 # From RNNs to Transformers to Recurrent Looped Transformers
@@ -16,6 +18,17 @@ Every architecture on this page exists because the one before it hit a real, spe
 Think of reading a hard paragraph. A short sentence, you understand in one pass. A dense one, you reread it, maybe twice. Ordinary Transformers can't do that — every token gets exactly the same fixed number of passes through the network, whether it's "the" or the hardest word in the sentence, and whether it's the first token you've ever seen or the ten-thousandth. RLT's core idea is to let *later* tokens draw on more accumulated computation than earlier ones did, without adding a single new layer to the network — by reusing the same blocks again for every new token instead of building deeper ones. This page walks the whole path that leads here: why RNNs came first, why Transformers replaced them, why even Transformers have a depth ceiling, and exactly what RLT does about it.
 
 </ELI5>
+
+## Why it exists
+
+Fixed-depth Transformers apply the same number of blocks to every token, while recurrent looped designs carry state across tokens. In the page’s example, a 48-layer encoder plus 48-layer decoder means 96 block evaluations per token; after 500 tokens, the accumulated decoder path reflects 24,000 block evaluations.
+
+## The big picture
+
+<PenFlow title="Separate per-token cost from accumulated depth" ariaLabel="Separate per-token cost from accumulated depth" rows={[{ steps: { title: 'Fixed-depth Transformer', lines: ['Every token gets the same number of blocks'], tone: 'blue' } }, { steps: { title: 'Reuse blocks', lines: ['Looping adds depth without new stored weights'], tone: 'purple' } }, { steps: { title: 'Carry recurrent state', lines: ['Later tokens inherit earlier computation'], tone: 'orange' } }, { steps: { title: 'Measure the trade', lines: ['Per-token compute stays fixed; history accumulates'], tone: 'green' } }]} caption="Recurrent state makes total sequence computation grow while each token still pays a fixed block count." />
+
+<Worksheet title="Worked block-count example" ariaLabel="Worked block-count example" stages={[{ tag: 'Worked values', color: 'yellow', note: 'Values copied from the page example or computed from its stated setup.', grid: { head: ['', 'Measured result'], rows: [{ label: 'Blocks per token', cells: ['48 encoder + 48 decoder = 96'] }, { label: 'Sequence length', cells: ['500 tokens'] }, { label: 'Accumulated decoder work', cells: ['48 × 500 = 24,000 block evaluations'] }] } }]} />
+
 
 ## The Short Version, First
 
@@ -114,6 +127,12 @@ Most architecture papers that introduce a new mechanism also report at least sma
 
 ---
 
+<PenFlow title="Where recurrent depth accumulates" ariaLabel="Per-token and sequence-level computation in recurrent looped transformers" rows={[
+  { steps: { title: 'Each token', lines: ['48 encoder + 48 decoder blocks = 96 evaluations'], tone: 'blue' } },
+  { steps: { title: 'Carry state forward', lines: ['The next token starts from prior decoder state'], tone: 'purple' } },
+  { steps: { title: 'After 500 tokens', lines: ['48 × 500 = 24,000 accumulated decoder evaluations'], tone: 'green' } }
+]} caption="Per-token work stays fixed while the recurrent state carries a longer computation history." />
+
 ## The Full Arc, Compared
 
 | | RNN | Transformer | Looped Transformer | Recurrent Looped Transformer (RLT) |
@@ -123,6 +142,32 @@ Most architecture papers that introduce a new mechanism also report at least sma
 | **Per-token compute** | Fixed, small | Fixed, set by layer count | Fixed, but higher than a non-looped model of the same size (multiple passes) | Fixed per token (same as a plain Transformer of equal layer count) |
 | **Total depth available as the sequence grows** | Fixed — and unreachable in practice past ~10-20 steps due to vanishing gradients | Fixed — never changes regardless of sequence length | Fixed per token, reset at each new token | **Unbounded — grows continuously as more tokens are processed** |
 | **Known, real limitation** | Sequential bottleneck; vanishing gradients | Fixed reasoning depth per token; $O(n^2)$ attention cost | Training cost doesn't drop even though parameter count does | No published measurement yet of whether the extra structural depth is actually used for better reasoning |
+
+## Worked example
+
+Fixed-depth Transformers apply the same number of blocks to every token, while recurrent looped designs carry state across tokens. In the page’s example, a 48-layer encoder plus 48-layer decoder means 96 block evaluations per token; after 500 tokens, the accumulated decoder path reflects 24,000 block evaluations.
+
+## Try it yourself
+
+Use the example and the printed or calculated values above as a starting point.
+
+```python
+# Try it: change sequence length from 500 to 1,000 and recompute accumulated block evaluations.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Claiming more stored depth for free | Block reuse still executes each loop pass | Report compute and parameter count separately |
+| Assuming the added depth improves reasoning | The page notes no published measurement of that effect yet | Treat quality as an open empirical question |
+| Ignoring sequential dependencies | Recurrent state limits parallel token processing | Compare latency with parallel attention |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| The stated trade-off is not a bottleneck for your task | Use the simpler architecture and measure its quality and cost first |
 
 ## Where This Leaves Things
 

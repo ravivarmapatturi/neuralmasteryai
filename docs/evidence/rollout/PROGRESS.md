@@ -193,3 +193,9 @@ Static gates pass: notebook (8/0), math (1,991), MDX (2,019/2,019), links (2,147
 Standardized BERT, Advanced Architectures, Vision Architectures, Autoencoders, Generative Models, and Continual Learning. Added Why, page-specific PenFlow, Worksheet with the pages' recorded numerical results, Worked example, Try it yourself with a concrete edit, Common mistakes, and When not to use it. All recorded outputs remain present in named `output` fences. Pretrained model weights were not downloaded or run in this environment.
 
 Static checks pass: notebook (14 changed pages/0 violations across current tree), math (1,991), MDX (2,019/2,019), links (2,147 routes/no broken links or anchors), typecheck, tracker, and diff check. Browser screenshots, widget execution, SVG overlap, full Vitest and build are deferred with 0 GiB available RAM. See `dl-2/scorecard.md`. No push.
+
+## Deep Learning batch 3 — four pages
+
+Standardized Deep Learning Overview and Roadmap plus Linear Attention/State-Space Models and Recurrent Looped Transformers. Added the Why/flow/Worksheet structure, Worked example, Try it yourself with a concrete edit, Common mistakes, and When not to use it. The Overview and Roadmap preserve their survey paths. Numeric examples come from their recorded output or direct arithmetic from the pages' stated sequence lengths and block counts. Added a third RLT drawing to satisfy the page's existing >1,500-word visual-density rule.
+
+Static gates pass: notebook (18 changed pages/0 violations on current tree), math (1,991), MDX (2,019/2,019), links (2,147 routes/no broken links or anchors), typecheck, tracker and diff check. Browser screenshots, widget execution, overlap guard, full Vitest and build remain deferred because available RAM is 0 GiB. See `dl-3/scorecard.md`. No push.
