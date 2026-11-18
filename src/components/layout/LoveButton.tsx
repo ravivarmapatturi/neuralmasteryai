@@ -71,17 +71,18 @@ export function LoveNudge({ route }: { route: string }) {
 
   return (
     <div role="dialog" aria-label="Enjoying this page?" className="nm-love-nudge"
-      style={{ position: 'fixed', zIndex: 60, left: '50%', bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))', transform: 'translateX(-50%)',
-        width: 'min(420px, calc(100vw - 32px))', boxSizing: 'border-box', fontFamily: HAND,
+      // a small card in the bottom-right corner, clear of the reading column and diagrams
+      style={{ position: 'fixed', zIndex: 60, right: 'calc(76px + env(safe-area-inset-right, 0px))', bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+        width: 'min(320px, calc(100vw - 32px))', boxSizing: 'border-box', fontFamily: HAND,
         background: 'var(--nm-surface, #fff)', color: 'var(--nm-text-primary, #1f2937)', border: '2px solid currentColor',
-        borderRadius: '16px 10px 18px 12px', padding: '12px 16px', boxShadow: '0 12px 32px rgba(30,41,90,.18)', animation: 'nmNudgeIn .4s ease' }}>
+        borderRadius: '16px 10px 18px 12px', padding: '10px 14px', boxShadow: '0 12px 32px rgba(30,41,90,.18)', animation: 'nmNudgeIn .4s ease' }}>
       <div style={{ fontSize: 19, fontWeight: 700 }}>Enjoying this page? <span style={{ color: RED }}>♥</span></div>
       <div style={{ fontSize: 16, margin: '2px 0 10px' }}>If it's helping, send it some love so others find it too.</div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <span onClickCapture={() => writeFlag(key)}><LoveButton route={route} size="lg" /></span>
         <button type="button" onClick={close} style={{ fontFamily: HAND, fontSize: 16, background: 'transparent', color: 'inherit', border: 'none', textDecoration: 'underline', cursor: 'pointer' }}>Not now</button>
       </div>
-      <style>{`@keyframes nmNudgeIn { from { opacity: 0; transform: translate(-50%, 16px) } to { opacity: 1; transform: translate(-50%, 0) } }
+      <style>{`@keyframes nmNudgeIn { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: none } }
         @media (prefers-reduced-motion: reduce) { .nm-love-nudge { animation: none !important } }`}</style>
     </div>
   );
