@@ -235,3 +235,9 @@ Static checks passed on the combined worktree: notebook (15 changed pages/0 viol
 Standardized Calling the LLM API, Evaluation and Serving, Foundation Model Internals, and Retrieval/Reranking Architectures. Worksheets reuse the sampling probabilities, paired evaluation intervals and KV-cache outputs, exact temperature/top-p limits, and cited MS MARCO latency/FLOP/MRR values. Flattened the speculative-decoding fraction inside the evaluation Remember table. Scorecard: `llm-2/scorecard.md`.
 
 Static checks passed on the combined worktree: notebook (23 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the low-memory rule. No push.
+
+## LLMs & GenAI batch 3 — multimodal page
+
+Standardized Multimodal & Generative Models. The Worksheet carries the page’s 336/14 patch count, 596-token image prompt, CLIP matching probability/loss at temperatures 0.07 and 1.0, and diffusion signal weights at steps 100, 500, and 999. Scorecard: `llm-3/scorecard.md`.
+
+Static checks passed on the combined worktree: notebook (24 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the low-memory rule. No push.

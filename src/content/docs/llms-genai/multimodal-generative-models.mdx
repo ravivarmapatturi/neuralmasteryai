@@ -12,6 +12,9 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Multimodal & Generative Models
 
 <ELI5>
@@ -22,11 +25,17 @@ Generating a picture works differently. We take a real picture, add static until
 
 </ELI5>
 
-## Why This Exists
+## Why it exists
 
 A text-only model cannot answer "what is wrong with this circuit board?" from a photo, and it cannot draw one. The transformer itself was never the obstacle: attention works on any sequence of vectors, and it does not care whether a vector came from a word or from a 14 by 14 pixel patch. What was missing was a way to turn pixels into vectors that mean something to a language model, and a way to produce pixels that does not go one pixel at a time.
 
 This page covers both halves. The first half is reading: vision-language models (VLMs), the contrastive training that makes image vectors and text vectors comparable, and vision-language-action models (VLAs) that output robot commands. The second half is writing: diffusion, and how it differs from the autoregressive generation in the rest of this section.
+
+## The big picture
+
+<PenFlow title="Encode images, align modalities, and generate" ariaLabel="Encode images, align modalities, and generate" rows={[{ steps: { title: 'Encode image', lines: ['Patch pixels into vectors'], tone: 'blue' } }, { steps: { title: 'Align with language', lines: ['Contrastive image-text training'], tone: 'purple' } }, { steps: { title: 'Act or answer', lines: ['VLM reads; VLA emits actions'], tone: 'orange' } }, { steps: { title: 'Generate image', lines: ['Denoise across diffusion steps'], tone: 'green' } }]} caption="The input path aligns image and text representations; the output path generates pixels or actions." />
+
+<Worksheet title="Multimodal execution values" ariaLabel="Multimodal execution values" stages={[{ tag: 'Worked numbers on this page', color: 'yellow', note: 'Patch, contrastive, and diffusion values copied from the page explanation.', grid: { head: ['', 'Recorded value'], rows: [{ label: 'Image patches', cells: ['336 / 14 = 24 per side; 576 image tokens'] }, { label: 'Prompt', cells: ['576 + 20 = 596 tokens; 97% image'] }, { label: 'CLIP at 0.07', cells: ['P(image 2, caption 2) = 0.895; loss = 0.108'] }, { label: 'CLIP at 1.0', cells: ['Loss = 0.864'] }, { label: 'Diffusion', cells: ['Signal weights: t=100 0.946; t=500 0.279; t=999 0.006'] }] } }]} />
 
 ## The Shape of a Vision-Language Model
 
@@ -40,7 +49,7 @@ LLaVA-1.5 uses a CLIP ViT-L/14 encoder at 336 by 336 pixels. With 14-pixel patch
 
 That ratio explains a lot of VLM engineering. Image tokens cost the same attention and KV-cache memory as text tokens, so higher resolution is paid for quadratically in the side length, and much recent work is about dropping or merging image tokens the question does not need.
 
-### Run It Yourself
+## Try it yourself
 
 <RunnableCode code={`import numpy as np
 
@@ -75,6 +84,10 @@ print(f"prompt length seen by the LLM: {n_patches} + {text_tokens} = {n_patches 
   correctIndex={1}
   explanation="Each 336px tile produces 576 tokens, and five tiles give 2,880. Doubling the side quadruples the area, so it is not 2x. The encoder output is fixed per tile, not per image, which is why tiling schemes (used by LLaVA-NeXT and others) raise the token count so sharply."
 />
+
+## Worked example
+
+A 336-pixel image becomes 576 patches at 14 pixels per patch. With a 20-token question, the model sees 596 tokens and 97% come from the image. The page’s contrastive example gives 0.895 probability to the matching pair and loss 0.108 at temperature 0.07; at temperature 1.0 the loss rises to 0.864. In diffusion, signal weight falls from 0.946 at step 100 to 0.006 at step 999.
 
 ## Contrastive Pretraining: Making Image and Text Vectors Comparable
 
@@ -201,7 +214,16 @@ Diffusion language models apply the same idea to text: start from a fully masked
 | Generated images ignore part of the prompt | The text conditioning is weak relative to the image prior | Classifier-free guidance with a higher guidance scale |
 | Diffusion sampling is too slow | 1000 denoising steps | DDIM or other few-step samplers, or distillation into a few-step model |
 
-## When *Not* to Use It
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Double image resolution without budgeting tokens | Patch count grows with image area | Calculate patches and prompt cost before tiling |
+| Use a high contrastive temperature by habit | Similarity gaps are not stretched enough | Evaluate the temperature and matching loss |
+| Predict clean pixels at very noisy diffusion steps | Signal weight is small, so noise error is amplified | Track signal/noise weights and use a suitable sampler |
+| Treat robot actions like ordinary text | Continuous control needs smooth trajectories | Choose discretized actions or continuous flow matching for the task |
+
+## When not to use it
 
 | Situation | Better choice |
 | --- | --- |
