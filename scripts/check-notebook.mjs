@@ -96,6 +96,15 @@ function scan(file) {
     const c = original.slice(m.index + m[0].length).match(/cells: \[([^\]]*)\]/);
     if (c && (c[1].match(q) || []).length + 1 !== nh) add(violations, file, source, m.index, 9, 'Worksheet grid headings do not line up with its cells (need one per cell plus the corner).');
   }
+  // Components used without an import crash the page at runtime (global ones: ThemedImage, Mark, Key).
+  {
+    const body = original.replace(/```[\s\S]*?```/g, '').replace(/code=\{`[\s\S]*?`\}/g, '').replace(/`[^`\n]*`/g, '');
+    const used = new Set([...body.matchAll(/<([A-Z][A-Za-z0-9]*)[\s/>]/g)].map((m) => m[1]));
+    const imported = new Set(['ThemedImage', 'Mark', 'Key']);
+    for (const m of original.replace(/```[\s\S]*?```/g, '').replace(/code=\{`[\s\S]*?`\}/g, '').matchAll(/^import\s+([\s\S]*?)\s+from/gm)) for (const n of m[1].replace(/ as /g, ' ').match(/[A-Za-z_$][\w$]*/g) || []) imported.add(n);
+    for (const m of original.matchAll(/export (?:const|function) ([A-Z]\w*)/g)) imported.add(m[1]);
+    for (const name of used) if (!imported.has(name)) add(violations, file, source, 0, 9, `<${name}> is used but never imported; the page will fail to load.`);
+  }
   const words = wordCount(original); const visuals = countVisuals(original);
   if (words > 1500 && visuals < 3) add(violations, file, source, 0, 5, `Page has ${words} words and ${visuals} visual(s); pages over 1,500 words need at least 3.`);
   const allow = loadAllowlist();
