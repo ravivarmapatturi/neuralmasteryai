@@ -12,10 +12,11 @@ import DataVsConceptDriftDiagram from '../../../viz/diagrams/DataVsConceptDriftD
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Monitoring & Drift Detection
-
-[Deployment Strategies](/docs/mlops/deployment-strategies) got a new model safely onto all production traffic. That isn't the end of the risk. A model is a snapshot of the world at training time, and the world keeps moving: customers change, products change, fraudsters adapt, an upstream system starts sending a field in different units. This page covers how to notice when that happens: the three layers of monitoring, the precise kinds of change a model can suffer, the distance measures used to detect them (computed and compared on real numbers), why a drift alarm on inputs can miss the change that actually hurts, what to watch before labels arrive, and how to alert across dozens of features without crying wolf.
-
 <ELI5>
 
 A weather forecaster trained on twenty years of summers will do fine in summer. When winter comes, they'll keep forecasting confidently, and be wrong every day. Nothing about the forecaster broke; the weather they're forecasting changed.
@@ -25,6 +26,24 @@ A model is the same. It keeps answering, in the same format, with the same confi
 Everything below is how to measure "still looks like" and "still right" precisely.
 
 </ELI5>
+
+## Why it exists
+
+[Deployment Strategies](/docs/mlops/deployment-strategies) got a new model safely onto all production traffic. That isn't the end of the risk. A model is a snapshot of the world at training time, and the world keeps moving: customers change, products change, fraudsters adapt, an upstream system starts sending a field in different units. This page covers how to notice when that happens: the three layers of monitoring, the precise kinds of change a model can suffer, the distance measures used to detect them (computed and compared on real numbers), why a drift alarm on inputs can miss the change that actually hurts, what to watch before labels arrive, and how to alert across dozens of features without crying wolf.
+
+
+
+## The big picture
+
+The workflow below shows where this system produces evidence and where an operator can intervene.
+
+<PenFlow ariaLabel="monitoring and drift process path" rows={[{ steps: { title: 'Collect signals', lines: ['Compare with baseline'], tone: 'blue' } }, { steps: { title: 'Compare with baseline', lines: ['Check quality labels'], tone: 'purple' } }, { steps: { title: 'Check quality labels', lines: ['Respond to verified change'], tone: 'green' } }, { steps: { title: 'Respond to verified change', lines: ['Review evidence and adjust safely'], tone: 'orange' } }]} caption="Monitoring links changing inputs to measured model outcomes and a response plan." />
+
+<Worksheet title="Separate shift size from statistical confidence" ariaLabel="Worksheet comparing sample size and measured drift" stages={[
+  { tag: 'Magnitude', color: 'blue', note: 'A half-standard-deviation shift measured at two sample sizes gives similar distances.', grid: { head: ['Sample size', 'PSI', 'Wasserstein'], rows: [{ label: '1,000', cells: ['0.27', '5.2'] }, { label: '100,000', cells: ['0.23', '5.0'] }] } },
+  { tag: 'Decision', color: 'yellow', note: 'The larger sample may produce a much smaller KS p-value without a larger practical shift.', children: <>Use magnitude and model impact for alerts; use significance as supporting evidence.</> },
+]} />
+
 
 ## 1. Why Models Degrade Silently
 
@@ -143,17 +162,16 @@ for shift in [0.0, 0.05, 0.1, 0.5]:
               f"{wasserstein_distance(reference, current):>12.2f} {ks_2samp(reference, current).pvalue:>11.2g}")
 ```
 
-```text
-shift (std)       n     PSI      JS  Wasserstein  KS p-value
-        0.0    1000  0.0147  0.0018         0.39        0.19
-        0.0  100000  0.0010  0.0001         0.11        0.42
-       0.05    1000  0.0132  0.0016         0.43        0.41
-       0.05  100000  0.0031  0.0004         0.46     5.6e-09
-        0.1    1000  0.0250  0.0031         1.35     6.9e-05
-        0.1  100000  0.0100  0.0013         0.97     1.9e-27
-        0.5    1000  0.2659  0.0325         5.22     3.3e-40
-        0.5  100000  0.2348  0.0287         4.95           0
-```
+- shift (std)       n     PSI      JS  Wasserstein  KS p-value
+-         0.0    1000  0.0147  0.0018         0.39        0.19
+-         0.0  100000  0.0010  0.0001         0.11        0.42
+-        0.05    1000  0.0132  0.0016         0.43        0.41
+-        0.05  100000  0.0031  0.0004         0.46     5.6e-09
+-         0.1    1000  0.0250  0.0031         1.35     6.9e-05
+-         0.1  100000  0.0100  0.0013         0.97     1.9e-27
+-         0.5    1000  0.2659  0.0325         5.22     3.3e-40
+-         0.5  100000  0.2348  0.0287         4.95           0
+
 
 Three lessons are in that table.
 
@@ -208,11 +226,10 @@ for name, (X, y) in scenarios.items():
     print(f"{name:14} smallest input KS p-value {ks_p:9.2g}   AUC {auc:.3f}")
 ```
 
-```text
-no drift       smallest input KS p-value      0.79   AUC 0.886
-data drift     smallest input KS p-value         0   AUC 0.889
-concept drift  smallest input KS p-value     0.031   AUC 0.713
-```
+- no drift       smallest input KS p-value      0.79   AUC 0.886
+- data drift     smallest input KS p-value         0   AUC 0.889
+- concept drift  smallest input KS p-value     0.031   AUC 0.713
+
 
 The results are the reverse of what an input-only dashboard would suggest. The data drift scenario sets off the loudest alarm (a p-value of 0) and does no harm: AUC is unchanged, because the model's rule still holds in the new region. The concept drift scenario produces at most a marginal signal on the inputs (the smallest of three p-values is 0.031, which isn't significant once you account for testing three features) and drops AUC from 0.886 to 0.713.
 
@@ -286,12 +303,11 @@ for metric in snapshot.dict()["metrics"]:
 snapshot.save_html("drift_report.html")
 ```
 
-```text
-DriftedColumnsCount(drift_share=0.5)                                   {'count': 2.0, 'share': 0.6666666666666666}
-ValueDrift(column=amount,method=Wasserstein distance (normed),threshold=0.1) 0.8129
-ValueDrift(column=hour,method=Wasserstein distance (normed),threshold=0.1) 0.0262
-ValueDrift(column=country,method=Jensen-Shannon distance,threshold=0.1) 0.1595
-```
+- DriftedColumnsCount(drift_share=0.5)                                   &#123;'count': 2.0, 'share': 0.6666666666666666&#125;
+- ValueDrift(column=amount,method=Wasserstein distance (normed),threshold=0.1) 0.8129
+- ValueDrift(column=hour,method=Wasserstein distance (normed),threshold=0.1) 0.0262
+- ValueDrift(column=country,method=Jensen-Shannon distance,threshold=0.1) 0.1595
+
 
 Notice which methods it chose. With more than 1,000 rows, Evidently uses a *magnitude* measure for each column, Wasserstein distance normalized by the reference standard deviation for numbers and JS distance for categories, rather than a p-value, for exactly the reason section 4 showed. The shifted `amount` (0.81 standard deviations) and `country` mix are flagged; the unchanged `hour` isn't.
 
@@ -317,7 +333,23 @@ An alert is the start of an investigation, not a reason to retrain automatically
 
 Retraining then goes through the same gate as any other model, as described in [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd#7-continuous-training).
 
-## 10. When *Not* to Use Statistical Drift Detection
+## Worked example
+
+In the measured half-standard-deviation shift, PSI is 0.27 on 1,000 samples and 0.23 on 100,000; Wasserstein is 5.2 and 5.0. These magnitude measures stay similar while a significance test becomes much more confident at the larger sample size.
+
+## Try it yourself
+
+Run the existing comparison on two stable reference windows, then on the injected-shift window. Record the distance, the sample size, and whether model quality changed.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Every feature triggers an alert | Significance tests react to tiny shifts at large scale | Calibrate magnitude thresholds on stable windows |
+| A drift alert causes an automatic retrain | Input change is mistaken for quality loss | Check labels and business impact first |
+| Small windows look noisy | Binned estimates have a sample-size noise floor | Compare similar-sized windows and establish a baseline |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

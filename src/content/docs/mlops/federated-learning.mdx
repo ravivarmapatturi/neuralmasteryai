@@ -7,15 +7,34 @@ description: "Training one shared model across data you can't centralize -- a ho
 import FederatedRoundDiagram from '../../../viz/diagrams/FederatedRoundDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Federated Learning
-
-[GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training) covers splitting one training job across many GPUs you control, in one datacenter, to go faster. Federated learning is a different problem entirely: training one shared model across data you *don't* control and *can't* centralize — a hospital's patient records, a bank's transaction history, a phone's keyboard input — because moving it would violate privacy law, a data-sharing agreement, or just user trust.
-
 <ELI5>
 
 Normally, training a model means gathering everyone's data in one place and learning from it directly. Federated learning flips that: instead of bringing the data to the model, it sends a copy of the model *out* to where the data already lives — a hospital, a phone — lets it learn a little there, and only brings back what it learned (not the data itself) to combine with everyone else's. Nobody's raw records ever leave the building; only the lessons do.
 
 </ELI5>
+
+## Why it exists
+
+[GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training) covers splitting one training job across many GPUs you control, in one datacenter, to go faster. Federated learning is a different problem entirely: training one shared model across data you *don't* control and *can't* centralize — a hospital's patient records, a bank's transaction history, a phone's keyboard input — because moving it would violate privacy law, a data-sharing agreement, or just user trust.
+
+
+
+## The big picture
+
+The workflow below shows where this system produces evidence and where an operator can intervene.
+
+<PenFlow ariaLabel="federated learning process path" rows={[{ steps: { title: 'Send model to clients', lines: ['Train locally'], tone: 'blue' } }, { steps: { title: 'Train locally', lines: ['Aggregate updates'], tone: 'purple' } }, { steps: { title: 'Aggregate updates', lines: ['Repeat with privacy controls'], tone: 'green' } }, { steps: { title: 'Repeat with privacy controls', lines: ['Review evidence and adjust safely'], tone: 'orange' } }]} caption="Federated rounds move model updates while the raw training records stay at each client." />
+
+<Worksheet title="Weight client updates by local data" ariaLabel="Worksheet calculating a two-client FedAvg update" stages={[
+  { tag: 'Clients', color: 'blue', note: 'Client A has 10 examples and update 0.0; client B has 30 examples and update 1.0.', grid: { head: ['Client', 'Examples', 'Update'], rows: [{ label: 'A', cells: ['10', '0.0'] }, { label: 'B', cells: ['30', '1.0'] }] } },
+  { tag: 'Aggregate', color: 'green', note: 'FedAvg weights each update by its share of 40 total examples.', children: <>The combined update is (10/40 × 0.0) + (30/40 × 1.0) = 0.75.</> },
+]} />
+
 
 ## The core idea: move the computation, not the data
 
@@ -31,24 +50,23 @@ The paper's practical algorithm, **FederatedAveraging (FedAvg)**, runs in synchr
 
 The real pseudocode from the paper (Algorithm 1), unsimplified:
 
-```text
-Server executes:
-  initialize w0
-  for each round t = 1, 2, ... do
-    m ← max(C·K, 1)                        # C = fraction of clients this round
-    St ← (random set of m clients)
-    for each client k ∈ St in parallel do
-      w^k_{t+1} ← ClientUpdate(k, wt)
-    mt ← Σ_{k∈St} n_k
-    w_{t+1} ← Σ_{k∈St} (n_k / mt) · w^k_{t+1}   # weighted by each client's data size
+- Server executes:
+-   initialize w0
+-   for each round t = 1, 2, ... do
+-     m ← max(C·K, 1)                        # C = fraction of clients this round
+-     St ← (random set of m clients)
+-     for each client k ∈ St in parallel do
+-       w^k_&#123;t+1&#125; ← ClientUpdate(k, wt)
+-     mt ← Σ_&#123;k∈St&#125; n_k
+-     w_&#123;t+1&#125; ← Σ_&#123;k∈St&#125; (n_k / mt) · w^k_&#123;t+1&#125;   # weighted by each client's data size
+-
+- ClientUpdate(k, w):                          # runs locally on client k
+-   split client k's data into batches of size B
+-   for each local epoch i = 1 to E do
+-     for each batch b do
+-       w ← w − η · ∇ℓ(w; b)
+-   return w to server
 
-ClientUpdate(k, w):                          # runs locally on client k
-  split client k's data into batches of size B
-  for each local epoch i = 1 to E do
-    for each batch b do
-      w ← w − η · ∇ℓ(w; b)
-  return w to server
-```
 
 Three hyperparameters control the whole algorithm's behavior: **C** (fraction of clients sampled per round — trades speed for statistical quality), **E** (local epochs per round — more local computation per round of communication), and **B** (local minibatch size; $B=\infty$ treats a client's whole dataset as one batch). Setting $E=1, B=\infty$ reduces FedAvg exactly to **FedSGD**, a simpler baseline that does one gradient step per client per round instead of several — the paper's actual contribution is showing that doing *more* local computation (larger $E$) before each communication round, not less, is what makes federated training practical: their real reported result is a **10–100× reduction in communication rounds** versus synchronized SGD, at approximately no cost in final model quality, because computation on-device is nearly free compared to the cost of a communication round.
 
@@ -148,3 +166,47 @@ flwr run .                                    # runs a local simulation over N c
 | **Flower (`flwr`)** | Framework-agnostic (PyTorch/TF/JAX), the most active open-source ecosystem, real production deployment path beyond simulation |
 | **TensorFlow Federated (TFF)** | TensorFlow-native research, Google's original research framework for this space |
 | **PySyft** | Federated learning combined with other privacy-preserving techniques (secure computation, differential privacy) as a broader toolkit |
+
+
+## Worked example
+
+Client A has 10 examples and update 0.0; client B has 30 examples and update 1.0. FedAvg weights by example count: (10/40 × 0.0) + (30/40 × 1.0) = 0.75. Raw examples stay with their clients, but updates can still reveal information without additional protections.
+
+## Try it yourself
+
+Run the Flower simulation from the scaffolded project and change the client data sizes. Check that the aggregate gives more weight to the larger client.
+
+```bash
+flwr run .
+```
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| The average model favors small clients equally | Updates are averaged without data-size weights | Use the aggregation rule that matches the objective |
+| Updates are assumed to reveal nothing | Gradients can leak training information | Add secure aggregation or differential privacy where required |
+| One client dominates or drops out | Client data and availability are non-IID | Measure participation and evaluate across client groups |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| Data can be legally and safely centralized | A conventional training pipeline is simpler |
+| Clients cannot support repeated model transfer and local training | Use a governed central or split-learning design |
+
+## Remember
+
+| Idea | Keep in mind |
+| --- | --- |
+| Data stays local | Updates still need privacy analysis |
+| FedAvg | Weight client updates by local example count |
+| Operations | Plan for dropouts, skew, and communication cost |
+
+Next: [Security & Reproducibility](/docs/mlops/security-and-reproducibility) covers the privacy controls and operational records that protect model updates.
+
+## Sources
+
+- [Communication-Efficient Learning of Deep Networks from Decentralized Data](https://arxiv.org/abs/1602.05629) (2017)
+- [Flower documentation](https://flower.ai/docs/framework/)
+- [TensorFlow Federated documentation](https://www.tensorflow.org/federated)

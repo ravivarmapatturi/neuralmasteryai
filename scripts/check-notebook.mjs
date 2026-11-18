@@ -39,7 +39,7 @@ function isProgramCode(code) {
   if (!lines.length) return true;
   const dataLine = /^(?:[\w .-]+(?:\s*\([^)]*\))?\s*=\s*[^=].*|[-*]\s+[^:]+:\s+.+)$/;
   const proseLine = /^(?:[A-Z][^.!?]{20,}[.!?]?|(?:The|This|That|For|When|Because|In|A|An|We|It)\s+\w+.*)$/;
-  const codeTokens = /[{}();]|\b(?:const|let|var|function|return|import|from|def|class|print|if|else|for|while|SELECT|echo|npm|pip|await|=>)\b|^\s{2,}\S/;
+  const codeTokens = /[{}();]|\b(?:const|let|var|function|return|import|from|def|class|print|if|else|for|while|SELECT|echo|npm|pip|await|torchrun|deepspeed|flwr|kubectl|terraform|promtool|vllm|aws|feast|=>)\b|^\s{2,}\S/;
   const data = lines.filter((line) => dataLine.test(line)).length;
   const prose = lines.filter((line) => proseLine.test(line)).length;
   const hasExecutableSyntax = lines.some((line) => codeTokens.test(line));

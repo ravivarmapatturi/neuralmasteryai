@@ -12,10 +12,11 @@ import ComposedStrategyDiagram from '../../../viz/diagrams/ComposedStrategyDiagr
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Deployment Strategies
-
-[Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry) ended with a model version that passed every offline check and was promoted in the registry. Offline checks run on historical data, though, and production traffic is never quite the same: new users, new devices, new kinds of fraud, a feature that behaves differently under load. This page covers how to put a new model in front of real traffic while limiting the damage if it's wrong: the four standard strategies (blue-green, canary, shadow and A/B), the statistics that decide how long each must run to tell you anything, and validated Kubernetes manifests for each.
-
 <ELI5>
 
 A restaurant changing its menu has choices. It can switch the whole menu overnight and keep the old kitchen ready in case it goes badly (blue-green). It can offer the new dish to one table in twenty first, and widen it if nobody complains (canary). It can have the chef secretly cook the new dish alongside every order, taste it in the back, and serve only the old one (shadow). Or it can serve half the tables each version for a month and count which half orders dessert more often (A/B test).
@@ -25,6 +26,24 @@ Each answers a different question, at a different cost. Deployment strategies ar
 Everything below is how each one works, and how long it has to run before its answer means anything.
 
 </ELI5>
+
+## Why it exists
+
+[Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry) ended with a model version that passed every offline check and was promoted in the registry. Offline checks run on historical data, though, and production traffic is never quite the same: new users, new devices, new kinds of fraud, a feature that behaves differently under load. This page covers how to put a new model in front of real traffic while limiting the damage if it's wrong: the four standard strategies (blue-green, canary, shadow and A/B), the statistics that decide how long each must run to tell you anything, and validated Kubernetes manifests for each.
+
+
+
+## The big picture
+
+The workflow below shows where this system produces evidence and where an operator can intervene.
+
+<PenFlow ariaLabel="deployment strategies process path" rows={[{ steps: { title: 'Choose rollout goal', lines: ['Limit exposure'], tone: 'blue' } }, { steps: { title: 'Limit exposure', lines: ['Measure outcomes'], tone: 'purple' } }, { steps: { title: 'Measure outcomes', lines: ['Expand or roll back'], tone: 'green' } }, { steps: { title: 'Expand or roll back', lines: ['Review evidence and adjust safely'], tone: 'orange' } }]} caption="A rollout strategy routes traffic so evidence arrives before the new model receives full exposure." />
+
+<Worksheet title="Check whether the canary has enough traffic" ariaLabel="Worksheet using the model rollout example's error rates and traffic" stages={[
+  { tag: 'Traffic', color: 'blue', note: 'At 600 requests per minute, a 1 percent canary receives 6 requests per minute.', grid: { head: ['Window', 'Canary requests'], rows: [{ label: '1 minute', cells: ['6'] }, { label: '10 minutes', cells: ['60'] }] } },
+  { tag: 'Errors', color: 'red', note: 'At the bad model’s 0.6 percent error rate, 60 requests yield 0.36 expected errors.', children: <>The most likely observed count is still zero, so a short, tiny canary can look healthy by chance.</> },
+]} />
+
 
 ## 1. Why Deployment Needs a Strategy
 
@@ -142,9 +161,8 @@ spec:
 
 The image is referenced by digest, so the rollout can only ever run the exact image that passed CI (the digest shown is an example). Validated against the Kubernetes, Argo Rollouts and Istio schemas with `kubeconform -strict`, this file and the other two manifests on this page report:
 
-```text
-Summary: 4 resources found in 3 files - Valid: 4, Invalid: 0, Errors: 0, Skipped: 0
-```
+- Summary: 4 resources found in 3 files - Valid: 4, Invalid: 0, Errors: 0, Skipped: 0
+
 
 The step durations in that file aren't arbitrary, and the next section shows why they have to be long.
 
@@ -169,14 +187,13 @@ for weight in [0.01, 0.05, 0.25]:
         print(f"weight {weight:>4.0%}, {minutes:>2} min: {n:>5} requests, {expected_errors:>2} errors, p = {p:.3f}")
 ```
 
-```text
-weight   1%, 10 min:    60 requests,  0 errors, p = 1.000
-weight   1%, 30 min:   180 requests,  1 errors, p = 0.303
-weight   5%, 10 min:   300 requests,  2 errors, p = 0.122
-weight   5%, 30 min:   900 requests,  5 errors, p = 0.036
-weight  25%, 10 min:  1500 requests,  9 errors, p = 0.004
-weight  25%, 30 min:  4500 requests, 27 errors, p = 0.000
-```
+- weight   1%, 10 min:    60 requests,  0 errors, p = 1.000
+- weight   1%, 30 min:   180 requests,  1 errors, p = 0.303
+- weight   5%, 10 min:   300 requests,  2 errors, p = 0.122
+- weight   5%, 30 min:   900 requests,  5 errors, p = 0.036
+- weight  25%, 10 min:  1500 requests,  9 errors, p = 0.004
+- weight  25%, 30 min:  4500 requests, 27 errors, p = 0.000
+
 
 A canary three times worse than stable is **invisible** at 1% for 10 minutes: it serves 60 requests and is expected to produce no errors at all. At 5% for 10 minutes, its 2 errors are entirely consistent with a healthy version. Only around 5% for 30 minutes, or 25% for 10, does the evidence become convincing.
 
@@ -288,11 +305,10 @@ for lift in [0.010, 0.005, 0.002]:
     print(f"base 5.0% -> {5 + lift * 100:.1f}%: {n_per_arm(0.05, lift):>7,} users per arm")
 ```
 
-```text
-base 5.0% -> 6.0%:   8,158 users per arm
-base 5.0% -> 5.5%:  31,234 users per arm
-base 5.0% -> 5.2%: 189,938 users per arm
-```
+- base 5.0% -> 6.0%:   8,158 users per arm
+- base 5.0% -> 5.5%:  31,234 users per arm
+- base 5.0% -> 5.2%: 189,938 users per arm
+
 
 Detecting a lift from 5.0% to 5.2%, the size of improvement a mature model typically delivers, takes about 190,000 users in each arm. Teams with less traffic than that can't measure small improvements by A/B testing, however long they wait for significance to "arrive".
 
@@ -320,10 +336,9 @@ print(f"false positive rate, one look at day {days}: {false_fixed / n_experiment
 print(f"false positive rate, daily peeking:      {false_peek / n_experiments:.1%}")
 ```
 
-```text
-false positive rate, one look at day 20: 4.4%
-false positive rate, daily peeking:      22.0%
-```
+- false positive rate, one look at day 20: 4.4%
+- false positive rate, daily peeking:      22.0%
+
 
 With one look, the false-positive rate is about the 5% the test promises. With daily peeking and stopping at the first significant day, it's 22%: more than one in five "winning" models is no better at all. Each look is another chance for noise to cross the line, and stopping on the first crossing keeps the false alarms.
 
@@ -381,7 +396,23 @@ Every strategy assumes rollback is fast and safe. Two things quietly break that 
 
 The rule that follows: test the rollback, not just the rollout. A deployment process where rollback has never been exercised is a process where it might not work when it's needed.
 
-## 9. When *Not* to Use These Strategies
+## Worked example
+
+A 1% canary on 600 requests per minute receives 6 requests a minute. During 10 minutes it sees 60 requests, so a 0.6% error rate produces only 0.36 expected errors; the most likely observed count is zero. That is too little evidence to trust a short rollout.
+
+## Try it yourself
+
+Use the page’s sample canary calculation and change only the rollout weight or pause duration. Compare the request count before trusting the observed error rate.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| A tiny canary passes a bad model | The sample is too small to observe a rare error | Increase traffic, duration, or use a signal available per request |
+| A/B results are called too early | The required sample size was not planned | Precompute power and stop rules |
+| Shadow traffic overloads the service | The new model receives duplicate work | Budget capacity and compare outputs without returning them |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

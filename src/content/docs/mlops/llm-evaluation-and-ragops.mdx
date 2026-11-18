@@ -11,10 +11,11 @@ import RagFailureLayerDiagram from '../../../viz/diagrams/RagFailureLayerDiagram
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # LLM Evaluation & RAGOps
-
-[ML & LLM Testing](/docs/mlops/ml-and-llm-testing) covered the tests that guard an LLM application in CI: mechanical checks, pass rates and judge calibration. This page covers evaluation more broadly, and especially the evaluation and operation of **retrieval-augmented generation** (RAG), the most common production LLM architecture. It covers why the classic text-overlap metrics mislead (with a demonstration), how LLM-as-judge criteria are defined, how to measure retrieval with Recall@K, MRR and nDCG on a real comparison of four retrievers, how to locate which layer of a RAG system is failing, and what to monitor once real users arrive.
-
 <ELI5>
 
 Imagine a student answering exam questions with an open textbook. Two things can go wrong. They might look up the wrong pages, or they might find the right pages and still write a wrong answer. A good teacher grades both: did they find the right material, and did their answer actually follow from it?
@@ -24,6 +25,24 @@ A RAG system is that student. It searches a library of documents, then writes an
 Everything below is how to grade each part precisely.
 
 </ELI5>
+
+## Why it exists
+
+[ML & LLM Testing](/docs/mlops/ml-and-llm-testing) covered the tests that guard an LLM application in CI: mechanical checks, pass rates and judge calibration. This page covers evaluation more broadly, and especially the evaluation and operation of **retrieval-augmented generation** (RAG), the most common production LLM architecture. It covers why the classic text-overlap metrics mislead (with a demonstration), how LLM-as-judge criteria are defined, how to measure retrieval with Recall@K, MRR and nDCG on a real comparison of four retrievers, how to locate which layer of a RAG system is failing, and what to monitor once real users arrive.
+
+
+
+## The big picture
+
+The workflow below shows where this system produces evidence and where an operator can intervene.
+
+<PenFlow ariaLabel="llm evaluation and ragops process path" rows={[{ steps: { title: 'Retrieve evidence', lines: ['Generate answer'], tone: 'blue' } }, { steps: { title: 'Generate answer', lines: ['Score each layer'], tone: 'purple' } }, { steps: { title: 'Score each layer', lines: ['Track failures in production'], tone: 'green' } }, { steps: { title: 'Track failures in production', lines: ['Review evidence and adjust safely'], tone: 'orange' } }]} caption="A RAG evaluation separates retrieval quality from answer quality so teams can fix the failing stage." />
+
+<Worksheet title="Compare retrieval metrics" ariaLabel="Worksheet comparing retrieval results for BM25 and dense search" stages={[
+  { tag: 'Results', color: 'blue', note: 'Use the measured top-three results from the same labelled query set.', grid: { head: ['Retriever', 'Recall@3', 'MRR', 'nDCG@3'], rows: [{ label: 'BM25', cells: ['0.42', '0.42', '0.41'] }, { label: 'Dense', cells: ['0.83', '1.00', '0.92'] }] } },
+  { tag: 'Choose next check', color: 'green', note: 'Dense retrieval finds more relevant passages and ranks the first relevant one higher in this example.', children: <>Still inspect answer correctness and groundedness separately from retrieval scores.</> },
+]} />
+
 
 ## 1. What Makes LLM Evaluation Hard
 
@@ -61,10 +80,9 @@ for name, text in candidates.items():
     print(f"{name:<22} BLEU {bleu:5.1f}   ROUGE-L {rouge:.2f}")
 ```
 
-```text
-correct, reworded      BLEU   3.5   ROUGE-L 0.15
-wrong, similar words   BLEU  76.1   ROUGE-L 0.92
-```
+- correct, reworded      BLEU   3.5   ROUGE-L 0.15
+- wrong, similar words   BLEU  76.1   ROUGE-L 0.92
+
 
 The metrics rank the answers in exactly the wrong order. The wrong answer, which tells a customer to wait six times longer, scores 76 BLEU; the correct one scores 3.5. Overlap metrics still have uses (tracking a summarizer's drift against fixed references, or extraction tasks where the exact string matters), but they can't tell you whether an open-ended answer is right.
 
@@ -166,12 +184,11 @@ for name, ranker in [("BM25", rank_bm25), ("TF-IDF", rank_tfidf), ("dense", rank
     print(f"{name:<7} Recall@3 {r:.2f}   MRR {mrr:.2f}   nDCG@3 {n:.2f}   best answer not first: {misses}")
 ```
 
-```text
-BM25    Recall@3 0.42   MRR 0.42   nDCG@3 0.41   best answer not first: ['how long until I get my money back', 'my parcel arrived broken', 'when will my order arrive', 'can I get a refund on a gift card']
-TF-IDF  Recall@3 0.42   MRR 0.50   nDCG@3 0.46   best answer not first: ['how long until I get my money back', 'my parcel arrived broken', 'when will my order arrive']
-dense   Recall@3 0.83   MRR 1.00   nDCG@3 0.92   best answer not first: []
-hybrid  Recall@3 0.75   MRR 0.92   nDCG@3 0.83   best answer not first: ['when will my order arrive']
-```
+- BM25    Recall@3 0.42   MRR 0.42   nDCG@3 0.41   best answer not first: ['how long until I get my money back', 'my parcel arrived broken', 'when will my order arrive', 'can I get a refund on a gift card']
+- TF-IDF  Recall@3 0.42   MRR 0.50   nDCG@3 0.46   best answer not first: ['how long until I get my money back', 'my parcel arrived broken', 'when will my order arrive']
+- dense   Recall@3 0.83   MRR 1.00   nDCG@3 0.92   best answer not first: []
+- hybrid  Recall@3 0.75   MRR 0.92   nDCG@3 0.83   best answer not first: ['when will my order arrive']
+
 
 What the numbers say:
 
@@ -263,7 +280,23 @@ Evaluation sets age, and production traffic finds failures no test set contains.
 
 These tools save plumbing, but the decisions that matter are the same in all of them: what the evaluation set contains, which criteria are judged and how the judge is calibrated, and which numbers gate a release.
 
-## 7. When *Not* to Build a Full Evaluation Stack
+## Worked example
+
+On the labelled query set, dense retrieval has Recall@3 0.83, MRR 1.00, and nDCG@3 0.92, compared with BM25 at 0.42, 0.42, and 0.41. Those scores describe retrieval; the answer still needs a separate quality check.
+
+## Try it yourself
+
+Run the retrieval comparison on the same labelled queries. Inspect failed examples by layer instead of choosing a retriever from one aggregate score.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| A fluent answer is counted as correct | Style masks unsupported claims | Grade grounding and factual correctness separately |
+| The wrong retrieval layer is tuned | Retrieval and generation scores are mixed | Measure retrieval before judging generated answers |
+| A judge score is trusted without calibration | The judge may reward its own preferences | Compare it with human labels and test disagreement cases |
+
+## When not to use it
 
 | Situation | Proportionate approach |
 |---|---|

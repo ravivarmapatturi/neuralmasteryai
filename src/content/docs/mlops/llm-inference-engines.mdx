@@ -11,10 +11,11 @@ import EdgeVsServerDeploymentDiagram from '../../../viz/diagrams/EdgeVsServerDep
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # LLM Inference Engines
-
-[APIs & Model Serving](/docs/mlops/model-serving) built a service around a classical model: load it once, validate requests, batch them, return a prediction. Language models break several of that page's assumptions. Each response is generated one token at a time, so a request occupies the hardware for seconds rather than milliseconds; responses vary in length by a factor of a hundred; and each in-progress request carries gigabytes of attention state. Specialized **inference engines** exist to handle exactly this. This page covers the layers of an LLM serving stack, the vocabulary that keeps engines, servers and platforms apart, why naive batching wastes most of a GPU (measured on a real model and simulated at scale), the two ideas at the heart of modern engines, continuous batching and paged KV memory, and how the main engines compare as of late 2026.
-
 <ELI5>
 
 Picture a printing press that can print eight books side by side. A naive printer loads eight books, and the press runs until the *longest* one is finished, even though most are done after a few pages and their slots sit empty. A smarter printer slots a new book in the moment any slot frees up, so the press is always full.
@@ -24,6 +25,24 @@ There's also the paper. The naive printer reserves enough paper for the thickest
 Inference engines are the smarter printer: they keep the GPU full of work and hand out memory as it's needed. Everything below is how.
 
 </ELI5>
+
+## Why it exists
+
+[APIs & Model Serving](/docs/mlops/model-serving) built a service around a classical model: load it once, validate requests, batch them, return a prediction. Language models break several of that page's assumptions. Each response is generated one token at a time, so a request occupies the hardware for seconds rather than milliseconds; responses vary in length by a factor of a hundred; and each in-progress request carries gigabytes of attention state. Specialized **inference engines** exist to handle exactly this. This page covers the layers of an LLM serving stack, the vocabulary that keeps engines, servers and platforms apart, why naive batching wastes most of a GPU (measured on a real model and simulated at scale), the two ideas at the heart of modern engines, continuous batching and paged KV memory, and how the main engines compare as of late 2026.
+
+
+
+## The big picture
+
+The workflow below shows where this system produces evidence and where an operator can intervene.
+
+<PenFlow ariaLabel="llm inference engines process path" rows={[{ steps: { title: 'Receive token requests', lines: ['Schedule active sequences'], tone: 'blue' } }, { steps: { title: 'Schedule active sequences', lines: ['Allocate KV blocks'], tone: 'purple' } }, { steps: { title: 'Allocate KV blocks', lines: ['Return generated tokens'], tone: 'green' } }, { steps: { title: 'Return generated tokens', lines: ['Review evidence and adjust safely'], tone: 'orange' } }]} caption="An inference engine coordinates sequence scheduling and KV memory as each request grows." />
+
+<Worksheet title="Compare batched throughput" ariaLabel="Worksheet comparing throughput for the same sixteen requests" stages={[
+  { tag: 'Benchmark', color: 'blue', note: 'The same 16 requests take 39.6 seconds at batch size 1 and 7.8 seconds at batch size 16.', grid: { head: ['Batch size', 'Throughput'], rows: [{ label: '1', cells: ['19 tokens/s'] }, { label: '4', cells: ['36 tokens/s'] }, { label: '16', cells: ['98 tokens/s'] }] } },
+  { tag: 'Trade-off', color: 'yellow', note: 'Larger batches improve total throughput while active requests still need bounded wait and memory.', children: <>Measure latency percentiles as well as aggregate tokens per second.</> },
+]} />
+
 
 ## 1. Why Language Models Need Their Own Engines
 
@@ -86,11 +105,10 @@ for batch_size in [1, 4, 16]:
     print(f"batch size {batch_size:>2}: {len(prompts) * NEW / elapsed:6.0f} tokens/s for 16 requests ({elapsed:.1f} s)")
 ```
 
-```text
-batch size  1:     19 tokens/s for 16 requests (39.6 s)
-batch size  4:     36 tokens/s for 16 requests (21.1 s)
-batch size 16:     98 tokens/s for 16 requests (7.8 s)
-```
+- batch size  1:     19 tokens/s for 16 requests (39.6 s)
+- batch size  4:     36 tokens/s for 16 requests (21.1 s)
+- batch size 16:     98 tokens/s for 16 requests (7.8 s)
+
 
 Serving the same 16 requests together is five times faster than one at a time, on the same hardware, because each forward pass does useful work for 16 sequences instead of one. On a GPU, where weight reads dominate even more, the gap at larger batch sizes is wider still.
 
@@ -138,10 +156,9 @@ for name, fn in [("static batching", static_batching), ("continuous batching", c
           f"(slot use {outputs.sum() / (steps * BATCH):.0%}), median completion at step {np.median(finish):,.0f}")
 ```
 
-```text
-static batching       21716 decode steps for 56,698 tokens (slot use 33%), median completion at step 9,362
-continuous batching    7373 decode steps for 56,698 tokens (slot use 96%), median completion at step 3,500
-```
+- static batching       21716 decode steps for 56,698 tokens (slot use 33%), median completion at step 9,362
+- continuous batching    7373 decode steps for 56,698 tokens (slot use 96%), median completion at step 3,500
+
 
 Static batching keeps only a third of its slots busy, because every batch waits for its longest member; continuous batching keeps 96% busy, generates the same tokens in a third of the steps, and returns the median request almost three times sooner. Since a decode step costs roughly the same however many slots are filled, slot use translates directly into throughput and cost per token.
 
@@ -164,11 +181,10 @@ print(f"contiguous max-length reservation: {contiguous:,} slots, {used / contigu
 print(f"paged blocks of {BLOCK} tokens:      {paged:,.0f} slots, {used / paged:.1%} used")
 ```
 
-```text
-median sequence 666 tokens; tokens actually stored 1,055,109
-contiguous max-length reservation: 8,192,000 slots, 12.9% used
-paged blocks of 16 tokens:      1,062,352 slots, 99.3% used
-```
+- median sequence 666 tokens; tokens actually stored 1,055,109
+- contiguous max-length reservation: 8,192,000 slots, 12.9% used
+- paged blocks of 16 tokens:      1,062,352 slots, 99.3% used
+
 
 With an 8K context limit and a median sequence of 666 tokens, max-length reservation leaves 87% of KV memory empty; paging wastes under 1%, only the unfilled part of each sequence's last block. The memory saved becomes room for more concurrent requests, which (section 4) becomes throughput. Paging also enables **sharing**: sequences with the same prefix, such as a common system prompt, or parallel samples from one prompt, can point at the same physical blocks, copying only when they diverge. That's the basis of prefix caching, which SGLang's RadixAttention organizes as a tree of shared prefixes.
 
@@ -244,7 +260,23 @@ Small models (one to a few billion parameters), aggressive quantization and care
   explanation="Engines like vLLM earn their complexity by keeping a GPU busy with many concurrent requests. A few dozen requests a day would leave a dedicated GPU idle more than 99% of the time. A quantized model on existing hardware, or a hosted API, meets the need at a fraction of the cost and operational effort; revisit when volume grows."
 />
 
-## 8. When *Not* to Run an Inference Engine
+## Worked example
+
+For the same 16 requests, the page benchmark rises from 19 tokens per second at batch size 1 to 98 at batch size 16. The engine keeps work moving between sequences and makes better use of the GPU.
+
+## Try it yourself
+
+Replay a fixed prompt set with the engine benchmark tool. Hold model and hardware constant while changing concurrency, then compare tokens per second with p50 and p99 latency.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Throughput is high but chat feels slow | Queue wait or time to first token is ignored | Track per-phase latency and goodput |
+| Requests are rejected under load | KV cache is exhausted | Bound context and concurrency; monitor cache use |
+| A benchmark cannot be repeated | Prompts or engine settings changed | Version the request set and configuration |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

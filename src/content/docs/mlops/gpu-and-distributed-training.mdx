@@ -16,9 +16,35 @@ import ThreeDParallelismCompositionDiagram from '../../../viz/diagrams/ThreeDPar
 import CheckpointingTradeoffDiagram from '../../../viz/diagrams/CheckpointingTradeoffDiagram';
 import MixedPrecisionDiagram from '../../../viz/diagrams/MixedPrecisionDiagram';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+
 # GPU/AI Infrastructure & Distributed Training
 
+<ELI5>
+
+A GPU is a workshop with many small workers who can do the same kind of arithmetic at once. Training sends batches of examples through that workshop, but the workers can wait on data, memory transfers, or each other. Distributed training adds more workshops and a communication network; it helps only when the work can keep them busy.
+
+</ELI5>
+
+## Why it exists
+
 Modern deep learning is bottlenecked by hardware in specific, learnable ways — knowing *why* a training job is slow (compute-bound? memory-bound? communication-bound?) is what separates "add more GPUs and hope" from actually fixing it.
+
+## The big picture
+
+The workflow below shows where this system produces evidence and where an operator can intervene.
+
+<PenFlow ariaLabel="gpu and distributed training process path" rows={[{ steps: { title: 'Load data', lines: ['Schedule GPU work'], tone: 'blue' } }, { steps: { title: 'Schedule GPU work', lines: ['Move tensors'], tone: 'purple' } }, { steps: { title: 'Move tensors', lines: ['Measure bottleneck'], tone: 'green' } }, { steps: { title: 'Measure bottleneck', lines: ['Review evidence and adjust safely'], tone: 'orange' } }]} caption="A training step moves data through host memory, GPU memory, compute units, and communication links." />
+
+<Worksheet title="Split the training batch" ariaLabel="Worksheet dividing the documented batch across eight GPUs" stages={[
+  { tag: 'Launch', color: 'blue', note: 'The page launches one process on each of 8 GPUs and shows a global batch size of 256.', grid: { head: ['Global batch', 'GPU processes', 'Examples per process'], rows: [{ label: '256', cells: ['8', '32'] }] } },
+  { tag: 'Check', color: 'green', note: 'Even division assumes each process receives the same number of examples.', children: <>If data loading or communication leaves devices idle, adding GPUs may not reduce step time.</> },
+]} />
+
 
 ## GPU Fundamentals
 
@@ -159,4 +185,49 @@ for step, (inputs, targets) in enumerate(dataloader):
         optimizer.zero_grad()
 ```
 
-Next: [LLM Inference Engines](/docs/mlops/llm-inference-engines) — everything above trains a model; the next several pages cover the equally deep, equally hardware-bound problem of serving one efficiently.
+
+
+## Worked example
+
+A global batch of 256 split evenly across the eight GPU processes in the page’s `torchrun` example gives 32 examples per process. Data parallelism still needs to synchronize gradients, so communication can erase the gain if the workload is too small.
+
+## Try it yourself
+
+Launch the existing training entry point on one node and inspect GPU utilization and input wait time before adding processes. Compare step time at one and eight processes.
+
+```bash
+torchrun --nproc_per_node=8 --nnodes=1 train.py
+```
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Adding GPUs does not speed training | Data input or communication is the bottleneck | Profile the full step before scaling out |
+| CUDA out of memory persists | Activations or optimizer state dominate VRAM | Use smaller micro-batches, accumulation, or sharding |
+| GPUs sit idle | Data loading cannot feed the devices | Profile storage and preprocessing throughput |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| A small model fits on one GPU and finishes within the schedule | Use a single-GPU run with a simple data pipeline |
+| Distributed communication dominates useful work | Optimize the single-node workload first |
+
+## Remember
+
+| Idea | Keep in mind |
+| --- | --- |
+| Profile first | Measure compute, memory, input, and communication |
+| Match parallelism | Choose data, tensor, pipeline, or sharding for the constraint |
+| Protect the run | Save checkpoints and verify restart behavior |
+
+
+
+Next: [LLM Inference Engines](/docs/mlops/llm-inference-engines) covers the other hardware problem: serving a model efficiently.
+
+## Sources
+
+- [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/)
+- [PyTorch Distributed Overview](https://pytorch.org/tutorials/beginner/dist_overview.html)
+- [PyTorch FSDP documentation](https://pytorch.org/docs/stable/fsdp.html)
