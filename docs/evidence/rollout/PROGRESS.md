@@ -247,3 +247,7 @@ Static checks passed on the combined worktree: notebook (24 changed pages/0 viol
 Standardized the LLMs and Generative AI overview, LLM Internals Hub, LLMs & GenAI roadmap, and Training Pipeline. The overview Worksheet uses the 8B compute/break-even output; the Training Pipeline Worksheet retains the 6N FLOPs derivation and Chinchilla ratio; the hub and roadmap map existing links to mechanisms and learner questions. Scorecard: `llm-1/scorecard.md`.
 
 Static checks passed on the combined worktree: notebook (19 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under low-memory constraints. No push.
+
+## Agents batch 1 correction
+
+The updated local notebook import guard exposed that Agent Architectures rendered the new ELI5 component without importing it. Added the missing import; notebook and MDX checks pass. The guard implementation itself is separate workspace work and was not included in this content commit.
