@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const STEPS = [
@@ -14,21 +13,21 @@ const STEPS = [
  * does, from declared config to applied infrastructure. */
 export default function TerraformWorkflowDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('plan');
+  const { value: activeIndex, pick } = useAutoCycle(STEPS.length, 2600, 1);
   const color = getConceptColor(t, 'attention');
-  const s = STEPS.find((x) => x.key === active)!;
+  const s = STEPS[activeIndex];
 
   return (
     <VisualizationContainer footer={s.desc}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
         {STEPS.map((x, i) => {
-          const isActive = active === x.key;
+          const isActive = activeIndex === i;
           return (
             <div key={x.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.65rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
-                <span style={{ fontSize: 9.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{x.label}</span>
+              <div onClick={() => pick(i)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(i); } }} onMouseEnter={() => pick(i)} style={{ cursor: 'pointer', padding: '0.5rem 0.65rem', borderRadius: 7, background: isActive ? `${color}20` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, transition: 'all 200ms ease' }}>
+                <span style={{ fontSize: 9.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{isActive ? `▶ ${x.label}` : x.label}</span>
               </div>
-              {i < STEPS.length - 1 && <span style={{ color: t.textMuted, fontSize: 12 }}>→</span>}
+              {i < STEPS.length - 1 && <span style={{ color: activeIndex > i ? color : t.textMuted, fontSize: 12, fontWeight: activeIndex > i ? 700 : 400 }}>→</span>}
             </div>
           );
         })}

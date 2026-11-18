@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
+import { FlowDots, Pulse, line } from '../primitives/LiveFlow';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STAGES = [
@@ -29,7 +29,7 @@ const STAGES = [
  * historical progression. */
 export default function FederatedRoundDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(0);
+  const { value: selected, pick } = useAutoCycle(STAGES.length, 3200, 0);
   const color = getConceptColor(t, 'attention');
   const width = 340;
   const height = 340;
@@ -49,7 +49,7 @@ export default function FederatedRoundDiagram() {
           <button
             key={s.name}
             type="button"
-            onClick={() => setSelected(i)}
+            onClick={() => pick(i)}
             aria-pressed={selected === i}
             style={{
               padding: '6px 14px',
@@ -60,6 +60,7 @@ export default function FederatedRoundDiagram() {
               fontSize: 12.5,
               fontWeight: 600,
               cursor: 'pointer',
+              transition: 'all 200ms ease',
             }}
           >
             {i + 1}. {s.name}
@@ -81,27 +82,41 @@ export default function FederatedRoundDiagram() {
           const y2 = outbound ? c.y : cy;
           const scale = 22 / Math.hypot(x2 - x1, y2 - y1);
           return (
-            <line
-              key={i}
-              x1={x1 + (x2 - x1) * 0.16}
-              y1={y1 + (y2 - y1) * 0.16}
-              x2={x2 - (x2 - x1) * scale}
-              y2={y2 - (y2 - y1) * scale}
-              stroke={outbound || inbound ? activeColor : t.textMuted}
-              strokeWidth={outbound || inbound ? 2 : 1}
-              opacity={outbound || inbound ? 1 : 0.35}
-              markerEnd={outbound || inbound ? 'url(#fed-arrow)' : undefined}
-            />
+            <g key={i}>
+              <line
+                x1={x1 + (x2 - x1) * 0.16}
+                y1={y1 + (y2 - y1) * 0.16}
+                x2={x2 - (x2 - x1) * scale}
+                y2={y2 - (y2 - y1) * scale}
+                stroke={outbound || inbound ? activeColor : t.textMuted}
+                strokeWidth={outbound || inbound ? 2 : 1}
+                opacity={outbound || inbound ? 1 : 0.35}
+                markerEnd={outbound || inbound ? 'url(#fed-arrow)' : undefined}
+              />
+              {outbound && (
+                <FlowDots d={line(cx, cy, c.x, c.y)} color={activeColor} dur={1.6} count={2} r={2.5} />
+              )}
+              {STAGES[selected].name === 'Upload' && (
+                <FlowDots d={line(c.x, c.y, cx, cy)} color={activeColor} dur={1.6} count={2} r={2.5} />
+              )}
+            </g>
           );
         })}
         <circle cx={cx} cy={cy} r={26} fill={`${t.accentPrimary}25`} stroke={t.accentPrimary} strokeWidth={2} />
         <text x={cx} y={cy + 4} textAnchor="middle" fontSize={9} fontWeight={700} fill={t.accentPrimary}>Server</text>
+        {STAGES[selected].name === 'Aggregate' && (
+          <Pulse cx={cx} cy={cy} r={34} color={t.accentPrimary} dur={1.8} />
+        )}
+
         {clients.map((c, i) => (
           <g key={i}>
             <circle cx={c.x} cy={c.y} r={20} fill={`${t.accentSecondary}20`} stroke={t.accentSecondary} strokeWidth={1.5} />
             <text x={c.x} y={c.y + 3} textAnchor="middle" fontSize={8} fontWeight={700} fill={t.accentSecondary}>
               n_{i + 1}
             </text>
+            {STAGES[selected].name === 'Local Train' && (
+              <Pulse cx={c.x} cy={c.y} r={26} color={t.accentSecondary} dur={1.6} />
+            )}
           </g>
         ))}
       </svg>

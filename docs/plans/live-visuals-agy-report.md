@@ -136,3 +136,59 @@ Pages covered:
 - Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 32 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-3/`.
+
+## Batch 4
+
+Pages covered:
+- `src/content/docs/mlops/deployment-strategies.mdx`
+- `src/content/docs/mlops/engineering-foundations.mdx`
+- `src/content/docs/mlops/experiment-tracking.mdx`
+- `src/content/docs/mlops/feature-stores-and-model-registry.mdx`
+- `src/content/docs/mlops/federated-learning.mdx`
+- `src/content/docs/mlops/gpu-and-distributed-training.mdx`
+- `src/content/docs/mlops/infrastructure-as-code.mdx`
+- `src/content/docs/mlops/kubernetes.mdx`
+
+### Motion Rationales:
+1. `BlueGreenCutoverDiagram`: Autocycles live environment between Blue and Green; `FlowDots` stream from the Router directly into the live environment.
+2. `CanaryRampDiagram`: Autocycles through canary stages (5%, 25%, 50%, 100%) with smooth animated width transitions.
+3. `CanaryVsAbPurposeDiagram`: Autocycles between Canary (rollout safety) and A/B Test (business impact).
+4. `ComposedStrategyDiagram`: Autocycles through the rollout lifecycle (Shadow -> Canary -> A/B Test); `FlowDots` stream along the pipeline arrow to the active stage.
+5. `ShadowDeploymentDiagram`: Live parallel `FlowDots` fire simultaneously down both branches (Request -> Old model -> User and Request -> New model -> Logged); `PulseRect` pulses both models concurrently.
+6. `ConfigVsHardcodedDiagram`: Autocycles between Hardcoded and Config-driven; highlights environment badges (dev, staging, prod) showing config swapping.
+7. `DependencyPinningDiagram`: Autocycles through Unpinned (Today), Unpinned (3 months later - drifted warning), and Pinned + lockfile.
+8. `NotebookVsPipelineDiagram`: Autocycles between Fragile Notebook issues and Explicit Pipeline module guarantees.
+9. `OnboardingStandardDiagram`: Autocycles through the 5-step onboarding pipeline (clone -> setup -> tests -> lint -> pipeline) with step-by-step progression.
+10. `HyperparameterSweepDiagram`: Autocycles through 20 sweep runs; `Pulse` animates around the active (lr, accuracy) coordinate dot.
+11. `RunComparisonChartDiagram`: Autocycles through runs a, b, and c; `FlowDots` trace along the active run's loss curve trajectory.
+12. `SevenAnswersChecklistDiagram`: Autocycles through the 7 mandatory run-tracking fields.
+13. `FeatureFreshnessDiagram`: Autocycles feature age across 1, 3, 5, 8, 15 minutes, transitioning status from fresh to stale when >5 min.
+14. `LineageChainDiagram`: Autocycles backward through the 4 lineage links (Prediction -> Model version -> Training run -> Data version).
+15. `OfflineVsOnlineStoreDiagram`: Autocycles between Offline store (data lake) and Online store (low-latency KV).
+16. `PromotionWorkflowDiagram`: Autocycles between Manual approval and Automated CI gate with animated Staging -> Production promotion.
+17. `TrainingServingSkewDiagram`: Autocycles between hidden and revealed computation details, exposing subtle window skew.
+18. `FederatedRoundDiagram`: Autocycles through the 4 FederatedAveraging stages: Stage 0 (Distribute) streams parallel `FlowDots` from Server out to all 5 clients; Stage 1 (Local Train) pulses all 5 client nodes; Stage 2 (Upload) streams parallel `FlowDots` from clients back into the Server; Stage 3 (Aggregate) pulses the central Server.
+19. `CudaExecutionHierarchyDiagram`: Autocycles through Kernel -> Grid -> Block -> Warp -> Thread hierarchy.
+20. `CudaStreamsDiagram`: Autocycles between 1 stream and 2 overlapped streams; `PulseRect` highlights the concurrent transfer + compute window.
+21. `FsdpZeroShardingDiagram`: Autocycles through ZeRO stages (Plain DP -> ZeRO-1 -> ZeRO-2 -> ZeRO-3) dynamically showing sharded vs replicated states.
+22. `GpuMemoryHierarchyDiagram`: Autocycles through Registers -> Shared Memory -> Global VRAM.
+23. `MixedPrecisionDiagram`: Autocycles through the 4 training steps (FP32 master -> FP16 forward/backward -> FP16/FP32 gradients -> FP32 optimizer step).
+24. `OccupancyDiagram`: Autocycles register usage per thread across 24..96, dynamically updating resident warp count and occupancy percentage.
+25. `ParallelismStrategiesDiagram`: Autocycles through the 6 parallelism strategies (data, model, pipeline, tensor, fsdp, expert).
+26. `PipelineBubbleDiagram`: Autocycles micro-batch count from 2 to 16, dynamically expanding schedule and shrinking bubble idle time.
+27. `ThreeDParallelismCompositionDiagram`: Autocycles through Tensor (within node) -> Pipeline (across nodes) -> Data (replicated groups).
+28. `WarpDivergenceDiagram`: Autocycles between Uniform branch (1 pass) and Divergent branch (Pass 1 branch A + Pass 2 branch B with masking).
+29. `ImmutableVsConfigMgmtDiagram`: Autocycles between Configuration management and Immutable infrastructure replacement.
+30. `RemoteStateLockingDiagram`: Autocycles between Local state file (race condition) and Remote locked state (DynamoDB lock).
+31. `StateDriftDiagram`: Autocycles between drift detected and terraform apply reconciliation.
+32. `TerraformWorkflowDiagram`: Autocycles through the 4 core steps: Write -> Plan -> Apply -> State updated.
+33. `ClusterArchitectureDiagram`: Autocycles through key components (kubectl, apiserver, scheduler, controller-manager, etcd, kubelet, pod) highlighting the central API server hub architecture.
+34. `GpuSchedulingDiagram`: Autocycles between CPU web service and GPU inference service scale-up characteristics.
+35. `HpaAutoscalingDiagram`: Autocycles load percentage from 60% to 720%, dynamically scaling and illuminating replicas.
+36. `ResourceRequestsLimitsDiagram`: Autocycles memory usage across 350MB, 700MB, 950MB, and 1150MB, dynamically warning and triggering OOM-kill when exceeding limit.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 36 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-4/`.

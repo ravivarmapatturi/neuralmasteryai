@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
+import { FlowDots } from '../primitives/LiveFlow';
 import { getConceptColor } from './diagramSystem';
 
 const RUNS = [
@@ -21,7 +21,8 @@ function lossCurve(finalLoss: number, noise: number) {
  * number. */
 export default function RunComparisonChartDiagram() {
   const t = useVizTokens();
-  const [highlighted, setHighlighted] = useState('c');
+  const { value: activeIndex, pick } = useAutoCycle(RUNS.length, 3400, 2);
+  const highlighted = RUNS[activeIndex].key;
   const width = 480;
   const height = 130;
   const chartTop = 10;
@@ -33,11 +34,11 @@ export default function RunComparisonChartDiagram() {
   return (
     <VisualizationContainer footer={`${RUNS.find((r) => r.key === highlighted)!.label}: converges to ${RUNS.find((r) => r.key === highlighted)!.final.toFixed(2)} final loss. Comparing curves, not just endpoints, shows HOW each run got there -- run-c's high learning rate overshoots before settling, invisible from the final number alone.`}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        {RUNS.map((r) => {
+        {RUNS.map((r, idx) => {
           const c = getConceptColor(t, r.color);
           const isActive = highlighted === r.key;
           return (
-            <div key={r.key} onClick={() => setHighlighted(r.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setHighlighted(r.key); } }} onMouseEnter={() => setHighlighted(r.key)} style={{ cursor: 'pointer', padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: isActive ? 700 : 500, background: isActive ? `${c}20` : t.surfaceAlt, border: `1.25px solid ${isActive ? c : t.border}`, color: isActive ? c : t.textSecondary }}>
+            <div key={r.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer', padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: isActive ? 700 : 500, background: isActive ? `${c}20` : t.surfaceAlt, border: `1.25px solid ${isActive ? c : t.border}`, color: isActive ? c : t.textSecondary, transition: 'all 200ms ease' }}>
               {r.label}
             </div>
           );
@@ -51,7 +52,12 @@ export default function RunComparisonChartDiagram() {
           const isActive = highlighted === r.key;
           const curve = lossCurve(r.final, r.key === 'a' ? 0.5 : r.key === 'b' ? 0.7 : 0.3);
           const path = curve.map((l, i) => `${i === 0 ? 'M' : 'L'} ${xFor(i)},${yFor(l)}`).join(' ');
-          return <path key={r.key} d={path} fill="none" stroke={c} strokeWidth={isActive ? 2.5 : 1.25} opacity={isActive ? 1 : 0.3} />;
+          return (
+            <g key={r.key}>
+              <path d={path} fill="none" stroke={c} strokeWidth={isActive ? 2.5 : 1.25} opacity={isActive ? 1 : 0.3} style={{ transition: 'stroke-width 200ms ease, opacity 200ms ease' }} />
+              {isActive && <FlowDots d={path} color={c} dur={2.2} count={4} r={3} />}
+            </g>
+          );
         })}
         <text x={40} y={chartTop - 2} fontSize={8} fill={t.textMuted}>loss</text>
         <text x={width - 20} y={chartBottom + 14} textAnchor="end" fontSize={8} fill={t.textMuted}>epoch →</text>

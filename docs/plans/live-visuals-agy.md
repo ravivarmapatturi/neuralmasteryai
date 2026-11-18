@@ -109,49 +109,49 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 4
 - `src/content/docs/mlops/deployment-strategies.mdx`
-  - [ ] `src/viz/diagrams/BlueGreenCutoverDiagram.tsx`
-  - [ ] `src/viz/diagrams/CanaryRampDiagram.tsx`
-  - [ ] `src/viz/diagrams/CanaryVsAbPurposeDiagram.tsx`
-  - [ ] `src/viz/diagrams/ComposedStrategyDiagram.tsx`
-  - [ ] `src/viz/diagrams/ShadowDeploymentDiagram.tsx`
+  - [x] `src/viz/diagrams/BlueGreenCutoverDiagram.tsx`
+  - [x] `src/viz/diagrams/CanaryRampDiagram.tsx`
+  - [x] `src/viz/diagrams/CanaryVsAbPurposeDiagram.tsx`
+  - [x] `src/viz/diagrams/ComposedStrategyDiagram.tsx`
+  - [x] `src/viz/diagrams/ShadowDeploymentDiagram.tsx`
 - `src/content/docs/mlops/engineering-foundations.mdx`
-  - [ ] `src/viz/diagrams/ConfigVsHardcodedDiagram.tsx`
-  - [ ] `src/viz/diagrams/DependencyPinningDiagram.tsx`
-  - [ ] `src/viz/diagrams/NotebookVsPipelineDiagram.tsx`
-  - [ ] `src/viz/diagrams/OnboardingStandardDiagram.tsx`
+  - [x] `src/viz/diagrams/ConfigVsHardcodedDiagram.tsx`
+  - [x] `src/viz/diagrams/DependencyPinningDiagram.tsx`
+  - [x] `src/viz/diagrams/NotebookVsPipelineDiagram.tsx`
+  - [x] `src/viz/diagrams/OnboardingStandardDiagram.tsx`
 - `src/content/docs/mlops/experiment-tracking.mdx`
-  - [ ] `src/viz/diagrams/HyperparameterSweepDiagram.tsx`
-  - [ ] `src/viz/diagrams/RunComparisonChartDiagram.tsx`
-  - [ ] `src/viz/diagrams/SevenAnswersChecklistDiagram.tsx`
+  - [x] `src/viz/diagrams/HyperparameterSweepDiagram.tsx`
+  - [x] `src/viz/diagrams/RunComparisonChartDiagram.tsx`
+  - [x] `src/viz/diagrams/SevenAnswersChecklistDiagram.tsx`
 - `src/content/docs/mlops/feature-stores-and-model-registry.mdx`
-  - [ ] `src/viz/diagrams/FeatureFreshnessDiagram.tsx`
-  - [ ] `src/viz/diagrams/LineageChainDiagram.tsx`
-  - [ ] `src/viz/diagrams/OfflineVsOnlineStoreDiagram.tsx`
-  - [ ] `src/viz/diagrams/PromotionWorkflowDiagram.tsx`
-  - [ ] `src/viz/diagrams/TrainingServingSkewDiagram.tsx`
+  - [x] `src/viz/diagrams/FeatureFreshnessDiagram.tsx`
+  - [x] `src/viz/diagrams/LineageChainDiagram.tsx`
+  - [x] `src/viz/diagrams/OfflineVsOnlineStoreDiagram.tsx`
+  - [x] `src/viz/diagrams/PromotionWorkflowDiagram.tsx`
+  - [x] `src/viz/diagrams/TrainingServingSkewDiagram.tsx`
 - `src/content/docs/mlops/federated-learning.mdx`
-  - [ ] `src/viz/diagrams/FederatedRoundDiagram.tsx`
+  - [x] `src/viz/diagrams/FederatedRoundDiagram.tsx`
 - `src/content/docs/mlops/gpu-and-distributed-training.mdx`
-  - [ ] `src/viz/diagrams/CudaExecutionHierarchyDiagram.tsx`
-  - [ ] `src/viz/diagrams/CudaStreamsDiagram.tsx`
-  - [ ] `src/viz/diagrams/FsdpZeroShardingDiagram.tsx`
-  - [ ] `src/viz/diagrams/GpuMemoryHierarchyDiagram.tsx`
-  - [ ] `src/viz/diagrams/MixedPrecisionDiagram.tsx`
-  - [ ] `src/viz/diagrams/OccupancyDiagram.tsx`
-  - [ ] `src/viz/diagrams/ParallelismStrategiesDiagram.tsx`
-  - [ ] `src/viz/diagrams/PipelineBubbleDiagram.tsx`
-  - [ ] `src/viz/diagrams/ThreeDParallelismCompositionDiagram.tsx`
-  - [ ] `src/viz/diagrams/WarpDivergenceDiagram.tsx`
+  - [x] `src/viz/diagrams/CudaExecutionHierarchyDiagram.tsx`
+  - [x] `src/viz/diagrams/CudaStreamsDiagram.tsx`
+  - [x] `src/viz/diagrams/FsdpZeroShardingDiagram.tsx`
+  - [x] `src/viz/diagrams/GpuMemoryHierarchyDiagram.tsx`
+  - [x] `src/viz/diagrams/MixedPrecisionDiagram.tsx`
+  - [x] `src/viz/diagrams/OccupancyDiagram.tsx`
+  - [x] `src/viz/diagrams/ParallelismStrategiesDiagram.tsx`
+  - [x] `src/viz/diagrams/PipelineBubbleDiagram.tsx`
+  - [x] `src/viz/diagrams/ThreeDParallelismCompositionDiagram.tsx`
+  - [x] `src/viz/diagrams/WarpDivergenceDiagram.tsx`
 - `src/content/docs/mlops/infrastructure-as-code.mdx`
-  - [ ] `src/viz/diagrams/ImmutableVsConfigMgmtDiagram.tsx`
-  - [ ] `src/viz/diagrams/RemoteStateLockingDiagram.tsx`
-  - [ ] `src/viz/diagrams/StateDriftDiagram.tsx`
-  - [ ] `src/viz/diagrams/TerraformWorkflowDiagram.tsx`
+  - [x] `src/viz/diagrams/ImmutableVsConfigMgmtDiagram.tsx`
+  - [x] `src/viz/diagrams/RemoteStateLockingDiagram.tsx`
+  - [x] `src/viz/diagrams/StateDriftDiagram.tsx`
+  - [x] `src/viz/diagrams/TerraformWorkflowDiagram.tsx`
 - `src/content/docs/mlops/kubernetes.mdx`
-  - [ ] `src/viz/diagrams/ClusterArchitectureDiagram.tsx`
-  - [ ] `src/viz/diagrams/GpuSchedulingDiagram.tsx`
-  - [ ] `src/viz/diagrams/HpaAutoscalingDiagram.tsx`
-  - [ ] `src/viz/diagrams/ResourceRequestsLimitsDiagram.tsx`
+  - [x] `src/viz/diagrams/ClusterArchitectureDiagram.tsx`
+  - [x] `src/viz/diagrams/GpuSchedulingDiagram.tsx`
+  - [x] `src/viz/diagrams/HpaAutoscalingDiagram.tsx`
+  - [x] `src/viz/diagrams/ResourceRequestsLimitsDiagram.tsx`
 
 ## Batch 5
 - `src/content/docs/mlops/legal-licensing-and-governance.mdx`

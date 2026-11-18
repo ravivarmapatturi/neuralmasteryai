@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const ITEMS = [
@@ -18,17 +17,17 @@ const ITEMS = [
  * answer in 6 months. */
 export default function SevenAnswersChecklistDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('metrics');
+  const { value: activeIndex, pick } = useAutoCycle(ITEMS.length, 2500, 4);
   const color = getConceptColor(t, 'attention');
-  const info = ITEMS.find((i) => i.key === active)!;
+  const info = ITEMS[activeIndex];
 
   return (
     <VisualizationContainer footer={info.desc}>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        {ITEMS.map((item) => {
-          const isActive = active === item.key;
+        {ITEMS.map((item, idx) => {
+          const isActive = activeIndex === idx;
           return (
-            <div key={item.key} onClick={() => setActive(item.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(item.key); } }} onMouseEnter={() => setActive(item.key)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: '0.5rem 0.8rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
+            <div key={item.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: '0.5rem 0.8rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, transition: 'all 200ms ease' }}>
               <span style={{ color, fontSize: 11 }}>✓</span>
               <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{item.label}</span>
             </div>

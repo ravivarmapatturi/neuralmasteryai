@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 interface Dep {
@@ -17,8 +16,10 @@ const DEPS: Dep[] = [
 
 export default function DependencyPinningDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'unpinned' | 'pinned'>('unpinned');
-  const [later, setLater] = useState(false);
+  // 0: unpinned today, 1: unpinned 3 months later, 2: pinned + lockfile
+  const { value, pick } = useAutoCycle(3, 3500, 1);
+  const mode = value === 2 ? 'pinned' : 'unpinned';
+  const later = value === 1;
   const okColor = getConceptColor(t, 'attention');
   const warnColor = t.accentDanger;
 
@@ -33,17 +34,15 @@ export default function DependencyPinningDiagram() {
       }
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <VizButton variant={mode === 'unpinned' ? 'primary' : 'secondary'} onClick={() => setMode('unpinned')}>
-          Unpinned ranges
+        <VizButton variant={mode === 'unpinned' && !later ? 'primary' : 'secondary'} onClick={() => pick(0)}>
+          Unpinned (Today)
         </VizButton>
-        <VizButton variant={mode === 'pinned' ? 'primary' : 'secondary'} onClick={() => setMode('pinned')}>
-          Pinned + lockfile
+        <VizButton variant={mode === 'unpinned' && later ? 'primary' : 'secondary'} onClick={() => pick(1)}>
+          Unpinned (3 months later ⚠)
         </VizButton>
-        {mode === 'unpinned' && (
-          <VizButton variant={later ? 'primary' : 'secondary'} onClick={() => setLater((v) => !v)}>
-            {later ? '↺ Today' : '3 months later →'}
-          </VizButton>
-        )}
+        <VizButton variant={mode === 'pinned' ? 'primary' : 'secondary'} onClick={() => pick(2)}>
+          Pinned + lockfile (Deterministic ✓)
+        </VizButton>
       </div>
       <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
         <thead>
@@ -61,8 +60,8 @@ export default function DependencyPinningDiagram() {
                 <td style={{ padding: '6px 10px', borderBottom: `1px solid ${t.border}`, fontFamily: 'monospace', color: d.direct ? t.textPrimary : t.textMuted }}>
                   {d.direct ? d.name : `  ↳ ${d.name}`}
                 </td>
-                <td style={{ padding: '6px 10px', borderBottom: `1px solid ${t.border}`, fontFamily: 'monospace', fontWeight: drifted ? 700 : 400, color: drifted ? warnColor : okColor }}>
-                  {version}
+                <td style={{ padding: '6px 10px', borderBottom: `1px solid ${t.border}`, fontFamily: 'monospace', fontWeight: drifted ? 700 : 400, color: drifted ? warnColor : okColor, transition: 'color 300ms ease' }}>
+                  {version} {drifted && '(DRIFTED!)'}
                 </td>
               </tr>
             );

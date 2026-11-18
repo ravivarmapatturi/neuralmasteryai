@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
+import { FlowDots, line } from '../primitives/LiveFlow';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STAGES = [
@@ -13,7 +13,7 @@ const STAGES = [
  * stage in the actual real-world composition. */
 export default function ComposedStrategyDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState(1);
+  const { value: active, pick } = useAutoCycle(STAGES.length, 3200, 1);
   const color = getConceptColor(t, 'attention');
   const width = 480;
   const y = 40;
@@ -29,10 +29,19 @@ export default function ComposedStrategyDiagram() {
         {STAGES.map((s, i) => {
           const x = 70 + i * 170;
           const isActive = active === i;
+          const prevX = 70 + (i - 1) * 170 + 55;
+          const currLeft = x - 55;
           return (
             <g key={s.label}>
-              {i > 0 && <line x1={70 + (i - 1) * 170 + 55} y1={y} x2={x - 55} y2={y} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#comp-arrow)" />}
-              <g onClick={() => setActive(i)} onMouseEnter={() => setActive(i)} style={{ cursor: 'pointer' }}>
+              {i > 0 && (
+                <>
+                  <line x1={prevX} y1={y} x2={currLeft} y2={y} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#comp-arrow)" />
+                  {active === i && (
+                    <FlowDots d={line(prevX, y, currLeft, y)} color={color} dur={1.2} count={3} r={2.5} />
+                  )}
+                </>
+              )}
+              <g onClick={() => pick(i)} onMouseEnter={() => pick(i)} style={{ cursor: 'pointer' }}>
                 <rect x={x - 55} y={y - 18} width={110} height={36} rx={8} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
                 <text x={x} y={y + 4} textAnchor="middle" fontSize={11} fontWeight={isActive ? 700 : 500} fill={color}>{s.label}</text>
               </g>

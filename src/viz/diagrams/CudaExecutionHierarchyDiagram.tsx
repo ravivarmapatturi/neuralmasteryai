@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Level = 'kernel' | 'grid' | 'block' | 'warp' | 'thread';
@@ -16,23 +15,23 @@ const LEVELS: { key: Level; label: string; desc: string }[] = [
  * to the SMs actually doing the work. */
 export default function CudaExecutionHierarchyDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<Level>('warp');
+  const { value: activeIndex, pick } = useAutoCycle(LEVELS.length, 2600, 3);
   const color = getConceptColor(t, 'attention');
-  const info = LEVELS.find((l) => l.key === active)!;
+  const info = LEVELS[activeIndex];
 
   return (
     <VisualizationContainer footer={info.desc}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {LEVELS.map((l, i) => {
-          const isActive = active === l.key;
+          const isActive = activeIndex === i;
           return (
             <div key={l.key} style={{ marginLeft: i * 18 }}>
               <div
-                onClick={() => setActive(l.key)}
-                onMouseEnter={() => setActive(l.key)}
-                style={{ display: 'inline-block', cursor: 'pointer', padding: '5px 12px', borderRadius: 6, fontSize: 11.5, fontWeight: isActive ? 700 : 500, background: isActive ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${isActive ? color : t.border}`, color: isActive ? color : t.textSecondary }}
+                onClick={() => pick(i)}
+                onMouseEnter={() => pick(i)}
+                style={{ display: 'inline-block', cursor: 'pointer', padding: '5px 12px', borderRadius: 6, fontSize: 11.5, fontWeight: isActive ? 700 : 500, background: isActive ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${isActive ? color : t.border}`, color: isActive ? color : t.textSecondary, transition: 'all 200ms ease' }}
               >
-                {l.label}
+                {isActive ? `▶ ${l.label}` : l.label}
               </div>
             </div>
           );

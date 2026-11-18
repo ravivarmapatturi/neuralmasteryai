@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { ArrowMarker, FlowArrow, RectNode, edgeToEdge, type Box } from './architectureShapes';
 
@@ -32,6 +31,8 @@ const NODE_COMPONENT_DETAILS: Record<'kubelet' | 'runtime' | 'kube-proxy', strin
   'kube-proxy': 'Maintains the network rules on this node that implement Service routing -- the reason a Service address reaches whichever Pod is actually behind it right now.',
 };
 
+const CYCLE_COMPONENTS = ['kubectl', 'apiserver', 'scheduler', 'controller-manager', 'etcd', 'kubelet', 'pod'];
+
 /** The real cluster topology: kube-apiserver as a hub every other
  * control-plane component and every node's kubelet connects through
  * (never a left-to-right chain), a real 5th control-plane component
@@ -40,7 +41,8 @@ const NODE_COMPONENT_DETAILS: Record<'kubelet' | 'runtime' | 'kube-proxy', strin
  * reference architecture diagram. Click any component for what it does. */
 export default function ClusterArchitectureDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('apiserver');
+  const { value: selIdx, pick } = useAutoCycle(CYCLE_COMPONENTS.length, 3000, 1);
+  const selected = CYCLE_COMPONENTS[selIdx];
   const controlColor = t.accentSecondary;
   const workerColor = t.accentPrimary;
   const podColor = t.accentWarn;
@@ -65,7 +67,7 @@ export default function ClusterArchitectureDiagram() {
         </defs>
 
         {/* kubectl -> apiserver */}
-        <g onClick={() => setSelected('kubectl')} style={{ cursor: 'pointer' }}>
+        <g onClick={() => pick(CYCLE_COMPONENTS.indexOf('kubectl'))} style={{ cursor: 'pointer' }}>
           <RectNode t={t} x={165} y={8} width={130} height={26} label="kubectl" color={kubectlColor} strokeWidth={selected === 'kubectl' ? 2.5 : 1.5} />
         </g>
         <FlowArrow x1={230} y1={34} x2={230} y2={96} color={t.textMuted} markerId="cluster-arrow" />
@@ -84,7 +86,7 @@ export default function ClusterArchitectureDiagram() {
         })}
 
         {CONTROL.map((c) => (
-          <g key={c.id} onClick={() => setSelected(c.id)} style={{ cursor: 'pointer' }}>
+          <g key={c.id} onClick={() => { const idx = CYCLE_COMPONENTS.indexOf(c.id); if (idx !== -1) pick(idx); }} style={{ cursor: 'pointer' }}>
             <RectNode t={t} x={c.x} y={c.y} width={c.w} height={c.h} label={c.label} sublabel={c.sublabel} color={controlColor} strokeWidth={selected === c.id ? 2.5 : 1.5} />
           </g>
         ))}
@@ -97,9 +99,7 @@ export default function ClusterArchitectureDiagram() {
               Worker Node {ni + 1}
             </text>
 
-            {/* apiserver -> this node's kubelet -- clipped at both boxes' own edges,
-                so the two arrows fan out toward their own node instead of crossing
-                in an X, and neither end draws through a label */}
+            {/* apiserver -> this node's kubelet -- clipped at both boxes' own edges */}
             {(() => {
               const kubeletBox: Box = { x: nx + 15, y: NODE_Y + 42, w: NODE_W - 30, h: 26 };
               const { from, to } = edgeToEdge(apiserverBox, kubeletBox);
@@ -107,19 +107,19 @@ export default function ClusterArchitectureDiagram() {
             })()}
 
             {/* Pods running on this node -- the actual point of the system */}
-            <g onClick={() => setSelected('pod')} style={{ cursor: 'pointer' }}>
+            <g onClick={() => pick(CYCLE_COMPONENTS.indexOf('pod'))} style={{ cursor: 'pointer' }}>
               <RectNode t={t} x={nx + 12} y={NODE_Y + 10} width={80} height={22} label="Pod" color={podColor} strokeWidth={selected === 'pod' ? 2.5 : 1.5} />
               <RectNode t={t} x={nx + NODE_W - 92} y={NODE_Y + 10} width={80} height={22} label="Pod" color={podColor} strokeWidth={selected === 'pod' ? 2.5 : 1.5} />
             </g>
 
-            <g onClick={() => setSelected('kubelet')} style={{ cursor: 'pointer' }}>
+            <g onClick={() => pick(CYCLE_COMPONENTS.indexOf('kubelet'))} style={{ cursor: 'pointer' }}>
               <RectNode t={t} x={nx + 15} y={NODE_Y + 42} width={NODE_W - 30} height={26} label="kubelet" color={workerColor} strokeWidth={selected === 'kubelet' ? 2.5 : 1.5} />
             </g>
             <FlowArrow x1={nx + NODE_W / 2} y1={NODE_Y + 68} x2={nx + NODE_W / 2} y2={NODE_Y + 74} color={t.textMuted} markerId="cluster-arrow" />
-            <g onClick={() => setSelected('runtime')} style={{ cursor: 'pointer' }}>
+            <g onClick={() => pick(CYCLE_COMPONENTS.indexOf('kubelet'))} style={{ cursor: 'pointer' }}>
               <RectNode t={t} x={nx + 15} y={NODE_Y + 74} width={(NODE_W - 40) / 2} height={26} label="Runtime" color={workerColor} strokeWidth={selected === 'runtime' ? 2.5 : 1.5} />
             </g>
-            <g onClick={() => setSelected('kube-proxy')} style={{ cursor: 'pointer' }}>
+            <g onClick={() => pick(CYCLE_COMPONENTS.indexOf('kubelet'))} style={{ cursor: 'pointer' }}>
               <RectNode t={t} x={nx + 25 + (NODE_W - 40) / 2} y={NODE_Y + 74} width={(NODE_W - 40) / 2} height={26} label="kube-proxy" color={workerColor} strokeWidth={selected === 'kube-proxy' ? 2.5 : 1.5} />
             </g>
           </g>

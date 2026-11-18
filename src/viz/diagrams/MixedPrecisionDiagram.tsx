@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STAGES = [
@@ -14,21 +13,21 @@ const STAGES = [
  * stage to see why THAT part needs the precision it uses. */
 export default function MixedPrecisionDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('forward');
+  const { value: activeIndex, pick } = useAutoCycle(STAGES.length, 2600, 1);
   const fp32Color = getConceptColor(t, 'query');
   const fp16Color = getConceptColor(t, 'attention');
-  const info = STAGES.find((s) => s.key === active)!;
+  const info = STAGES[activeIndex];
 
   return (
     <VisualizationContainer footer={info.desc}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {STAGES.map((s) => {
-          const isSelected = active === s.key;
+        {STAGES.map((s, idx) => {
+          const isSelected = activeIndex === idx;
           const color = s.precision === 'fp32' ? fp32Color : s.precision.includes('16') && !s.precision.includes('32') ? fp16Color : t.accentWarn;
           return (
-            <div key={s.key} onClick={() => setActive(s.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(s.key); } }} onMouseEnter={() => setActive(s.key)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.8rem', borderRadius: 7, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}>
-              <span style={{ fontSize: 12, fontWeight: isSelected ? 700 : 500, color: isSelected ? color : t.textPrimary }}>{s.label}</span>
-              <span style={{ fontSize: 10.5, fontFamily: 'monospace', color }}>{s.precision}</span>
+            <div key={s.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.8rem', borderRadius: 7, background: isSelected ? `${color}20` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}`, transition: 'all 200ms ease' }}>
+              <span style={{ fontSize: 12, fontWeight: isSelected ? 700 : 500, color: isSelected ? color : t.textPrimary }}>{isSelected ? `▶ ${s.label}` : s.label}</span>
+              <span style={{ fontSize: 10.5, fontFamily: 'monospace', color, fontWeight: isSelected ? 700 : 500 }}>{s.precision}</span>
             </div>
           );
         })}

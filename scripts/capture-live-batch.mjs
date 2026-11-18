@@ -210,6 +210,84 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  4: [
+    {
+      route: '/docs/mlops/deployment-strategies',
+      diagrams: [
+        { name: 'BlueGreenCutoverDiagram', match: 'Router (100%)' },
+        { name: 'CanaryRampDiagram', match: 'canary' },
+        { name: 'CanaryVsAbPurposeDiagram', match: 'rollout safety' },
+        { name: 'ComposedStrategyDiagram', match: 'Shadow' },
+        { name: 'ShadowDeploymentDiagram', match: 'Old model' },
+      ],
+    },
+    {
+      route: '/docs/mlops/engineering-foundations',
+      diagrams: [
+        { name: 'ConfigVsHardcodedDiagram', match: 'Config-driven' },
+        { name: 'DependencyPinningDiagram', match: 'Pinned + lockfile' },
+        { name: 'NotebookVsPipelineDiagram', match: 'Explicit pipeline module' },
+        { name: 'OnboardingStandardDiagram', match: 'git clone' },
+      ],
+    },
+    {
+      route: '/docs/mlops/experiment-tracking',
+      diagrams: [
+        { name: 'HyperparameterSweepDiagram', match: 'learning rate (log scale)' },
+        { name: 'RunComparisonChartDiagram', match: 'run-a (lr=0.01)' },
+        { name: 'SevenAnswersChecklistDiagram', match: 'Code' },
+      ],
+    },
+    {
+      route: '/docs/mlops/feature-stores-and-model-registry',
+      diagrams: [
+        { name: 'FeatureFreshnessDiagram', match: 'Feature age' },
+        { name: 'LineageChainDiagram', match: 'Model version' },
+        { name: 'OfflineVsOnlineStoreDiagram', match: 'Offline store' },
+        { name: 'PromotionWorkflowDiagram', match: 'Promotion gate' },
+        { name: 'TrainingServingSkewDiagram', match: 'Training (batch, Python)' },
+      ],
+    },
+    {
+      route: '/docs/mlops/federated-learning',
+      diagrams: [
+        { name: 'FederatedRoundDiagram', match: 'Distribute' },
+      ],
+    },
+    {
+      route: '/docs/mlops/gpu-and-distributed-training',
+      diagrams: [
+        { name: 'CudaExecutionHierarchyDiagram', match: 'Thread block' },
+        { name: 'CudaStreamsDiagram', match: 'Streams' },
+        { name: 'FsdpZeroShardingDiagram', match: 'Plain DP' },
+        { name: 'GpuMemoryHierarchyDiagram', match: 'Registers' },
+        { name: 'MixedPrecisionDiagram', match: 'FP32 master weights' },
+        { name: 'OccupancyDiagram', match: 'Registers used per thread' },
+        { name: 'ParallelismStrategiesDiagram', match: 'Data parallelism' },
+        { name: 'PipelineBubbleDiagram', match: 'Micro-batches' },
+        { name: 'ThreeDParallelismCompositionDiagram', match: 'DATA PARALLEL' },
+        { name: 'WarpDivergenceDiagram', match: 'branch A' },
+      ],
+    },
+    {
+      route: '/docs/mlops/infrastructure-as-code',
+      diagrams: [
+        { name: 'ImmutableVsConfigMgmtDiagram', match: 'Immutable infrastructure' },
+        { name: 'RemoteStateLockingDiagram', match: 'terraform apply' },
+        { name: 'StateDriftDiagram', match: 'eks_cluster' },
+        { name: 'TerraformWorkflowDiagram', match: 'terraform plan' },
+      ],
+    },
+    {
+      route: '/docs/mlops/kubernetes',
+      diagrams: [
+        { name: 'ClusterArchitectureDiagram', match: 'kube-apiserver' },
+        { name: 'GpuSchedulingDiagram', match: 'Node type' },
+        { name: 'HpaAutoscalingDiagram', match: 'Observed load' },
+        { name: 'ResourceRequestsLimitsDiagram', match: 'Actual memory usage' },
+      ],
+    },
+  ],
 };
 
 async function main() {

@@ -1,5 +1,6 @@
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
+import { FlowDots, PulseRect, line } from '../primitives/LiveFlow';
 import { getConceptColor } from './diagramSystem';
 
 /** Every request hits BOTH models -- only the old model's response ever
@@ -20,19 +21,29 @@ export default function ShadowDeploymentDiagram() {
         <rect x={10} y={50} width={70} height={30} rx={6} fill={t.surfaceAlt} stroke={t.textPrimary} strokeWidth={1.5} />
         <text x={45} y={69} textAnchor="middle" fontSize={9} fill={t.textPrimary}>Request</text>
 
+        {/* Parallel branches from Request to both models */}
         <line x1={80} y1={55} x2={154} y2={27} stroke={oldColor} strokeWidth={2} markerEnd="url(#shadow-arrow-old)" />
         <line x1={80} y1={75} x2={154} y2={98} stroke={newColor} strokeWidth={2} markerEnd="url(#shadow-arrow-new)" />
 
+        <FlowDots d={line(80, 55, 154, 27)} color={oldColor} dur={1.6} count={2} r={2.5} />
+        <FlowDots d={line(80, 75, 154, 98)} color={newColor} dur={1.6} count={2} r={2.5} />
+
         <rect x={160} y={8} width={90} height={30} rx={6} fill={`${oldColor}20`} stroke={oldColor} strokeWidth={1.5} />
         <text x={205} y={27} textAnchor="middle" fontSize={9} fill={oldColor}>Old model</text>
+        <PulseRect x={160} y={8} w={90} h={30} color={oldColor} dur={2.4} />
+
         <rect x={160} y={85} width={90} height={30} rx={6} fill={`${newColor}20`} stroke={newColor} strokeWidth={1.5} />
         <text x={205} y={104} textAnchor="middle" fontSize={9} fill={newColor}>New model</text>
+        <PulseRect x={160} y={85} w={90} h={30} color={newColor} dur={2.4} />
 
+        {/* Responses: Old model to user, New model to log */}
         <line x1={250} y1={23} x2={330} y2={23} stroke={oldColor} strokeWidth={2} markerEnd="url(#shadow-arrow-old)" />
+        <FlowDots d={line(250, 23, 330, 23)} color={oldColor} dur={1.6} count={2} r={2.5} delay={0.8} />
         <text x={290} y={16} textAnchor="middle" fontSize={7.5} fill={oldColor}>returned to user</text>
         <text x={346} y={27} fontSize={9} fill={t.accentPrimary} fontWeight={700}>User</text>
 
         <line x1={250} y1={100} x2={295} y2={100} stroke={newColor} strokeWidth={1.5} strokeDasharray="3 2" markerEnd="url(#shadow-arrow-new)" />
+        <FlowDots d={line(250, 100, 295, 100)} color={newColor} dur={1.6} count={2} r={2} delay={0.8} />
         <text x={309} y={104} fontSize={8} fill={newColor}>logged only</text>
       </svg>
     </VisualizationContainer>

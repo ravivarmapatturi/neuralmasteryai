@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Strategy = 'data' | 'model' | 'pipeline' | 'tensor' | 'fsdp' | 'expert';
@@ -17,19 +16,19 @@ const STRATEGIES: { key: Strategy; label: string; whatSplits: string; desc: stri
  * click one for the specific thing it divides. */
 export default function ParallelismStrategiesDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<Strategy>('tensor');
+  const { value: activeIndex, pick } = useAutoCycle(STRATEGIES.length, 2600, 3);
   const color = getConceptColor(t, 'attention');
-  const active = STRATEGIES.find((s) => s.key === selected)!;
+  const active = STRATEGIES[activeIndex];
 
   return (
     <VisualizationContainer footer={active.desc}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {STRATEGIES.map((s) => {
-          const isSelected = selected === s.key;
+        {STRATEGIES.map((s, idx) => {
+          const isSelected = activeIndex === idx;
           return (
-            <div key={s.key} onClick={() => setSelected(s.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(s.key); } }} onMouseEnter={() => setSelected(s.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 7, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}`, display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, fontWeight: isSelected ? 700 : 500, color: isSelected ? color : t.textPrimary }}>{s.label}</span>
-              <span style={{ fontSize: 10, color: t.textMuted, fontStyle: 'italic' }}>splits {s.whatSplits}</span>
+            <div key={s.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 7, background: isSelected ? `${color}20` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}`, display: 'flex', justifyContent: 'space-between', transition: 'all 200ms ease' }}>
+              <span style={{ fontSize: 12, fontWeight: isSelected ? 700 : 500, color: isSelected ? color : t.textPrimary }}>{isSelected ? `▶ ${s.label}` : s.label}</span>
+              <span style={{ fontSize: 10, color: isSelected ? color : t.textMuted, fontStyle: 'italic', fontWeight: isSelected ? 600 : 400 }}>splits {s.whatSplits}</span>
             </div>
           );
         })}

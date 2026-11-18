@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const TIERS = [
@@ -17,20 +16,20 @@ function Dots({ n, color, t }: { n: number; color: string; t: ReturnType<typeof 
  * one level down -- click a tier. */
 export default function GpuMemoryHierarchyDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('shared');
+  const { value: activeIndex, pick } = useAutoCycle(TIERS.length, 2800, 1);
   const color = getConceptColor(t, 'attention');
-  const active = TIERS.find((tier) => tier.key === selected)!;
+  const active = TIERS[activeIndex];
 
   return (
     <VisualizationContainer footer={active.desc}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {TIERS.map((tier) => {
-          const isSelected = selected === tier.key;
+        {TIERS.map((tier, idx) => {
+          const isSelected = activeIndex === idx;
           return (
-            <div key={tier.key} onClick={() => setSelected(tier.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(tier.key); } }} onMouseEnter={() => setSelected(tier.key)} style={{ cursor: 'pointer', padding: '0.6rem 0.85rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}>
+            <div key={tier.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer', padding: '0.6rem 0.85rem', borderRadius: 8, background: isSelected ? `${color}20` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}`, transition: 'all 200ms ease' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700, fontSize: 12.5, color: isSelected ? color : t.textPrimary }}>{tier.label}</span>
-                <span style={{ fontSize: 9, color: t.textMuted }}>{tier.scope}</span>
+                <span style={{ fontWeight: 700, fontSize: 12.5, color: isSelected ? color : t.textPrimary }}>{isSelected ? `▶ ${tier.label}` : tier.label}</span>
+                <span style={{ fontSize: 9, color: isSelected ? color : t.textMuted }}>{tier.scope}</span>
               </div>
               <div style={{ display: 'flex', gap: 14, marginTop: 5, fontSize: 9.5, color: t.textMuted }}>
                 <span>speed <Dots n={tier.speed} color={color} t={t} /></span>
