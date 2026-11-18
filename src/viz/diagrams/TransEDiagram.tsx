@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { addVec, dist, type Vec2 } from '../lib/graphml';
 
@@ -18,7 +18,9 @@ const CANDIDATES: { name: string; pos: Vec2 }[] = [
 
 export default function TransEDiagram() {
   const t = useVizTokens();
-  const [candidateIdx, setCandidateIdx] = useState(0);
+  const { value: autoIdx } = useAutoCycle(CANDIDATES.length, 3000);
+  const [userCandidateIdx, setUserCandidateIdx] = useState<number | null>(null);
+  const candidateIdx = userCandidateIdx ?? autoIdx;
 
   const predicted = addVec(SUBJECT, RELATION);
   const ranked = CANDIDATES.map((c) => ({ ...c, distance: dist(predicted, c.pos) })).sort((a, b) => a.distance - b.distance);
@@ -35,7 +37,7 @@ export default function TransEDiagram() {
 
   return (
     <VisualizationContainer footer={`embedding(Curie) + embedding(born_in) lands at (${predicted.x}, ${predicted.y}). Distance to "${active.name}" = ${activeDist.toFixed(1)}. Ranked by real distance, closest first: ${ranked.map((r) => `${r.name} (${r.distance.toFixed(1)})`).join(' < ')} -- TransE predicts whichever candidate lands closest as the most plausible missing fact.`}>
-      <PillSelect label="Candidate object" value={candidateIdx} onChange={(v) => setCandidateIdx(v as number)} options={CANDIDATES.map((c, i) => ({ value: i, label: c.name }))} />
+      <PillSelect label="Candidate object" value={candidateIdx} onChange={(v) => setUserCandidateIdx(v as number)} options={CANDIDATES.map((c, i) => ({ value: i, label: c.name }))} />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8, maxWidth: 320, margin: '8px auto 0' }}>
         <defs>

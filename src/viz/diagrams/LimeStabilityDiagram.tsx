@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { fitLocalLinear, offsetsFromSeed } from '../lib/interpretability';
 
@@ -21,7 +21,10 @@ function analyticGradient(x: number, y: number, r = 1.5, k = 3) {
 
 export default function LimeStabilityDiagram() {
   const t = useVizTokens();
-  const [nSamples, setNSamples] = useState<14 | 60>(14);
+  const SAMPLE_OPTIONS: (14 | 60)[] = [14, 60];
+  const { value: autoIdx } = useAutoCycle(SAMPLE_OPTIONS.length, 2800);
+  const [userSamples, setUserSamples] = useState<14 | 60 | null>(null);
+  const nSamples = userSamples ?? SAMPLE_OPTIONS[autoIdx];
 
   const runs = useMemo(
     () => SEEDS.map((seed) => {
@@ -46,7 +49,7 @@ export default function LimeStabilityDiagram() {
     <VisualizationContainer footer={`Five LIME runs, same instance, same kernel — only the random perturbation sample differs. With ${nSamples} samples, the fitted coefficients scatter ${nSamples === 14 ? 'visibly' : 'much less'} around the true local gradient (dashed). SHAP's Shapley-value computation has no such sampling noise for a fixed model + coalition structure.`}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
         {[14, 60].map((n) => (
-          <button key={n} type="button" onClick={() => setNSamples(n as 14 | 60)} style={{
+          <button key={n} type="button" onClick={() => setUserSamples(n as 14 | 60)} style={{
             padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
             border: `1px solid ${nSamples === n ? t.accentPrimary : t.border}`,
             background: nSamples === n ? t.accentPrimary : 'transparent',

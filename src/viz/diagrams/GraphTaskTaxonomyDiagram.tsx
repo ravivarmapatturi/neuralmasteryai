@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { GRAPH_NODES, GRAPH_EDGES, adjacencyList, commonNeighbors, meanAgg } from '../lib/graphml';
 
@@ -9,7 +9,10 @@ const ADJ = adjacencyList(GRAPH_EDGES, 5);
 
 export default function GraphTaskTaxonomyDiagram() {
   const t = useVizTokens();
-  const [task, setTask] = useState<Task>('node');
+  const TASKS: Task[] = ['node', 'link', 'graph'];
+  const { value: autoIdx } = useAutoCycle(TASKS.length, 3200);
+  const [userTask, setUserTask] = useState<Task | null>(null);
+  const task = userTask ?? TASKS[autoIdx];
 
   const nodeTarget = 2;
   const neighborAvg = meanAgg(ADJ[nodeTarget].map((n) => GRAPH_NODES[n].feature));
@@ -27,7 +30,7 @@ export default function GraphTaskTaxonomyDiagram() {
         ? `Will nodes ${linkPair[0]} and ${linkPair[1]} connect? They share ${shared.length} common neighbor${shared.length === 1 ? '' : 's'} (node ${shared.join(', ')}) -- a real, simple link-prediction heuristic: more shared neighbors, more plausible edge.`
         : `Pool every node's feature into one whole-graph representation -- mean = ${graphMean.toFixed(3)}. A graph-level classifier (e.g. "is this molecule toxic") reads only this one pooled number, never individual nodes.`
     }>
-      <PillSelect label="Task" value={task} onChange={(v) => setTask(v as Task)} options={[
+      <PillSelect label="Task" value={task} onChange={(v) => setUserTask(v as Task)} options={[
         { value: 'node', label: 'Node classification' },
         { value: 'link', label: 'Link prediction' },
         { value: 'graph', label: 'Graph classification' },

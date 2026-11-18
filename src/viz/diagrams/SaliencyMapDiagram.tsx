@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 import { saliencyVsIG } from '../lib/deepInterp';
 
@@ -44,13 +44,41 @@ function Grid({ data, maxAbs, size = 68 }: { data: number[][]; maxAbs: number; s
   );
 }
 
+const SCALES = [1.0, 0.4, 1.6];
+
 export default function SaliencyMapDiagram() {
   const t = useVizTokens();
-  const { raw, integrated, scoreAtInput, G } = useMemo(() => saliencyVsIG(W, X), []);
+  const { value: autoIdx } = useAutoCycle(SCALES.length, 3000);
+  const [userScale, setUserScale] = useState<number | null>(null);
+  const scale = userScale ?? SCALES[autoIdx];
+
+  const scaledX = useMemo(() => X.map((row) => row.map((v) => Math.min(1, Math.max(0, v * scale)))), [scale]);
+  const { raw, integrated, scoreAtInput, G } = useMemo(() => saliencyVsIG(W, scaledX), [scaledX]);
   const maxAbs = Math.max(...raw.flat().map(Math.abs), ...integrated.flat().map(Math.abs), 1e-6);
 
   return (
     <VisualizationContainer footer={`The model's score at the actual input is ${scoreAtInput.toFixed(6)} -- essentially saturated at 1. Raw gradients (left) inherit that saturation and go nearly flat everywhere, real numbers, not a rounding artifact. Integrated Gradients (right) instead averages the gradient along the whole path from a blank baseline, where the model isn't saturated yet (mean unsaturation factor ${G.toFixed(3)}), and recovers the true center-vs-border-vs-irrelevant-bright-pixel structure.`}>
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 8 }}>
+        {SCALES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setUserScale(s)}
+            style={{
+              padding: '3px 8px',
+              borderRadius: 4,
+              fontSize: 10,
+              fontWeight: 600,
+              cursor: 'pointer',
+              border: `1px solid ${scale === s ? t.accentPrimary : t.border}`,
+              background: scale === s ? `${t.accentPrimary}20` : 'transparent',
+              color: scale === s ? t.accentPrimary : t.textSecondary,
+            }}
+          >
+            Scale {s}x
+          </button>
+        ))}
+      </div>
       <div style={{ display: 'flex', gap: 28, justifyContent: 'center', flexWrap: 'wrap' }}>
         <div>
           <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.label.size, fontWeight: 700, color: t.textSecondary, marginBottom: 6 }}>Raw gradient saliency</div>

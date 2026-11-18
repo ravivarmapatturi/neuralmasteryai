@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -45,7 +45,9 @@ function computeReduction(s: SplitNode) {
 
 export default function TreeImportanceDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<string | null>(null);
+  const { value: autoIdx } = useAutoCycle(SPLITS.length, 2500);
+  const [userActive, setUserActive] = useState<string | null>(null);
+  const active = userActive ?? SPLITS[autoIdx].id;
 
   const results = SPLITS.map((s) => ({ ...s, ...computeReduction(s) }));
   const raw: Record<string, number> = {};
@@ -89,7 +91,7 @@ export default function TreeImportanceDiagram() {
           const isActive = active === r.id;
           const color = colors[r.feature];
           return (
-            <g key={r.id} onClick={() => setActive(isActive ? null : r.id)} style={{ cursor: 'pointer' }}>
+            <g key={r.id} onClick={() => setUserActive(isActive ? null : r.id)} style={{ cursor: 'pointer' }}>
               <rect x={pos.x - 70} y={pos.y - 20} width={140} height={40} rx={DIAGRAM_RADIUS.node} fill={isActive ? `${color}22` : t.surfaceAlt} stroke="none" />
               <SketchRect x={pos.x - 70} y={pos.y - 20} width={140} height={40} color={color} strokeWidth={isActive ? 2.5 : 1.5} id={`tree-node-${r.id}`} />
               <text x={pos.x} y={pos.y - 3} textAnchor="middle" fontSize={12} fontWeight={700} fontFamily="monospace" fill={color}>{r.feature}</text>

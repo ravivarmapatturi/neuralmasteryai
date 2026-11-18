@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generateProbeLayer, fitLogisticProbe } from '../lib/deepInterp';
 
@@ -17,7 +17,9 @@ const LAYERS = [
 
 export default function ProbingClassifierDiagram() {
   const t = useVizTokens();
-  const [layerIdx, setLayerIdx] = useState(2);
+  const { value: autoIdx } = useAutoCycle(LAYERS.length, 3000);
+  const [userLayerIdx, setUserLayerIdx] = useState<number | null>(null);
+  const layerIdx = userLayerIdx ?? autoIdx;
 
   const results = useMemo(() => LAYERS.map((l) => {
     const points = generateProbeLayer(l.seed, l.separation);
@@ -39,7 +41,7 @@ export default function ProbingClassifierDiagram() {
 
   return (
     <VisualizationContainer footer={`A real linear probe fit to this layer's activations reaches ${(active.probe.accuracy * 100).toFixed(0)}% accuracy at predicting the property -- not asserted, computed from the actual fitted line's predictions on every point shown.`}>
-      <PillSelect label="Probe this layer" value={layerIdx} onChange={(v) => setLayerIdx(v as number)} options={LAYERS.map((l, i) => ({ value: i, label: l.name }))} />
+      <PillSelect label="Probe this layer" value={layerIdx} onChange={(v) => setUserLayerIdx(v as number)} options={LAYERS.map((l, i) => ({ value: i, label: l.name }))} />
 
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start', marginTop: 8 }}>
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ flexShrink: 0 }}>

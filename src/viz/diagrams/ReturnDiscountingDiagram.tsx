@@ -1,15 +1,19 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, VisualizationMath } from '../primitives';
+import { VisualizationContainer, Slider, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 // A sparse reward sequence -- mostly 0, one useful reward at t=3, a bigger
 // one far off at t=8. Real stand-in for "reward now vs. reward later."
 const REWARDS = [0, 0, 0, 3, 0, 0, 0, 0, 8, 0];
 
+const GAMMA_PRESETS = [0.3, 0.6, 0.85, 0.98];
+
 export default function ReturnDiscountingDiagram() {
   const t = useVizTokens();
-  const [gamma, setGamma] = useState(0.9);
+  const { value: autoIdx } = useAutoCycle(GAMMA_PRESETS.length, 2800);
+  const [userGamma, setUserGamma] = useState<number | null>(null);
+  const gamma = userGamma ?? GAMMA_PRESETS[autoIdx];
 
   const terms = useMemo(() => REWARDS.map((r, k) => ({ k, r, weighted: Math.pow(gamma, k) * r, discount: Math.pow(gamma, k) })), [gamma]);
   const G = terms.reduce((s, term) => s + term.weighted, 0);
@@ -18,7 +22,7 @@ export default function ReturnDiscountingDiagram() {
 
   return (
     <VisualizationContainer footer={`G_0 = Σ γ^k · r_k = ${G.toFixed(3)}, real sum of the bars below. At γ=${gamma.toFixed(2)}, a reward's weight halves roughly every ${Number.isFinite(halfLife) ? halfLife.toFixed(1) : '∞'} steps -- that's the concrete "effective horizon" γ controls, not just an abstract discount.`}>
-      <Slider label="discount factor γ" value={gamma} onChange={setGamma} min={0} max={0.99} step={0.01} />
+      <Slider label="discount factor γ" value={gamma} onChange={setUserGamma} min={0} max={0.99} step={0.01} />
 
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 140, marginTop: 12, padding: '0 4px' }}>
         {terms.map((term) => (

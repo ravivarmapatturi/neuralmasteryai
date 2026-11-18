@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 // A real toy cooperative game: v(S) = the model's average predicted loan
@@ -40,7 +40,9 @@ function shapleyValues() {
 
 export default function ShapleyCoalitionDiagram() {
   const t = useVizTokens();
-  const [orderIdx, setOrderIdx] = useState(0);
+  const { value: autoIdx } = useAutoCycle(ORDERINGS.length, 2800);
+  const [userOrderIdx, setUserOrderIdx] = useState<number | null>(null);
+  const orderIdx = userOrderIdx ?? autoIdx;
   const order = ORDERINGS[orderIdx];
   const steps = marginals(order);
   const shap = shapleyValues();
@@ -53,7 +55,7 @@ export default function ShapleyCoalitionDiagram() {
 
   return (
     <VisualizationContainer footer="Same 3 features, walked in a different order each time -- the marginal contribution a feature gets credited with depends on who's already in the coalition. Averaging over every ordering is what makes Shapley values fair rather than order-dependent.">
-      <PillSelect label="Ordering" value={orderIdx} onChange={(v) => setOrderIdx(v as number)} options={ORDERINGS.map((o, i) => ({ value: i, label: o.map((f) => NAMES[f][0].toUpperCase()).join('→') }))} />
+      <PillSelect label="Ordering" value={orderIdx} onChange={(v) => setUserOrderIdx(v as number)} options={ORDERINGS.map((o, i) => ({ value: i, label: o.map((f) => NAMES[f][0].toUpperCase()).join('→') }))} />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         {stageX.map((x, i) => {

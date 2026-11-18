@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import DiagramMatrix from './DiagramMatrix';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
@@ -60,7 +60,10 @@ function inductionWeights(tokens: string[]): { weights: number[][]; matches: (nu
 
 export default function AttentionHeadPatternDiagram() {
   const t = useVizTokens();
-  const [headType, setHeadType] = useState<HeadType>('induction');
+  const HEAD_TYPES: HeadType[] = ['induction', 'previous'];
+  const { value: autoIdx } = useAutoCycle(HEAD_TYPES.length, 3400);
+  const [userHead, setUserHead] = useState<HeadType | null>(null);
+  const headType = userHead ?? HEAD_TYPES[autoIdx];
 
   const { weights, matches } = useMemo(() => {
     if (headType === 'previous') return { weights: previousTokenWeights(TOKENS.length), matches: [] as (number | null)[] };
@@ -77,7 +80,7 @@ export default function AttentionHeadPatternDiagram() {
           : 'No earlier repeat available yet for this row -- induction has nothing to copy from, so attention stays spread out.')
         : 'Every row puts most of its weight exactly one position back, regardless of token identity -- a purely positional pattern, unlike induction\'s pattern-matching.'
     }>
-      <PillSelect label="Head type" value={headType} onChange={(v) => setHeadType(v as HeadType)} options={[
+      <PillSelect label="Head type" value={headType} onChange={(v) => setUserHead(v as HeadType)} options={[
         { value: 'induction', label: 'Induction head' },
         { value: 'previous', label: 'Previous-token head' },
       ]} />

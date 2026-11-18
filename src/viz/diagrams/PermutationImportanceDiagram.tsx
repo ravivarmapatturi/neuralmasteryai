@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 // A real toy model (predict 1 if income>50, else 1 if age>45, else 0) scored
@@ -19,7 +19,10 @@ const BASELINE = 0.875;
 
 export default function PermutationImportanceDiagram() {
   const t = useVizTokens();
-  const [feature, setFeature] = useState<keyof typeof FEATURES>('income');
+  const FEATURE_KEYS = Object.keys(FEATURES) as (keyof typeof FEATURES)[];
+  const { value: autoIdx } = useAutoCycle(FEATURE_KEYS.length, 2800);
+  const [userFeature, setUserFeature] = useState<keyof typeof FEATURES | null>(null);
+  const feature = userFeature ?? FEATURE_KEYS[autoIdx];
   const data = FEATURES[feature];
   const color = t[data.color];
   const mean = data.drops.reduce((a, b) => a + b, 0) / data.drops.length;
@@ -31,7 +34,7 @@ export default function PermutationImportanceDiagram() {
 
   return (
     <VisualizationContainer footer={`Averaged over 3 shuffles: permuting ${feature} drops accuracy by ${(mean * 100).toFixed(1)} points on average -- that average drop is the permutation importance score.`}>
-      <PillSelect label="Feature to shuffle" value={feature} onChange={(v) => setFeature(v as keyof typeof FEATURES)} options={[
+      <PillSelect label="Feature to shuffle" value={feature} onChange={(v) => setUserFeature(v as keyof typeof FEATURES)} options={[
         { value: 'income', label: 'income' },
         { value: 'age', label: 'age' },
         { value: 'zip_code', label: 'zip_code' },

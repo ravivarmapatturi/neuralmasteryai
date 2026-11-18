@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect, Slider } from '../primitives';
+import { VisualizationContainer, PillSelect, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { SPATIAL_GRID, initialCondition, diffuse } from '../lib/aiforscience';
 
@@ -8,7 +8,10 @@ type Kind = 'single-bump' | 'double-bump' | 'square';
 
 export default function NeuralOperatorDiagram() {
   const t = useVizTokens();
-  const [kind, setKind] = useState<Kind>('double-bump');
+  const KINDS: Kind[] = ['double-bump', 'single-bump', 'square'];
+  const { value: autoIdx } = useAutoCycle(KINDS.length, 3400);
+  const [userKind, setUserKind] = useState<Kind | null>(null);
+  const kind = userKind ?? KINDS[autoIdx];
   const [time, setTime] = useState(0);
 
   const initial = useMemo(() => initialCondition(kind), [kind]);
@@ -22,7 +25,7 @@ export default function NeuralOperatorDiagram() {
   return (
     <VisualizationContainer footer={`Real closed-form solution to the 1D heat equation (convolution with a real Gaussian kernel of width √(2·diffusivity·t)) -- the exact mapping a trained neural operator learns to approximate directly, function to function, without re-solving from scratch. Switch initial conditions and the SAME mapping (same "operator") applies instantly to the new input -- no retraining, unlike a standard network trained for one fixed input/output pair.`}>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <PillSelect label="Initial condition" value={kind} onChange={(v) => setKind(v as Kind)} options={[
+        <PillSelect label="Initial condition" value={kind} onChange={(v) => setUserKind(v as Kind)} options={[
           { value: 'single-bump', label: 'Single bump' },
           { value: 'double-bump', label: 'Double bump' },
           { value: 'square', label: 'Square pulse' },

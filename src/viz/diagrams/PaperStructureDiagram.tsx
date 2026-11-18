@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const STAGES = [
@@ -19,7 +19,9 @@ const STAGES = [
 
 export default function PaperStructureDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('method');
+  const { value: autoIdx } = useAutoCycle(STAGES.length, 2800);
+  const [userSelected, setUserSelected] = useState<string | null>(null);
+  const selected = userSelected ?? STAGES[autoIdx].id;
   const active = STAGES.find((s) => s.id === selected)!;
 
   return (
@@ -28,7 +30,7 @@ export default function PaperStructureDiagram() {
         {STAGES.map((s, i) => (
           <div key={s.id} style={{ display: 'flex', alignItems: 'center' }}>
             <div
-              onClick={() => setSelected(s.id)}
+              onClick={() => setUserSelected(s.id)}
               style={{
                 padding: '6px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontWeight: selected === s.id ? 700 : 500,
                 background: selected === s.id ? `${t.accentPrimary}20` : t.surfaceAlt,

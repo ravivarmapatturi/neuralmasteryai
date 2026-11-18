@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const NODES = [
@@ -20,7 +20,9 @@ const NODES = [
 
 export default function PaperTimelineDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('transformer');
+  const { value: autoIdx } = useAutoCycle(NODES.length, 2800);
+  const [userSelected, setUserSelected] = useState<string | null>(null);
+  const selected = userSelected ?? NODES[autoIdx].id;
   const active = NODES.find((n) => n.id === selected)!;
 
   return (
@@ -29,7 +31,7 @@ export default function PaperTimelineDiagram() {
         {NODES.map((n) => (
           <div
             key={n.id}
-            onClick={() => setSelected(n.id)}
+            onClick={() => setUserSelected(n.id)}
             style={{
               display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '5px 10px', borderRadius: 6,
               background: selected === n.id ? `${t.accentPrimary}18` : 'transparent',

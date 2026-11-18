@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Stage = 'rlhf-reward' | 'rlvr-verifier' | null;
@@ -18,7 +18,10 @@ const DETAILS: Record<'rlhf-reward' | 'rlvr-verifier', string> = {
  * middle box to see exactly what that difference buys (or costs) you. */
 export default function RlhfVsRlvrFlowDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<Stage>(null);
+  const STAGES: ('rlhf-reward' | 'rlvr-verifier')[] = ['rlhf-reward', 'rlvr-verifier'];
+  const { value: autoIdx } = useAutoCycle(STAGES.length, 3400);
+  const [userActive, setUserActive] = useState<Stage>(null);
+  const active = userActive ?? STAGES[autoIdx];
 
   const policyColor = getConceptColor(t, 'token');
   const rewardModelColor = t.accentDanger;
@@ -40,13 +43,13 @@ export default function RlhfVsRlvrFlowDiagram() {
         </div>
         <div style={{ fontSize: 14, color: t.textMuted }}>↓</div>
         <div
-          onClick={() => setActive(isActive ? null : stageKey)}
+          onClick={() => setUserActive(isActive ? null : stageKey)}
           role="button"
           tabIndex={0}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
-              setActive(isActive ? null : stageKey);
+              setUserActive(isActive ? null : stageKey);
             }
           }}
           style={{

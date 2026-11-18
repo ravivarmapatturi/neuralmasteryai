@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 import { featureGeometry } from '../lib/deepInterp';
 
@@ -25,14 +25,17 @@ function GramGrid({ gram, size = 34 }: { gram: number[][]; size?: number }) {
 
 export default function SuperpositionDiagram() {
   const t = useVizTokens();
-  const [n, setN] = useState(6);
+  const N_PRESETS = [3, 5, 6, 8, 10];
+  const { value: autoIdx } = useAutoCycle(N_PRESETS.length, 2800);
+  const [userN, setUserN] = useState<number | null>(null);
+  const n = userN ?? N_PRESETS[autoIdx];
 
   const superposed = useMemo(() => featureGeometry(n, 2), [n]);
   const unmixed = useMemo(() => featureGeometry(n, n), [n]);
 
   return (
     <VisualizationContainer footer={`${n} real feature directions packed into a 2-neuron space average |cosine similarity| ${superposed.interference.toFixed(3)} between features that should be independent -- real interference, not illustrative. The same ${n} features given ${n} dimensions to live in (what a sparse autoencoder's wide hidden layer provides) average interference ${unmixed.interference.toFixed(3)}, close to the near-zero a truly disentangled basis would have.`}>
-      <Slider label="number of features" value={n} onChange={setN} min={3} max={10} step={1} />
+      <Slider label="number of features" value={n} onChange={setUserN} min={3} max={10} step={1} />
 
       <div style={{ display: 'flex', gap: 28, justifyContent: 'center', flexWrap: 'wrap', marginTop: 12 }}>
         <div>

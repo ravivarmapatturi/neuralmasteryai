@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { CLIFF_ROWS, CLIFF_COLS, CLIFF_START, CLIFF_GOAL, isCliff, trainCliffWalker, greedyRollout } from '../lib/rl';
 
@@ -12,7 +12,10 @@ type Algo = 'qlearning' | 'sarsa';
 
 export default function QLearningVsSarsaCliffDiagram() {
   const t = useVizTokens();
-  const [algo, setAlgo] = useState<Algo>('qlearning');
+  const ALGOS: Algo[] = ['qlearning', 'sarsa'];
+  const { value: autoIdx } = useAutoCycle(ALGOS.length, 3400);
+  const [userAlgo, setUserAlgo] = useState<Algo | null>(null);
+  const algo = userAlgo ?? ALGOS[autoIdx];
 
   const { qPath, sarsaPath } = useMemo(() => {
     const Qq = trainCliffWalker('qlearning', 300, 7);
@@ -30,7 +33,7 @@ export default function QLearningVsSarsaCliffDiagram() {
         ? `Q-learning's greedy path hugs the cliff edge (${qPath.length - 1} steps) -- it learned the value of the OPTIMAL policy, which is fine with walking the edge since a perfect policy never actually falls in.`
         : `SARSA's greedy path swings up and away from the cliff (${sarsaPath.length - 1} steps, longer but safer) -- it learned the value of the policy it actually explored WITH, which occasionally stumbles off the edge during training, so it learns to stay further back.`
     }>
-      <PillSelect label="Trained policy" value={algo} onChange={(v) => setAlgo(v as Algo)} options={[
+      <PillSelect label="Trained policy" value={algo} onChange={(v) => setUserAlgo(v as Algo)} options={[
         { value: 'qlearning', label: 'Q-learning (off-policy)' },
         { value: 'sarsa', label: 'SARSA (on-policy)' },
       ]} />

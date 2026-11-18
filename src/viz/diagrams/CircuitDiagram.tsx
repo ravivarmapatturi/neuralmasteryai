@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 
 const NODES = [
@@ -13,8 +13,10 @@ const NODES = [
 
 export default function CircuitDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('induction');
-  const active = NODES.find((n) => n.id === selected)!;
+  const { value: autoIdx } = useAutoCycle(NODES.length, 2800);
+  const [userSelected, setUserSelected] = useState<string | null>(null);
+  const selected = userSelected ?? NODES[autoIdx].id;
+  const active = NODES.find((n) => n.id === selected) ?? NODES[0];
 
   const boxW = 108;
   const boxH = 56;
@@ -39,7 +41,7 @@ export default function CircuitDiagram() {
           const x = i * (boxW + gap);
           const isSelected = selected === n.id;
           return (
-            <g key={n.id} onClick={() => setSelected(n.id)} style={{ cursor: 'pointer' }}>
+            <g key={n.id} onClick={() => setUserSelected(n.id)} style={{ cursor: 'pointer' }}>
               <rect x={x} y={y} width={boxW} height={boxH} rx={DIAGRAM_RADIUS.node} fill={isSelected ? `${t.accentPrimary}22` : t.surfaceAlt} stroke={isSelected ? t.accentPrimary : t.border} strokeWidth={isSelected ? 2.5 : 1.5} />
               <text x={x + boxW / 2} y={y + 24} textAnchor="middle" fontSize={11} fontWeight={700} fill={isSelected ? t.accentPrimary : t.textPrimary}>{n.label}</text>
               <text x={x + boxW / 2} y={y + 40} textAnchor="middle" fontSize={10} fill={t.textMuted}>{n.sub}</text>

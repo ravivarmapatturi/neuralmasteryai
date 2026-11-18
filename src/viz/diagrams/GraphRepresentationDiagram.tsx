@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import DiagramMatrix from './DiagramMatrix';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { GRAPH_NODES, GRAPH_EDGES, adjacencyMatrix } from '../lib/graphml';
@@ -18,7 +18,9 @@ const PERMUTATIONS = [
 
 export default function GraphRepresentationDiagram() {
   const t = useVizTokens();
-  const [permIdx, setPermIdx] = useState(0);
+  const { value: autoIdx } = useAutoCycle(PERMUTATIONS.length, 3000);
+  const [userPermIdx, setUserPermIdx] = useState<number | null>(null);
+  const permIdx = userPermIdx ?? autoIdx;
   const perm = PERMUTATIONS[permIdx];
 
   const relabeledEdges: [number, number][] = useMemo(
@@ -49,7 +51,7 @@ export default function GraphRepresentationDiagram() {
         <DiagramMatrix data={matrix} concept="attention" rowLabels={['0', '1', '2', '3', '4']} colLabels={['0', '1', '2', '3', '4']} cellSize={36} valueFormat={(v) => String(v)} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-        <VizButton onClick={() => setPermIdx((i) => (i + 1) % PERMUTATIONS.length)}>Relabel nodes</VizButton>
+        <VizButton onClick={() => setUserPermIdx((permIdx + 1) % PERMUTATIONS.length)}>Relabel nodes</VizButton>
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 6 }}>
         This is exactly why standard CNN/Transformer architectures don't directly apply to graphs -- they assume a fixed grid or sequence order that a graph simply doesn't have.

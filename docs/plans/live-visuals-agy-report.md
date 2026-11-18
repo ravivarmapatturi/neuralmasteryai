@@ -600,3 +600,39 @@ Pages covered:
 - Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
 - Layer 3 (`check:notebook`): 0 violations.
 - Visual inspection: Verified all 32 components maintain proper SVG viewBox bounds, responsive containers, and zero text/label overlaps.
+
+## Codex batch 11 (done by agy)
+
+### Motion Rationales:
+1. `RlhfVsRlvrFlowDiagram.tsx`: Autocycles between RLHF learned reward model and RLVR program verifier lanes, contrasting gameable learned proxy rewards against ground-truth verification checks.
+2. `QLearningVsSarsaCliffDiagram.tsx`: Autocycles between off-policy Q-learning (optimal path hugging the cliff) and on-policy SARSA (conservative path routing safely away from the cliff), illustrating how exploration risk during training changes the learned trajectory.
+3. `ReturnDiscountingDiagram.tsx`: Autocycles discount factor gamma presets [0.3, 0.6, 0.85, 0.98], demonstrating how the effective temporal horizon scales and weights distant rewards against immediate payoffs.
+4. `InterpretabilityMethodChoiceDiagram.tsx`: Autocycles through interpretability methods (Tree, Permutation, SHAP, LIME), mapping specific model inspection questions to appropriate attribution techniques.
+5. `LimeLocalApproxDiagram.tsx`: Autocycles kernel width sigma presets [0.3, 0.6, 1.0, 1.8], showing how local neighborhood weighting trades linear approximation fidelity for broader surrogate stability.
+6. `LimeStabilityDiagram.tsx`: Autocycles sample counts [14, 60], demonstrating how Monte Carlo perturbation variance in small sample regimes destabilizes local linear surrogate explanations.
+7. `PermutationImportanceDiagram.tsx`: Autocycles feature shuffle targets (income, age, zip_code), computing actual post-permutation accuracy drops to identify true predictive signal.
+8. `ShapWaterfallDiagram.tsx`: Autocycles feature contributions across the waterfall steps, visualizing cumulative attributions shifting the base value toward final predicted output.
+9. `ShapleyCoalitionDiagram.tsx`: Autocycles feature permutation orderings, demonstrating how coalition sequence variations alter marginal gains before symmetric Shapley averaging restores fair attribution.
+10. `TreeImportanceDiagram.tsx`: Autocycles tree split nodes, computing weighted impurity reductions across splits to attribute cumulative feature importance.
+11. `AttentionHeadPatternDiagram.tsx`: Autocycles between induction head and previous-token head patterns, contrasting identity-matched token copying against fixed positional lookbacks.
+12. `CircuitDiagram.tsx`: Autocycles through functional circuit subgraphs (induction, previous token, duplicate token, position head, name mover), showing modular mechanistic pathways inside transformers.
+13. `InterpretabilityRigorLadderDiagram.tsx`: Autocycles ascending rungs of the interpretability rigor ladder (intuition -> attribution -> probing -> circuits), teaching the transition from correlational to causal mechanistic proof.
+14. `ProbingClassifierDiagram.tsx`: Autocycles layer probes across depth (Layer 0, 4, 8, 12), measuring classification accuracy and R² to locate where latent linguistic properties emerge.
+15. `SaliencyMapDiagram.tsx`: Autocycles input scale presets [1.0x, 0.4x, 1.6x], contrasting saturated flat raw gradient saliency against Integrated Gradients which averages path gradients from a blank baseline.
+16. `SuperpositionDiagram.tsx`: Autocycles feature count presets [3, 5, 6, 8, 10], demonstrating how packing more independent features into a 2D bottleneck induces measurable interference unless expanded into high dimensions.
+17. `NeuralOperatorDiagram.tsx`: Autocycles initial condition function shapes (double-bump, single-bump, square pulse), demonstrating how learned neural operators generalize across input function spaces without retraining.
+18. `PinnLossDiagram.tsx`: Autocycles training loss modes (data only, physics only, combined PINN), showing how ODE residual collocation points regularize neural approximations outside observed data points.
+19. `ScreeningFunnelDiagram.tsx`: Autocycles property-prediction threshold presets [0.3, 0.5, 0.7, 0.85], illustrating how early computational filtering prunes intractable candidate spaces before physical synthesis.
+20. `GinExpressivenessDiagram.tsx`: Autocycles Graph B neighbor counts [3, 4, 6, 8], proving that mean aggregation conflates distinct star graph neighborhood sizes while sum aggregation preserves multiset injectivity.
+21. `GraphRepresentationDiagram.tsx`: Autocycles node permutation orderings, demonstrating how isomorphic graph relabeling permutes rows and columns in the adjacency matrix while leaving graph topology unchanged.
+22. `GraphTaskTaxonomyDiagram.tsx`: Autocycles across node classification, link prediction, and whole-graph classification tasks, showing how distinct prediction targets operate on a single underlying graph.
+23. `RandomWalkEmbeddingDiagram.tsx`: Autocycles walk bias modes (local BFS-like vs exploratory DFS-like), illustrating how node2vec p/q parameters balance community clustering against structural role discovery.
+24. `TransEDiagram.tsx`: Autocycles candidate object entities, computing geometric translation vector distances embedding(head) + embedding(relation) to rank most plausible knowledge graph completions.
+25. `PaperStructureDiagram.tsx`: Autocycles reading stages across paper sections (abstract, problem, prior work, method, architecture, dataset, experiment, ablation, limitations, reproduce, extend), teaching what critical signals to extract.
+26. `PaperTimelineDiagram.tsx`: Autocycles landmark AI research papers along the chronological lineage (2012-2025), highlighting the specific architectural bottleneck each milestone resolved.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Visual inspection: Verified all 26 components maintain proper SVG viewBox bounds, responsive containers, and zero text/label overlaps.

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const RUNGS = [
@@ -14,7 +14,9 @@ const RUNGS = [
 
 export default function InterpretabilityRigorLadderDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('circuits');
+  const { value: autoIdx } = useAutoCycle(RUNGS.length, 2800);
+  const [userSelected, setUserSelected] = useState<string | null>(null);
+  const selected = userSelected ?? RUNGS[autoIdx].id;
   const active = RUNGS.find((r) => r.id === selected)!;
 
   return (
@@ -26,7 +28,7 @@ export default function InterpretabilityRigorLadderDiagram() {
             <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 20, textAlign: 'right', fontSize: 11, color: t.textMuted, fontFamily: 'monospace' }}>{i + 1}</div>
               <div
-                onClick={() => setSelected(r.id)}
+                onClick={() => setUserSelected(r.id)}
                 style={{
                   flex: 1, cursor: 'pointer', padding: '0.55rem 0.9rem', borderRadius: 8,
                   background: isSelected ? `${t.accentPrimary}18` : t.surfaceAlt,

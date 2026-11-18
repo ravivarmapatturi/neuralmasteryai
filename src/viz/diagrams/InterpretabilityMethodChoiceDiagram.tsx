@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 type Method = 'tree' | 'permutation' | 'shap' | 'lime';
@@ -13,7 +13,9 @@ const QUESTIONS: { key: Method; q: string; label: string; why: string; colorKey:
 
 export default function InterpretabilityMethodChoiceDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<Method>('shap');
+  const { value: autoIdx } = useAutoCycle(QUESTIONS.length, 3200);
+  const [userSelected, setUserSelected] = useState<Method | null>(null);
+  const selected = userSelected ?? QUESTIONS[autoIdx].key;
   const active = QUESTIONS.find((q) => q.key === selected)!;
 
   return (
@@ -25,7 +27,7 @@ export default function InterpretabilityMethodChoiceDiagram() {
           return (
             <div
               key={q.key}
-              onClick={() => setSelected(q.key)}
+              onClick={() => setUserSelected(q.key)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '0.7rem 0.9rem', borderRadius: 8,
                 background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}`,

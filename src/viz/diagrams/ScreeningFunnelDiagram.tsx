@@ -1,14 +1,18 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generateCandidateScores, funnelCounts } from '../lib/aiforscience';
 
 const CANDIDATES = generateCandidateScores(200000, 7);
 
+const THRESH_PRESETS = [0.3, 0.5, 0.7, 0.85];
+
 export default function ScreeningFunnelDiagram() {
   const t = useVizTokens();
-  const [threshold, setThreshold] = useState(0.5);
+  const { value: autoIdx } = useAutoCycle(THRESH_PRESETS.length, 2800);
+  const [userThreshold, setUserThreshold] = useState<number | null>(null);
+  const threshold = userThreshold ?? THRESH_PRESETS[autoIdx];
 
   const { total, passedMl, shortlist } = useMemo(() => funnelCounts(CANDIDATES, threshold, 20), [threshold]);
 
@@ -21,7 +25,7 @@ export default function ScreeningFunnelDiagram() {
 
   return (
     <VisualizationContainer footer={`Real generated library of ${total.toLocaleString()} candidate scores (a realistic long-tailed shape -- most candidates score low, a real minority score high). At ML threshold=${threshold.toFixed(2)}: ${passedMl.toLocaleString()} pass the filter (${((passedMl / total) * 100).toFixed(2)}% of the library) -- only the real top handful of those actually get expensive physical validation. This is the real, computed shape of "ML narrows an intractable search space before the expensive step," not just asserted.`}>
-      <Slider label="ML property-prediction threshold" value={threshold} onChange={setThreshold} min={0.05} max={0.95} step={0.01} />
+      <Slider label="ML property-prediction threshold" value={threshold} onChange={setUserThreshold} min={0.05} max={0.95} step={0.01} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
         {stages.map((s) => (

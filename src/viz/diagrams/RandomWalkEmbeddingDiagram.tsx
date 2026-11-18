@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { adjacencyList, biasedRandomWalk } from '../lib/graphml';
 
@@ -25,7 +25,10 @@ type Mode = 'local' | 'exploratory';
 
 export default function RandomWalkEmbeddingDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('local');
+  const MODES: Mode[] = ['local', 'exploratory'];
+  const { value: autoIdx } = useAutoCycle(MODES.length, 3400);
+  const [userMode, setUserMode] = useState<Mode | null>(null);
+  const mode = userMode ?? MODES[autoIdx];
 
   const { walk, p, q } = useMemo(() => {
     const [p, q] = mode === 'local' ? [1, 2] : [1, 0.5];
@@ -37,7 +40,7 @@ export default function RandomWalkEmbeddingDiagram() {
 
   return (
     <VisualizationContainer footer={`p=${p}, q=${q}. Walk: ${walk.join(' → ')}. ${mode === 'local' ? 'High q (2) discourages moving further from the previous node, so the walk keeps circling back inside the tight {0,1,2,3} cluster -- captures community structure.' : 'Low q (0.5) rewards moving further away, so the walk pushes outward along the chain toward 4 and 5 -- captures structural role (this node is a bridge/hub) more than local community.'}`}>
-      <PillSelect label="Walk bias" value={mode} onChange={(v) => setMode(v as Mode)} options={[
+      <PillSelect label="Walk bias" value={mode} onChange={(v) => setUserMode(v as Mode)} options={[
         { value: 'local', label: 'Local (BFS-like, high q)' },
         { value: 'exploratory', label: 'Exploratory (DFS-like, low q)' },
       ]} />

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, PillSelect } from '../primitives';
+import { VisualizationContainer, Slider, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { trueOdeSolution, networkPrediction, dataLoss, physicsLoss } from '../lib/aiforscience';
 
@@ -10,7 +10,10 @@ const COLLOCATION_POINTS = [0.3, 0.8, 1.3, 1.8, 2.3, 2.8]; // no labels needed h
 
 export default function PinnLossDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('physicsInformed');
+  const MODES: Mode[] = ['physicsInformed', 'dataOnly'];
+  const { value: autoIdx } = useAutoCycle(MODES.length, 3400);
+  const [userMode, setUserMode] = useState<Mode | null>(null);
+  const mode = userMode ?? MODES[autoIdx];
   const [a, setA] = useState(1.0);
   const [b, setB] = useState(0.0);
 
@@ -28,7 +31,7 @@ export default function PinnLossDiagram() {
   return (
     <VisualizationContainer footer={`Real network output y(x) = e^(-ax) + bx·e^(-x), with only ONE labeled data point at x=0.1. Real data loss = ${dLoss.toFixed(4)}; real physics-residual loss (dy/dx + y, at 6 unlabeled points -- no ground truth needed, just the ODE itself) = ${pLoss.toFixed(4)}. ${mode === 'physicsInformed' ? 'With physics loss included, the fit is constrained everywhere, not just near the one labeled point.' : 'Data-only, the fit is free to do anything away from the single labeled point -- watch it drift from the true solution.'}`}>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <PillSelect label="Training objective" value={mode} onChange={(v) => setMode(v as Mode)} options={[
+        <PillSelect label="Training objective" value={mode} onChange={(v) => setUserMode(v as Mode)} options={[
           { value: 'physicsInformed', label: 'Data + physics loss' },
           { value: 'dataOnly', label: 'Data loss only' },
         ]} />

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 // The same Shapley values from ShapleyCoalitionDiagram (baseline 50,
@@ -16,7 +16,9 @@ const CONTRIBUTIONS = [
 
 export default function ShapWaterfallDiagram() {
   const t = useVizTokens();
-  const [hovered, setHovered] = useState<number | null>(null);
+  const { value: autoIdx } = useAutoCycle(CONTRIBUTIONS.length, 2400);
+  const [userHovered, setUserHovered] = useState<number | null>(null);
+  const hovered = userHovered ?? autoIdx;
   const final = BASELINE + CONTRIBUTIONS.reduce((a, c) => a + c.value, 0);
 
   const width = 560;
@@ -63,7 +65,7 @@ export default function ShapWaterfallDiagram() {
           const x1 = xFor(b.start);
           const x2 = xFor(b.end);
           return (
-            <g key={b.feature} onMouseEnter={() => setHovered(b.index)} onMouseLeave={() => setHovered(null)} style={{ cursor: 'pointer' }}>
+            <g key={b.feature} onMouseEnter={() => setUserHovered(b.index)} onMouseLeave={() => setUserHovered(null)} style={{ cursor: 'pointer' }}>
               <rect x={Math.min(x1, x2)} y={barY} width={Math.abs(x2 - x1)} height={barH} fill={color} fillOpacity={isHovered ? 0.95 : 0.75} stroke={color} strokeWidth={isHovered ? 2 : 1} />
               <text x={(x1 + x2) / 2} y={barY + barH / 2 + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill={t.background}>
                 {b.value > 0 ? '+' : ''}{b.value}

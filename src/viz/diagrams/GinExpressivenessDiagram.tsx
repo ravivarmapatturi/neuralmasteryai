@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 import { meanAgg, sumAgg } from '../lib/graphml';
 
@@ -29,9 +29,13 @@ function StarGraph({ leafCount, label }: { leafCount: number; label: string }) {
   );
 }
 
+const LEAF_PRESETS = [3, 4, 6, 8];
+
 export default function GinExpressivenessDiagram() {
   const t = useVizTokens();
-  const [leafCountB, setLeafCountB] = useState(3);
+  const { value: autoIdx } = useAutoCycle(LEAF_PRESETS.length, 2800);
+  const [userLeaf, setUserLeaf] = useState<number | null>(null);
+  const leafCountB = userLeaf ?? LEAF_PRESETS[autoIdx];
 
   const neighborsA = [1, 1];
   const neighborsB = Array(leafCountB).fill(1);
@@ -49,7 +53,7 @@ export default function GinExpressivenessDiagram() {
       </div>
 
       <div style={{ maxWidth: 260, margin: '4px auto 0' }}>
-        <Slider label="Graph B neighbor count" value={leafCountB} onChange={setLeafCountB} min={2} max={6} step={1} />
+        <Slider label="Graph B neighbor count" value={leafCountB} onChange={setUserLeaf} min={2} max={6} step={1} />
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'center', gap: 40, marginTop: 12 }}>

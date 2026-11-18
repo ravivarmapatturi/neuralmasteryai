@@ -1,16 +1,20 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { fitLocalLinear, offsetsFromSeed } from '../lib/interpretability';
 
 const OFFSETS = offsetsFromSeed(7, 26, 1.1);
 
+const SIGMA_PRESETS = [0.3, 0.6, 1.0, 1.8];
+
 export default function LimeLocalApproxDiagram() {
   const t = useVizTokens();
   const [instX, setInstX] = useState(1.0);
   const [instY, setInstY] = useState(0.5);
-  const [sigma, setSigma] = useState(0.6);
+  const { value: autoIdx } = useAutoCycle(SIGMA_PRESETS.length, 2800);
+  const [userSigma, setUserSigma] = useState<number | null>(null);
+  const sigma = userSigma ?? SIGMA_PRESETS[autoIdx];
 
   const width = 420;
   const height = 420;
@@ -36,7 +40,7 @@ export default function LimeLocalApproxDiagram() {
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <Slider label="instance x" value={instX} onChange={setInstX} min={-1.5} max={1.5} step={0.1} />
         <Slider label="instance y" value={instY} onChange={setInstY} min={-1.5} max={1.5} step={0.1} />
-        <Slider label="kernel width (σ)" value={sigma} onChange={setSigma} min={0.2} max={1.2} step={0.1} />
+        <Slider label="kernel width (σ)" value={sigma} onChange={setUserSigma} min={0.2} max={1.2} step={0.1} />
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8, maxWidth: 420, margin: '8px auto 0' }}>
