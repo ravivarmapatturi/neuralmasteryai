@@ -185,55 +185,11 @@ print(f"Net Savings: {tokens_saved:,} tokens ({(tokens_saved / unmanaged['total_
 # Try it: Adjust history_tokens in engineered above to see the effect of longer sessions.
 `} />
 
-## Common mistakes
-
-1. **Context Anxiety Inducing Premature Completion**: When context utilization exceeds 70%, the model declares victory without testing.
-   - *Fix*: Keep active context utilization below 30% by pruning raw tool outputs and offloading state to disk.
-2. **Cache Misses from Dynamic Prefix Shuffling**: Inserting session timestamps or random UUIDs at the start of the prompt busts provider KV prompt caches.
-   - *Fix*: Ensure the first 2,048 tokens are strictly identical across requests to achieve 100% prefix cache reuse.
-3. **Accidental Loss of Negative Constraints during Compaction**: Compacting conversation history wipes out critical warnings ("do not edit files in tests/").
-   - *Fix*: Negative constraints must reside permanently in the immutable root system prompt, never in transient conversational turns.
-
-<NotebookCallout color="cobalt" title="The Working Set Invariant">
-Never treat the context window as a data warehouse. Treat it as a high-speed L1 CPU cache: load only the minimal high-signal working set required for the immediate decision step, and evict intermediate artifacts instantly.
-</NotebookCallout>
-
-## When not to use it
-
-| Situation | Better Choice | Why |
-| :--- | :--- | :--- |
-| Simple single-turn question answering | Zero-shot direct prompt | In a single turn with no tools or files, context management pipelines add unnecessary architectural indirection. |
-| Whole-document legal contract proofreading | Single large window inlining | Legal contracts require continuous cross-referencing across clauses; compacting text risks losing legal nuance. |
-| Pure vector retrieval (RAG) QA | Top-k document ranking | Standard vector search ranks passages once; multi-stage context engineering is designed for multi-turn agent loops. |
-
 ## The big picture
 
 <PenFlow ariaLabel="context-engineering/overview overview" rows={[{ steps: { title: 'Set a budget', lines: ['window and response reserve'], tone: 'blue' } }, { steps: { title: 'Select context', lines: ['system, tools, files, history'], tone: 'purple' } }, { steps: { title: 'Manage attention', lines: ['retrieve relevant information'], tone: 'orange' } }, { steps: { title: 'Compact state', lines: ['preserve goal and recent turns'], tone: 'green' } }]} caption="window and response reserve." />
 
 <Worksheet title="128,000-token context comparison" ariaLabel="128,000-token context comparison" stages={[{ tag: "Inputs", color: "yellow", note: "The source example uses 80,200 tokens unmanaged (62.6%) and 8,000 engineered (6.2%); the latter saves 72,200 tokens.", grid: { head: ['', 'value'], rows: [{ label: 'unmanaged used', cells: ['80,200'] }, { label: 'unmanaged headroom', cells: ['47,800'] }, { label: 'engineered used', cells: ['8,000'] }, { label: 'engineered headroom', cells: ['120,000'] }, { label: 'tokens saved', cells: ['72,200'] }] } }]} />
-
-## Worked example
-
-At a 128,000-token limit, the unmanaged example uses 80,200 tokens; the engineered setup uses 8,000. The difference is 72,200 tokens, leaving 120,000 tokens of headroom in the engineered case.
-
-## Try it yourself
-
-# Try it: The same task has more room for reasoning when tool schemas and history are curated.
-
-## Common mistakes
-
-| Mistake | Why it happens | Fix |
-| --- | --- | --- |
-| Inlining every tool schema | Static definitions consume attention and budget | Discover tools when needed |
-| Keeping all raw history | Old payloads crowd out the current task | Compact old turns into state |
-| Changing a cached prefix each turn | Dynamic prefixes reduce cache reuse | Keep stable system and tool prefixes |
-
-## When not to use it
-
-| Situation | Better choice |
-| --- | --- |
-| The prompt is short and fixed | Keep the simplest direct context |
-| The task requires the complete history | Do not compact facts needed for correctness |
 
 ## Remember
 
