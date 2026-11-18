@@ -291,3 +291,41 @@ Pages covered:
 - Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 9 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-7/`.
+
+## Batch 8 Report
+
+### Motion Rationales:
+1. `SoftwareCapacityExplorer.tsx`: Autocycles (3000ms) across instance counts [9, 10, 12, 15] across 3 availability zones, because N+1 redundancy requires enough capacity headroom to survive losing the largest single failure domain.
+2. `CdnOriginLoadExplorer.tsx`: Autocycles (3000ms) edge cache hit ratios [95%, 90%, 75%, 50%], showing origin miss load multiplying tenfold from 300 to 3,000 req/s, because small drops in cache hit percentage dramatically amplify origin load.
+3. `SoftwareCaseTrace.tsx`: Autocycles (3500ms) between normal path and failure path with FlowDots along sequence messages, because distributed systems must handle ACK loss and retry deduplication at every hop.
+4. `ConsistencyHistoryExplorer.tsx`: Autocycles (3000ms) across request histories (own write, backward read, other client, current read) with FlowDots down the execution timeline, because monotonic reads, read-your-writes, and linearizability rule out distinct subsets of execution anomalies.
+5. `ConsistentHashMembershipExplorer.tsx`: Autocycles (3500ms) between before and after node D joins with FlowDots around the hash ring, showing that only the single predecessor interval (20, 35] moves while 80% of keys retain their assigned owners.
+6. `DesignDecisionExplorer.tsx`: Autocycles (3200ms) through revocation timelines (0s fresh, 61s cached, 300s expired) with FlowDots on edge refresh, because remote caches continue serving stale data long after the origin durable record has been revoked.
+7. `CompositeIndexExplorer.tsx`: Autocycles (3500ms) between customer-first and time-first composite key orders, showing how customer-first seeks directly to 2 adjacent matching entries while time-first scans 6 entries, because column order in a composite B-tree dictates query selectivity.
+8. `LatencyFanoutExplorer.tsx`: Autocycles (3000ms) across downstream fan-out call counts [1, 10, 50, 100], showing overall success probability collapsing from 99% down to 36.6%, because parent request latency is bounded by the slowest required leaf response.
+9. `RequestLatencyBudget.tsx`: Autocycles (3000ms) across application durations [40ms, 80ms, 110ms, 140ms], showing remaining margin shrink to zero and breach the 200ms SLA, because fixed end-to-end budgets enforce zero-sum allocations between transport, gateway, and compute.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 9 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-8/`.
+
+## Batch 9 Report
+
+### Motion Rationales:
+1. `LoadAssignmentExplorer.tsx`: Autocycles (3500ms) between L4 connection-level hashing and L7 request-level balancing, showing how long-lived HTTP/2 streams cause 101 requests to pile up on a single replica under L4 while L7 balances them evenly (51 vs 52).
+2. `TokenBucketAdmissionExplorer.tsx`: Autocycles (3000ms) across admission steps (initial, burst, wait, next), showing how an initial burst of 7 requests depletes all 5 bucket tokens and rejects 2, before token replenishment permits subsequent admission.
+3. `SoftwareReplicationExplorer.tsx`: Autocycles (3000ms) across replication phases (before, lag, caught) with FlowDots along write propagation, showing that immediately after acknowledging version 8 at the primary, asynchronous replicas still serve stale version 7 until replication catch-up finishes.
+4. `RequirementBoundaryExplorer.tsx`: Autocycles (3500ms) between measuring all requests (including non-retryable 4xx client errors) versus measuring only eligible requests, showing how client-side errors artificially disguise whether server availability meets the 99.9% SLO.
+5. `ProxyTrustExplorer.tsx`: Autocycles (3500ms) between passing raw client headers and sanitizing with observed peer IP with FlowDots through ingress, showing how an upstream proxy without sanitization permits clients to forge identity claims to internal services.
+6. `ShardHotKeyExplorer.tsx`: Autocycles (3000ms) across shard counts [3, 4, 5, 6], showing that doubling shard count halves record count per owner but leaves the hot key (6,000 ops/s) indivisibly overloading its single assigned shard owner.
+7. `StorageOwnershipExplorer.tsx`: Autocycles (3000ms) through migration steps (before, one updated, all updated), showing how embedded/denormalized records require multiple atomic updates across duplicate orders, creating temporary inconsistency windows.
+8. `StatelessSessionExplorer.tsx`: Autocycles (3000ms) across destinations (Replica A, Replica B, Restart A) with FlowDots on request ingress, showing that local session memory causes session loss upon rerouting or restart, whereas an external authoritative store survives instance failure.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 8 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-9/`.
+

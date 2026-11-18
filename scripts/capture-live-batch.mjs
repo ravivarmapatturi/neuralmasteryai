@@ -483,6 +483,107 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  8: [
+    {
+      route: '/docs/software-system-design/capacity-estimation',
+      diagrams: [
+        { name: 'SoftwareCapacityExplorer', match: 'Instances across three zones' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/cdns',
+      diagrams: [
+        { name: 'CdnOriginLoadExplorer', match: 'Edge cache hits' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/chat-system',
+      diagrams: [
+        { name: 'SoftwareCaseTrace', match: 'Failure path' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/consistency-models',
+      diagrams: [
+        { name: 'ConsistencyHistoryExplorer', match: 'Request history' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/consistent-hashing',
+      diagrams: [
+        { name: 'ConsistentHashMembershipExplorer', match: 'Ring membership' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/design-approach',
+      diagrams: [
+        { name: 'DesignDecisionExplorer', match: 'Time after revocation' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/indexing',
+      diagrams: [
+        { name: 'CompositeIndexExplorer', match: 'Composite key order' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/latency',
+      diagrams: [
+        { name: 'LatencyFanoutExplorer', match: 'Required downstream calls' },
+        { name: 'RequestLatencyBudget', match: 'Application and storage' },
+      ],
+    },
+  ],
+  9: [
+    {
+      route: '/docs/software-system-design/load-balancing',
+      diagrams: [
+        { name: 'LoadAssignmentExplorer', match: 'Assignment unit' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/rate-limiting',
+      diagrams: [
+        { name: 'TokenBucketAdmissionExplorer', match: 'Admission step' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/replication',
+      diagrams: [
+        { name: 'SoftwareReplicationExplorer', match: 'Before write' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/requirements',
+      diagrams: [
+        { name: 'RequirementBoundaryExplorer', match: 'Measurement population' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/reverse-proxies-and-api-gateways',
+      diagrams: [
+        { name: 'ProxyTrustExplorer', match: 'Ingress policy' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/sharding',
+      diagrams: [
+        { name: 'ShardHotKeyExplorer', match: 'Shard owners' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/sql-vs-nosql',
+      diagrams: [
+        { name: 'StorageOwnershipExplorer', match: 'Ownership model' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/stateless-services',
+      diagrams: [
+        { name: 'StatelessSessionExplorer', match: 'Authoritative session location' },
+      ],
+    },
+  ],
 };
 
 async function main() {

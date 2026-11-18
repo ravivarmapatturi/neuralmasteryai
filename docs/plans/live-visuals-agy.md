@@ -254,40 +254,40 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 8
 - `src/content/docs/software-system-design/capacity-estimation.mdx`
-  - [ ] `src/viz/diagrams/SoftwareCapacityExplorer.tsx`
+  - [x] `src/viz/diagrams/SoftwareCapacityExplorer.tsx`
 - `src/content/docs/software-system-design/cdns.mdx`
-  - [ ] `src/viz/diagrams/CdnOriginLoadExplorer.tsx`
+  - [x] `src/viz/diagrams/CdnOriginLoadExplorer.tsx`
 - `src/content/docs/software-system-design/chat-system.mdx`
-  - [ ] `src/viz/diagrams/SoftwareCaseTrace.tsx`
+  - [x] `src/viz/diagrams/SoftwareCaseTrace.tsx`
 - `src/content/docs/software-system-design/consistency-models.mdx`
-  - [ ] `src/viz/diagrams/ConsistencyHistoryExplorer.tsx`
+  - [x] `src/viz/diagrams/ConsistencyHistoryExplorer.tsx`
 - `src/content/docs/software-system-design/consistent-hashing.mdx`
-  - [ ] `src/viz/diagrams/ConsistentHashMembershipExplorer.tsx`
+  - [x] `src/viz/diagrams/ConsistentHashMembershipExplorer.tsx`
 - `src/content/docs/software-system-design/design-approach.mdx`
-  - [ ] `src/viz/diagrams/DesignDecisionExplorer.tsx`
+  - [x] `src/viz/diagrams/DesignDecisionExplorer.tsx`
 - `src/content/docs/software-system-design/indexing.mdx`
-  - [ ] `src/viz/diagrams/CompositeIndexExplorer.tsx`
+  - [x] `src/viz/diagrams/CompositeIndexExplorer.tsx`
 - `src/content/docs/software-system-design/latency.mdx`
-  - [ ] `src/viz/diagrams/LatencyFanoutExplorer.tsx`
-  - [ ] `src/viz/diagrams/RequestLatencyBudget.tsx`
+  - [x] `src/viz/diagrams/LatencyFanoutExplorer.tsx`
+  - [x] `src/viz/diagrams/RequestLatencyBudget.tsx`
 
 ## Batch 9
 - `src/content/docs/software-system-design/load-balancing.mdx`
-  - [ ] `src/viz/diagrams/LoadAssignmentExplorer.tsx`
+  - [x] `src/viz/diagrams/LoadAssignmentExplorer.tsx`
 - `src/content/docs/software-system-design/rate-limiting.mdx`
-  - [ ] `src/viz/diagrams/TokenBucketAdmissionExplorer.tsx`
+  - [x] `src/viz/diagrams/TokenBucketAdmissionExplorer.tsx`
 - `src/content/docs/software-system-design/replication.mdx`
-  - [ ] `src/viz/diagrams/SoftwareReplicationExplorer.tsx`
+  - [x] `src/viz/diagrams/SoftwareReplicationExplorer.tsx`
 - `src/content/docs/software-system-design/requirements.mdx`
-  - [ ] `src/viz/diagrams/RequirementBoundaryExplorer.tsx`
+  - [x] `src/viz/diagrams/RequirementBoundaryExplorer.tsx`
 - `src/content/docs/software-system-design/reverse-proxies-and-api-gateways.mdx`
-  - [ ] `src/viz/diagrams/ProxyTrustExplorer.tsx`
+  - [x] `src/viz/diagrams/ProxyTrustExplorer.tsx`
 - `src/content/docs/software-system-design/sharding.mdx`
-  - [ ] `src/viz/diagrams/ShardHotKeyExplorer.tsx`
+  - [x] `src/viz/diagrams/ShardHotKeyExplorer.tsx`
 - `src/content/docs/software-system-design/sql-vs-nosql.mdx`
-  - [ ] `src/viz/diagrams/StorageOwnershipExplorer.tsx`
+  - [x] `src/viz/diagrams/StorageOwnershipExplorer.tsx`
 - `src/content/docs/software-system-design/stateless-services.mdx`
-  - [ ] `src/viz/diagrams/StatelessSessionExplorer.tsx`
+  - [x] `src/viz/diagrams/StatelessSessionExplorer.tsx`
 
 ## Batch 10
 - `src/content/docs/software-system-design/transactions-and-isolation.mdx`

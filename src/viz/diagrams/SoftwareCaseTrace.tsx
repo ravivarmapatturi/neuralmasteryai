@@ -1,6 +1,6 @@
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle, FlowDots } from '../primitives';
 
 const cases = {
   'url-shortener': {title:'Redirect miss versus revoked link',normal:['Browser → Edge: GET /abc','Edge → Cache: lookup abc (miss)','Service → Store: read active destination','Service → Browser: 302 + bounded cache policy'],failure:['Browser → Edge: GET /abc','Edge → Cache: tombstone for abc','Edge → Browser: 410; do not serve old destination'],note:'A revocation tombstone must override an older cached destination within the deletion contract.'},
@@ -15,9 +15,12 @@ const cases = {
   'distributed-file-storage': {title:'Chunks first, manifest commit last',normal:['Client → Chunk store: content-addressed chunks','Chunk store → Client: durability ACKs','Client → Metadata: compare-and-set manifest v8','Metadata → Reader: published immutable chunk list'],failure:['Client → Chunk store: content-addressed chunks','Metadata → Client: stale version; reject commit','Reader → Metadata: previous complete manifest','GC → Chunk store: reclaim unreferenced chunks after grace'],note:'A failed metadata commit leaves orphan chunks, not a partially published file. Garbage collection must allow in-flight uploads.'},
 };
 export type SoftwareCase = keyof typeof cases;
-export default function SoftwareCaseTrace({scenario}:{scenario:SoftwareCase}) {
+const TRACE_MODES: ('normal' | 'failure')[] = ['normal', 'failure'];
+
+export default function SoftwareCaseTrace({ scenario }: { scenario: SoftwareCase }) {
   const t = useVizTokens();
-  const [mode,setMode] = useState<'normal'|'failure'>('failure');
+  const { value: modeIdx, pick, stop } = useAutoCycle(TRACE_MODES.length, 3500, 1);
+  const mode = TRACE_MODES[modeIdx];
   const data = cases[scenario];
   const marker = useId().replace(/:/g, '');
   const aliases:Record<string,string> = {Owner:'Chat owner',History:'Log'};
@@ -44,7 +47,16 @@ export default function SoftwareCaseTrace({scenario}:{scenario:SoftwareCase}) {
   }, []);
   return <VisualizationContainer footer={data.note}>
     <VisualizationHeader title={data.title}/>
-    <PillSelect value={mode} onChange={setMode} options={[{value:'normal',label:'Normal path'},{value:'failure',label:'Failure path'}]}/>
+    <PillSelect<'normal' | 'failure'>
+      value={mode}
+      onChange={(val) => {
+        const next = typeof val === 'function' ? val(mode) : val;
+        const idx = TRACE_MODES.indexOf(next);
+        if (idx >= 0) pick(idx);
+        stop();
+      }}
+      options={[{ value: 'normal', label: 'Normal path' }, { value: 'failure', label: 'Failure path' }]}
+    />
     <svg viewBox={`0 0 300 ${height}`} width="100%" role="img" aria-label={data[mode].join('. ')}>
       <defs><marker id={marker} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill={t.edge}/></marker></defs>
       {actors.map((actor,index)=><g key={actor}>
@@ -53,6 +65,7 @@ export default function SoftwareCaseTrace({scenario}:{scenario:SoftwareCase}) {
       </g>)}
       {messages.map((message,i)=><g key={i}>
         <line x1={x(message.from)} x2={x(message.to)} y1={95+i*65} y2={95+i*65} stroke={t.edge} strokeWidth={2} markerEnd={`url(#${marker})`}/>
+        <FlowDots d={`M ${x(message.from)} ${95+i*65} L ${x(message.to)} ${95+i*65}`} color={t.accentPrimary} dur={2.2} />
         <rect x={0} y={101+i*65} width={300} height={39} fill={t.surface}/>
         <text x={150} y={117+i*65} textAnchor="middle" fill={t.textPrimary} fontSize={13}>{wrap(`${i+1}. ${message.event}`,39).map((line,j)=><tspan key={j} x={150} dy={j ? 15 : 0}>{line}</tspan>)}</text>
       </g>)}
