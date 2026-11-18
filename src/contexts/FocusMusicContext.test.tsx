@@ -20,7 +20,7 @@ describe('focus playback intent', () => {
     localStorage.setItem('nm_focus_music_enabled','true');
     render(<FocusMusicProvider><Controls /></FocusMusicProvider>);
     await act(async () => { vi.advanceTimersByTime(2999); }); expect(player.play).not.toHaveBeenCalled();
-    await act(async () => { vi.advanceTimersByTime(1); }); expect(player.src).toContain('bamboo-collection.m4a'); expect(player.play).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(1); }); expect(player.src).toContain('bamboo-collection.mp3'); expect(player.play).toHaveBeenCalledTimes(1);
     Object.defineProperty(document,'hidden',{configurable:true,value:true}); fireEvent(document,new Event('visibilitychange')); expect(player.paused).toBe(true);
     Object.defineProperty(document,'hidden',{configurable:true,value:false}); await act(async () => { fireEvent(document,new Event('visibilitychange')); }); expect(player.play).toHaveBeenCalledTimes(2);
   });
@@ -33,7 +33,7 @@ describe('focus playback intent', () => {
   it('keeps saved opt-out and changes the source when selecting a track', async () => {
     localStorage.setItem('nm_focus_music_enabled','false'); render(<FocusMusicProvider><Controls /></FocusMusicProvider>);
     await act(async () => { vi.advanceTimersByTime(3000); }); expect(player.play).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Rain')); expect(player.src).toContain('rain-meditation.m4a'); expect(screen.getByText('rain')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Rain')); expect(player.src).toContain('rain-meditation.mp3'); expect(screen.getByText('rain')).toBeInTheDocument();
   });
   it('offers a fallback after browser rejection and retries on a gesture', async () => {
     localStorage.setItem('nm_focus_music_enabled','true');

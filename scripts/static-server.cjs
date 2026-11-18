@@ -44,6 +44,7 @@ const CONTENT_TYPES = {
   '.ogg': 'audio/ogg',
   '.wav': 'audio/wav',
   '.m4a': 'audio/mp4',
+  '.mp3': 'audio/mpeg',
 };
 
 function send(res, status, filePath) {

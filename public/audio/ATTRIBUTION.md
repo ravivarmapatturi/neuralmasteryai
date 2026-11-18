@@ -1,9 +1,9 @@
 # Focus audio
 
-The player repeats each file. Supplied recordings are transcoded to AAC at 64 kbps / 32 kHz with MP4 fast-start for progressive playback; no excerpting.
+The player repeats each file. The files are the owner's supplied recordings at their original quality (MP3, 44.1 kHz, original bitrate). They are not re-encoded: longer recordings are cut losslessly (stream copy) so each file stays under GitHub Pages' 100 MB limit.
 
-- `bamboo-collection.m4a`: supplied by the repository owner from `Relaxing With Japanese Bamboo Flute , Guzheng, Erhu Musical Instrument Collection.mp3`. Full collection, approximately 3 hours 18 minutes. Artist and original source metadata were not present in the supplied file.
-- `rain-meditation.m4a`: supplied by the repository owner on 15 November 2026 from `Relax Music for Ultimate Inner Peace & Deep Sleep Buddha Meditation Music with Rain Sounds.mp3`. Approximately 2 hours 22 minutes. Artist and original source metadata were not present in the supplied file.
-- `lofi-study-session.m4a`: supplied by the repository owner on 15 November 2026 from `1 A.M Study Session [lofi hip hop].mp3`. The near-silent first 51 seconds are trimmed so the beat starts right away; approximately 1 hour. Artist and original source metadata were not present in the supplied file.
+- `bamboo-collection.mp3`: from `Relaxing With Japanese Bamboo Flute , Guzheng, Erhu Musical Instrument Collection.mp3`, first 1 hour 46 minutes. Artist and original source metadata were not present in the supplied file.
+- `rain-meditation.mp3`: from `Relax Music for Ultimate Inner Peace & Deep Sleep Buddha Meditation Music with Rain Sounds.mp3`, first 1 hour 9 minutes. Artist and original source metadata were not present in the supplied file.
+- `lofi-study-session.mp3`: from `1 A.M Study Session [lofi hip hop].mp3`, the full hour minus the near-silent first 51 seconds. Artist and original source metadata were not present in the supplied file.
 
-These supplied files replace the earlier white-noise and Cloud Watching recordings. No popularity or medical concentration claims are made.
+No popularity or medical concentration claims are made.
