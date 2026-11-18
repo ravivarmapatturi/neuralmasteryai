@@ -161,8 +161,9 @@ spec:
 
 The image is referenced by digest, so the rollout can only ever run the exact image that passed CI (the digest shown is an example). Validated against the Kubernetes, Argo Rollouts and Istio schemas with `kubeconform -strict`, this file and the other two manifests on this page report:
 
-- Summary: 4 resources found in 3 files - Valid: 4, Invalid: 0, Errors: 0, Skipped: 0
-
+```output
+Summary: 4 resources found in 3 files - Valid: 4, Invalid: 0, Errors: 0, Skipped: 0
+```
 
 The step durations in that file aren't arbitrary, and the next section shows why they have to be long.
 
@@ -187,13 +188,14 @@ for weight in [0.01, 0.05, 0.25]:
         print(f"weight {weight:>4.0%}, {minutes:>2} min: {n:>5} requests, {expected_errors:>2} errors, p = {p:.3f}")
 ```
 
-- weight   1%, 10 min:    60 requests,  0 errors, p = 1.000
-- weight   1%, 30 min:   180 requests,  1 errors, p = 0.303
-- weight   5%, 10 min:   300 requests,  2 errors, p = 0.122
-- weight   5%, 30 min:   900 requests,  5 errors, p = 0.036
-- weight  25%, 10 min:  1500 requests,  9 errors, p = 0.004
-- weight  25%, 30 min:  4500 requests, 27 errors, p = 0.000
-
+```output
+weight   1%, 10 min:    60 requests,  0 errors, p = 1.000
+weight   1%, 30 min:   180 requests,  1 errors, p = 0.303
+weight   5%, 10 min:   300 requests,  2 errors, p = 0.122
+weight   5%, 30 min:   900 requests,  5 errors, p = 0.036
+weight  25%, 10 min:  1500 requests,  9 errors, p = 0.004
+weight  25%, 30 min:  4500 requests, 27 errors, p = 0.000
+```
 
 A canary three times worse than stable is **invisible** at 1% for 10 minutes: it serves 60 requests and is expected to produce no errors at all. At 5% for 10 minutes, its 2 errors are entirely consistent with a healthy version. Only around 5% for 30 minutes, or 25% for 10, does the evidence become convincing.
 
@@ -305,10 +307,11 @@ for lift in [0.010, 0.005, 0.002]:
     print(f"base 5.0% -> {5 + lift * 100:.1f}%: {n_per_arm(0.05, lift):>7,} users per arm")
 ```
 
-- base 5.0% -> 6.0%:   8,158 users per arm
-- base 5.0% -> 5.5%:  31,234 users per arm
-- base 5.0% -> 5.2%: 189,938 users per arm
-
+```output
+base 5.0% -> 6.0%:   8,158 users per arm
+base 5.0% -> 5.5%:  31,234 users per arm
+base 5.0% -> 5.2%: 189,938 users per arm
+```
 
 Detecting a lift from 5.0% to 5.2%, the size of improvement a mature model typically delivers, takes about 190,000 users in each arm. Teams with less traffic than that can't measure small improvements by A/B testing, however long they wait for significance to "arrive".
 
@@ -336,9 +339,10 @@ print(f"false positive rate, one look at day {days}: {false_fixed / n_experiment
 print(f"false positive rate, daily peeking:      {false_peek / n_experiments:.1%}")
 ```
 
-- false positive rate, one look at day 20: 4.4%
-- false positive rate, daily peeking:      22.0%
-
+```output
+false positive rate, one look at day 20: 4.4%
+false positive rate, daily peeking:      22.0%
+```
 
 With one look, the false-positive rate is about the 5% the test promises. With daily peeking and stopping at the first significant day, it's 22%: more than one in five "winning" models is no better at all. Each look is another chance for noise to cross the line, and stopping on the first crossing keeps the false alarms.
 

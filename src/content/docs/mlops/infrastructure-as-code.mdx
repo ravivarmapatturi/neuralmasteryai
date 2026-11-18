@@ -129,6 +129,71 @@ output "cluster_file" {
 }
 ```
 
+**First plan.** After `terraform init`, `terraform plan -out=tfplan` (Terraform 1.16) shows one resource to create, with its computed content:
+
+```output
+  # local_file.training_cluster will be created
+  + resource "local_file" "training_cluster" {
+      + content              = jsonencode(
+            {
+              + environment = "dev"
+              + gpus        = 1
+              + instance    = "g6e.xlarge"
+            }
+        )
+      + filename             = "./out/dev-cluster.json"
+      + id                   = (known after apply)
+      ...
+    }
+
+Plan: 1 to add, 0 to change, 0 to destroy.
+```output
+
+**Apply, then plan again.** `terraform apply tfplan` creates the file. Running `terraform plan` a second time does nothing, which is the declarative guarantee:
+
+```output
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.
+```output
+
+**Drift.** Now someone changes the resource outside Terraform, the equivalent of a console click during an incident, by overwriting the file with `{"gpus":8}`. The next plan refreshes, notices the real object no longer matches what state recorded, and plans to put it back:
+
+```output
+local_file.training_cluster: Refreshing state... [id=21b5908698071c60bcfff9894e3fcfc207fcb40f]
+  # local_file.training_cluster will be created
+Plan: 1 to add, 0 to change, 0 to destroy.
+```
+
+<StateDriftDiagram />
+
+**Drift** is any difference between real infrastructure and what Terraform last applied. Terraform only sees it when someone runs a plan, so teams run a scheduled plan (for example nightly in CI) and alert if it isn't empty. The plan's fix is to overwrite the manual change. If the manual change was right, the fix is to put it into the configuration, not to keep reverting it.
+
+**Forced replacement.** Finally, a legitimate change: `terraform plan -var gpu_count=8`. Changing a resource's content in this provider can't be done in place, so Terraform plans to destroy and recreate it, and says which attribute forces that:
+
+```output
+  # local_file.training_cluster must be replaced
+              ~ gpus        = 1 -> 8
+              ~ instance    = "g6e.xlarge" -> "p5.48xlarge"
+            } # forces replacement
+Plan: 1 to add, 0 to change, 1 to destroy.
+```
+
+Cloud resources behave the same way. Some arguments can be updated in place (tags, an autoscaling group's size); others force replacement (a database's engine, many resources' names, a subnet's address range). **Reading the plan for `must be replaced` is the most important review step in IaC**, because replacing a database or a bucket destroys its contents.
+
+<PredictFirst
+  question="A pull request renames the local name of a production database resource from aws_db_instance.main to aws_db_instance.primary, with no other changes. What does terraform plan show?"
+  options={[
+    'No changes, because the real database is identical',
+    'An in-place update renaming the database',
+    'Destroy aws_db_instance.main and create aws_db_instance.primary, because state tracks resources by address',
+    'An error, because resource names cannot be changed',
+  ]}
+  correctIndex={2}
+  explanation="State maps each resource address (type plus local name) to a real object. A renamed address looks like one resource deleted from the config and a new one added, so the plan is to destroy the existing database and create an empty one. The fix is a moved block (moved { from = aws_db_instance.main  to = aws_db_instance.primary }), which tells Terraform the address changed and the object did not. This is exactly why plans must be read before apply."
+/>
+
 ## 5. Remote State and Locking
 
 On a laptop, state lives in a file called `terraform.tfstate`. That breaks as soon as two people or a CI job manage the same infrastructure: each has their own copy, each thinks it knows what exists, and both apply. Two rules fix it.
@@ -218,7 +283,9 @@ output "artifact_bucket_arn" {
 
 With the AWS provider v6.70 installed, `terraform fmt -check` passes and `terraform validate` reports:
 
-- Success! The configuration is valid.
+```output
+Success! The configuration is valid.
+```
 
 and a plan with `-var environment=qa` stops with `Error: Invalid value for variable` before touching anything. Validation catches typos, but not mistakes that only the cloud API can detect, such as a bucket name already taken; those appear at plan or apply time.
 

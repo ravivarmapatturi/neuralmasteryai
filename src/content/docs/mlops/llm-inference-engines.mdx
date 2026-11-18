@@ -105,10 +105,11 @@ for batch_size in [1, 4, 16]:
     print(f"batch size {batch_size:>2}: {len(prompts) * NEW / elapsed:6.0f} tokens/s for 16 requests ({elapsed:.1f} s)")
 ```
 
-- batch size  1:     19 tokens/s for 16 requests (39.6 s)
-- batch size  4:     36 tokens/s for 16 requests (21.1 s)
-- batch size 16:     98 tokens/s for 16 requests (7.8 s)
-
+```output
+batch size  1:     19 tokens/s for 16 requests (39.6 s)
+batch size  4:     36 tokens/s for 16 requests (21.1 s)
+batch size 16:     98 tokens/s for 16 requests (7.8 s)
+```
 
 Serving the same 16 requests together is five times faster than one at a time, on the same hardware, because each forward pass does useful work for 16 sequences instead of one. On a GPU, where weight reads dominate even more, the gap at larger batch sizes is wider still.
 
@@ -156,9 +157,10 @@ for name, fn in [("static batching", static_batching), ("continuous batching", c
           f"(slot use {outputs.sum() / (steps * BATCH):.0%}), median completion at step {np.median(finish):,.0f}")
 ```
 
-- static batching       21716 decode steps for 56,698 tokens (slot use 33%), median completion at step 9,362
-- continuous batching    7373 decode steps for 56,698 tokens (slot use 96%), median completion at step 3,500
-
+```output
+static batching       21716 decode steps for 56,698 tokens (slot use 33%), median completion at step 9,362
+continuous batching    7373 decode steps for 56,698 tokens (slot use 96%), median completion at step 3,500
+```
 
 Static batching keeps only a third of its slots busy, because every batch waits for its longest member; continuous batching keeps 96% busy, generates the same tokens in a third of the steps, and returns the median request almost three times sooner. Since a decode step costs roughly the same however many slots are filled, slot use translates directly into throughput and cost per token.
 
@@ -181,10 +183,11 @@ print(f"contiguous max-length reservation: {contiguous:,} slots, {used / contigu
 print(f"paged blocks of {BLOCK} tokens:      {paged:,.0f} slots, {used / paged:.1%} used")
 ```
 
-- median sequence 666 tokens; tokens actually stored 1,055,109
-- contiguous max-length reservation: 8,192,000 slots, 12.9% used
-- paged blocks of 16 tokens:      1,062,352 slots, 99.3% used
-
+```output
+median sequence 666 tokens; tokens actually stored 1,055,109
+contiguous max-length reservation: 8,192,000 slots, 12.9% used
+paged blocks of 16 tokens:      1,062,352 slots, 99.3% used
+```
 
 With an 8K context limit and a median sequence of 666 tokens, max-length reservation leaves 87% of KV memory empty; paging wastes under 1%, only the unfilled part of each sequence's last block. The memory saved becomes room for more concurrent requests, which (section 4) becomes throughput. Paging also enables **sharing**: sequences with the same prefix, such as a common system prompt, or parallel samples from one prompt, can point at the same physical blocks, copying only when they diverge. That's the basis of prefix caching, which SGLang's RadixAttention organizes as a tree of shared prefixes.
 

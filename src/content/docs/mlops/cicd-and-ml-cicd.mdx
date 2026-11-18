@@ -179,11 +179,13 @@ def test_directional_larger_tumour_raises_risk(fitted):
 
 All three test files pass, along with the linter:
 
-- $ ruff check .
-- All checks passed!
-- $ pytest -q
-- ......                                                                   [100%]
-- 6 passed in 5.67s
+```output
+$ ruff check .
+All checks passed!
+$ pytest -q
+......                                                                   [100%]
+6 passed in 5.67s
+```
 
 These use a small model trained inside the test, so they run on every pull request in seconds. **The fourth kind**, comparing a freshly trained candidate against the production champion, needs a real training run and real evaluation data, and it's subtle enough to need its own section.
 
@@ -239,15 +241,17 @@ print("PASS")
 
 With a champion trained at regularization strength `C=1.0`, two candidates (`C=0.3` and `C=0.001`) give:
 
-- $ python gate.py candidate_a.joblib champion.joblib     # C=0.3
-- candidate AUC 0.9942  champion AUC 0.9956
-- difference 95% CI: [-0.0045, +0.0006]
-- PASS
+```output
+$ python gate.py candidate_a.joblib champion.joblib     # C=0.3
+candidate AUC 0.9942  champion AUC 0.9956
+difference 95% CI: [-0.0045, +0.0006]
+PASS
 
-- $ python gate.py candidate_b.joblib champion.joblib     # C=0.001
-- candidate AUC 0.9737  champion AUC 0.9956
-- difference 95% CI: [-0.0406, -0.0073]
-- FAIL: the candidate may be more than 0.005 AUC worse
+$ python gate.py candidate_b.joblib champion.joblib     # C=0.001
+candidate AUC 0.9737  champion AUC 0.9956
+difference 95% CI: [-0.0406, -0.0073]
+FAIL: the candidate may be more than 0.005 AUC worse
+```output
 
 Candidate A measured slightly lower than the champion, but the interval shows the difference is within noise and can't be worse than the tolerance, so it passes. A strict "must beat" gate would have blocked it. Candidate B is clearly worse, and the gate exits with code 1, which is exactly what stops a CI job.
 

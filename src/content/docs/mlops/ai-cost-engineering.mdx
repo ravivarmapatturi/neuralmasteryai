@@ -77,10 +77,11 @@ for mfu in [0.5, 0.4, 0.3]:                 # model FLOPs utilization actually a
     print(f"MFU {mfu:.0%}: {gpu_hours / 1e6:4.2f}M GPU-hours, ${gpu_hours * 2.5 / 1e6:4.1f}M at $2.50/GPU-hour")
 ```
 
-- MFU 50%: 0.40M GPU-hours, $ 1.0M at $2.50/GPU-hour
-- MFU 40%: 0.51M GPU-hours, $ 1.3M at $2.50/GPU-hour
-- MFU 30%: 0.67M GPU-hours, $ 1.7M at $2.50/GPU-hour
-
+```output
+MFU 50%: 0.40M GPU-hours, $ 1.0M at $2.50/GPU-hour
+MFU 40%: 0.51M GPU-hours, $ 1.3M at $2.50/GPU-hour
+MFU 30%: 0.67M GPU-hours, $ 1.7M at $2.50/GPU-hour
+```
 
 For comparison, Meta's model card for Llama 3.1 8B (trained on about 15 trillion tokens) reports 1.46 million H100 GPU-hours, two to three times this estimate. The gap is normal: the formula counts only the final run's arithmetic, not lower-utilization phases, restarts after failures, long-context stages and experiments. Use $6ND$ as a floor and plan with a multiple.
 
@@ -119,11 +120,12 @@ for name, v in variants.items():
     print(f"{name:<33} ${per:.4f}/request   ${per * 2_000_000:>8,.0f}/month at 2M requests")
 ```
 
-- as built                          $0.0333/request   $  66,600/month at 2M requests
-- prompt caching on system prompt   $0.0252/request   $  50,400/month at 2M requests
-- + retrieve 3 chunks, not 12       $0.0117/request   $  23,400/month at 2M requests
-- + cap answers at 200 tokens       $0.0087/request   $  17,400/month at 2M requests
-
+```output
+as built                          $0.0333/request   $  66,600/month at 2M requests
+prompt caching on system prompt   $0.0252/request   $  50,400/month at 2M requests
++ retrieve 3 chunks, not 12       $0.0117/request   $  23,400/month at 2M requests
++ cap answers at 200 tokens       $0.0087/request   $  17,400/month at 2M requests
+```
 
 The user's question is 100 of 9,500 input tokens; the cost is almost entirely context. Three changes that never touch the model cut the bill by 74%: caching the stable system prompt, retrieving fewer but better passages, and asking for shorter answers. Each must be checked against quality: fewer passages can lower recall, and a length cap can cut useful answers ([LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) has the measurements). Often they improve it, since long, noisy contexts are harder for a model to use than short, relevant ones.
 
@@ -183,13 +185,14 @@ for threshold in [0.6, 0.7, 0.8]:
           f"   ({escalate.mean():.0%} escalated)")
 ```
 
-- strategy                      quality  cost / 1k requests
-- always large                    94.9%              12.00
-- always small                    83.5%               0.60
-- cascade, escalate below 0.6     93.0%               1.91   (11% escalated)
-- cascade, escalate below 0.7     95.9%               2.94   (19% escalated)
-- cascade, escalate below 0.8     96.7%               5.59   (42% escalated)
-
+```output
+strategy                      quality  cost / 1k requests
+always large                    94.9%              12.00
+always small                    83.5%               0.60
+cascade, escalate below 0.6     93.0%               1.91   (11% escalated)
+cascade, escalate below 0.7     95.9%               2.94   (19% escalated)
+cascade, escalate below 0.8     96.7%               5.59   (42% escalated)
+```
 
 At a threshold of 0.7, the cascade matches the large model's quality for a quarter of its cost, escalating 19% of requests. The threshold is a dial: lower saves more and loses quality, higher spends more. Two cautions keep this honest. The simulation treats the two models' mistakes as independent, which lets the cascade slightly *beat* the large model; real models tend to fail on the same hard inputs, so expect the cascade to approach the large model's quality, not exceed it. And the whole scheme rests on the confidence signal: measure how well it separates right from wrong answers on labelled data before trusting it, exactly as you would calibrate an LLM judge ([ML & LLM Testing](/docs/mlops/ml-and-llm-testing#5-judging-quality-and-judging-the-judge)).
 

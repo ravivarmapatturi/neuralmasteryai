@@ -196,7 +196,9 @@ What each setting prevents:
 
 These manifests, together with the autoscaler and GPU job later on this page, pass `kubeconform -strict` against the Kubernetes 1.34 schemas:
 
-- Summary: 5 resources found in 2 files - Valid: 5, Invalid: 0, Errors: 0, Skipped: 0
+```output
+Summary: 5 resources found in 2 files - Valid: 5, Invalid: 0, Errors: 0, Skipped: 0
+```
 
 Applying them is `kubectl apply -f model-api.yaml`; watching a rollout is `kubectl rollout status deployment/model-api`, and undoing one is `kubectl rollout undo deployment/model-api`. In a team, the apply is done by a GitOps controller from a reviewed repository rather than by hand.
 
@@ -265,6 +267,54 @@ spec:
     scaleDown:
       stabilizationWindowSeconds: 300
 ```
+
+To see the rule work, this script applies the same algorithm to a traffic burst, minute by minute, with a target of 100 requests per second per pod:
+
+```python
+from math import ceil
+
+TARGET = 100                      # target requests/s per pod
+MIN_PODS, MAX_PODS = 2, 10
+TOLERANCE = 0.1                   # no change while within 10% of target
+STABILIZATION = 5                 # minutes: scale down only to the highest recent recommendation
+
+def recommend(replicas, per_pod):
+    ratio = per_pod / TARGET
+    if abs(ratio - 1) <= TOLERANCE:
+        return replicas
+    return min(MAX_PODS, max(MIN_PODS, ceil(replicas * ratio)))
+
+replicas, history = 3, []
+traffic = [300, 340, 520, 900, 950, 940, 600, 300, 280, 260, 250, 240]   # total requests/s each minute
+for minute, total in enumerate(traffic):
+    per_pod = total / replicas
+    rec = recommend(replicas, per_pod)
+    history = (history + [rec])[-STABILIZATION:]
+    new = rec if rec >= replicas else max(history)        # up immediately, down cautiously
+    print(f"min {minute:>2}: {total:>4} req/s, {per_pod:5.0f}/pod on {replicas:>2} pods -> {new:>2} pods")
+    replicas = new
+```
+
+```output
+min  0:  300 req/s,   100/pod on  3 pods ->  3 pods
+min  1:  340 req/s,   113/pod on  3 pods ->  4 pods
+min  2:  520 req/s,   130/pod on  4 pods ->  6 pods
+min  3:  900 req/s,   150/pod on  6 pods ->  9 pods
+min  4:  950 req/s,   106/pod on  9 pods ->  9 pods
+min  5:  940 req/s,   104/pod on  9 pods ->  9 pods
+min  6:  600 req/s,    67/pod on  9 pods ->  9 pods
+min  7:  300 req/s,    33/pod on  9 pods ->  9 pods
+min  8:  280 req/s,    31/pod on  9 pods ->  9 pods
+min  9:  260 req/s,    29/pod on  9 pods ->  9 pods
+min 10:  250 req/s,    28/pod on  9 pods ->  7 pods
+min 11:  240 req/s,    34/pod on  7 pods ->  4 pods
+```
+
+Three behaviours are visible. During the ramp (minutes 1 to 3), each step sizes the deployment for the load just measured, so it lags a fast-growing burst by a step: at minute 3 the 6 pods carry 150 requests each, 50% over target, before 9 arrive. At minutes 4 and 5 the ratio is inside the 10% tolerance, so nothing changes. After traffic falls, the stabilization window holds 9 pods for five minutes before stepping down. The lag on the way up is the reason to keep headroom (a target below the true per-pod capacity, as in the queueing discussion in [APIs & Model Serving](/docs/mlops/model-serving#5-latency-throughput-and-queues)), and the caution on the way down is what protects against a burst that returns.
+
+New pods also have to *start*. A model server that takes two minutes to pull a multi-gigabyte image and load weights can't help with a spike that lasts one minute; pre-pulled images, smaller models and a higher minimum replica count are the remedies.
+
+**Node autoscaling** adds machines when pods can't be scheduled for lack of capacity, and removes underused ones. The classic Cluster Autoscaler scales predefined node groups; **Karpenter** (on AWS, and increasingly elsewhere) provisions right-sized nodes directly from the pending pods' requirements, which suits mixed CPU and GPU workloads. **KEDA** extends pod autoscaling to event sources such as queue length, including scaling to zero replicas when idle.
 
 ## 8. GPUs: Scheduling the Expensive Part
 

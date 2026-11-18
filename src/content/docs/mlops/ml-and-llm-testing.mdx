@@ -98,12 +98,13 @@ for b, c in [(14, 6), (20, 4)]:
     print(f"v2 fixed {b} cases and broke {c}: net +{b - c}, one-sided p = {p:.3f}")
 ```
 
-- 19/20 passed: pass rate 95%, 95% interval [76.4%, 99.1%]
-- 190/200 passed: pass rate 95%, 95% interval [91.0%, 97.3%]
-- 50/50 passed: pass rate 100%, 95% interval [92.9%, 100.0%]
-- v2 fixed 14 cases and broke 6: net +8, one-sided p = 0.058
-- v2 fixed 20 cases and broke 4: net +16, one-sided p = 0.001
-
+```output
+19/20 passed: pass rate 95%, 95% interval [76.4%, 99.1%]
+190/200 passed: pass rate 95%, 95% interval [91.0%, 97.3%]
+50/50 passed: pass rate 100%, 95% interval [92.9%, 100.0%]
+v2 fixed 14 cases and broke 6: net +8, one-sided p = 0.058
+v2 fixed 20 cases and broke 4: net +16, one-sided p = 0.001
+```
 
 The first three lines show how little a small suite says. **95% on 20 cases is consistent with a true rate anywhere from 76% to 99%.** A perfect 50 out of 50 still allows a true failure rate of up to 7%. So a threshold like "the suite must pass at 90%" on 20 cases can't distinguish a 90% system from a 99% one, and should be written against the interval's lower bound on a suite big enough to make that bound meaningful.
 
@@ -201,9 +202,10 @@ def test_classification(ticket, expected):
 
 The cassette for this example holds three recorded replies, one of which is the most common real failure of "reply with JSON only" prompts: the model added a friendly sentence before the JSON.
 
-- E           Failed: not valid ticket JSON: 'Sure! Here is the JSON: &#123;"category": "account", "priority": '... (1 errors)
-- 1 failed, 2 passed in 0.33s
-
+```output
+E           Failed: not valid ticket JSON: 'Sure! Here is the JSON: {"category": "account", "priority": '... (1 errors)
+1 failed, 2 passed in 0.33s
+```
 
 The test catches it deterministically, on every run, at no cost. The fix belongs in the system, not the test: use the provider's structured-output mode (which constrains decoding to a JSON schema), or a parser that extracts and validates the JSON and retries on failure.
 
@@ -237,10 +239,11 @@ print("serving version", prompt.version, "|", prompt.commit_message)
 print(prompt.format(ticket="I was charged twice for October"))
 ```
 
-- serving version 2 | forbid text around the JSON (fixes the 'Sure! Here is the JSON' failure)
-- Classify the support ticket into billing, bug or account. Reply with JSON only, no text before or after it.
-- Ticket: I was charged twice for October
-
+```output
+serving version 2 | forbid text around the JSON (fixes the 'Sure! Here is the JSON' failure)
+Classify the support ticket into billing, bug or account. Reply with JSON only, no text before or after it.
+Ticket: I was charged twice for October
+```
 
 Whatever stores them, the rules are the same as for models: never edit a version in place, record which prompt version produced each logged response, and let a prompt reach `production` only through the evaluation gate in section 7.
 
@@ -281,10 +284,11 @@ for raw in recorded_calls:
     print("OK  " if not errors else "FAIL", raw if not errors else "; ".join(errors))
 ```
 
-- OK   &#123;"order_id": "ORD-104233", "amount": 49.99, "reason": "damaged"&#125;
-- FAIL '104233' does not match '^ORD-[0-9]&#123;6&#125;$'
-- FAIL 4999 is greater than the maximum of 500; 'customer asked nicely' is not one of ['damaged', 'late', 'duplicate']
-
+```output
+OK   {"order_id": "ORD-104233", "amount": 49.99, "reason": "damaged"}
+FAIL '104233' does not match '^ORD-[0-9]{6}$'
+FAIL 4999 is greater than the maximum of 500; 'customer asked nicely' is not one of ['damaged', 'late', 'duplicate']
+```
 
 The third call shows why this matters: an amount a hundred times too large and a made-up reason, the kind of output a manipulated or confused model produces. A schema check stops it before any money moves. Beyond argument validity, tool tests should check **choice** (for a given request, the right tool is called, and no tool is called when none should be) and, for multi-step agents, **trajectory**: the sequence of calls for scripted scenarios, such as "look up the order before issuing a refund".
 
@@ -319,9 +323,10 @@ for name, judge in [("lenient judge", judge_lenient), ("useful judge", judge_use
           f"bad answers caught {caught}/6")
 ```
 
-- lenient judge  raw agreement 88%   kappa 0.25   bad answers caught 1/6
-- useful judge   raw agreement 95%   kappa 0.80   bad answers caught 5/6
-
+```output
+lenient judge  raw agreement 88%   kappa 0.25   bad answers caught 1/6
+useful judge   raw agreement 95%   kappa 0.80   bad answers caught 5/6
+```
 
 The lenient judge agrees with the human 88% of the time, which sounds fine, and catches one bad answer in six, which is useless: it agrees mostly because nearly everything is good. Kappa exposes it (0.25, slight agreement), while the useful judge scores 0.80 (strong). Only a judge with high kappa on *your* data should gate releases, and the calibration should be repeated when the judge model or the rubric changes.
 

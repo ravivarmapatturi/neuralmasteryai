@@ -191,24 +191,25 @@ for line in generate_latest().decode().splitlines():
 
 Running it with FastAPI 0.161, `prometheus_client` 0.24 and the OpenTelemetry SDK 1.45 prints:
 
-- &#123;"level": "INFO", "msg": "prediction", "trace_id": "4ad86085fe9da244f8d03946d0d9f4e1", "user_id": 42, "model_version": "7", "score": 0.064, "outcome": "pass"&#125;
-- &#123;"level": "INFO", "msg": "prediction", "trace_id": "fd72b26ecd89db0266fa7709919545ec", "user_id": 42, "model_version": "7", "score": 1.0, "outcome": "flag"&#125;
--
-- --- the second request's trace (span, duration ms)
-- POST /predict             17.8
--   fastapi.dependencies     0.1
--   fastapi.endpoint        15.8
--     predict               15.4
--       feature_lookup      12.1
--       model_inference      3.1
--   fastapi.serialization    0.0
--
-- --- part of GET /metrics
-- predictions_total&#123;model_version="7",outcome="pass"&#125; 1.0
-- predictions_total&#123;model_version="7",outcome="flag"&#125; 1.0
-- predict_latency_seconds_bucket&#123;le="0.025",model_version="7"&#125; 2.0
-- predict_latency_seconds_count&#123;model_version="7"&#125; 2.0
+```output
+{"level": "INFO", "msg": "prediction", "trace_id": "4ad86085fe9da244f8d03946d0d9f4e1", "user_id": 42, "model_version": "7", "score": 0.064, "outcome": "pass"}
+{"level": "INFO", "msg": "prediction", "trace_id": "fd72b26ecd89db0266fa7709919545ec", "user_id": 42, "model_version": "7", "score": 1.0, "outcome": "flag"}
 
+--- the second request's trace (span, duration ms)
+POST /predict             17.8
+  fastapi.dependencies     0.1
+  fastapi.endpoint        15.8
+    predict               15.4
+      feature_lookup      12.1
+      model_inference      3.1
+  fastapi.serialization    0.0
+
+--- part of GET /metrics
+predictions_total{model_version="7",outcome="pass"} 1.0
+predictions_total{model_version="7",outcome="flag"} 1.0
+predict_latency_seconds_bucket{le="0.025",model_version="7"} 2.0
+predict_latency_seconds_count{model_version="7"} 2.0
+```output
 
 Read the three outputs together, the way you would during an incident:
 
@@ -255,10 +256,11 @@ for name, bounds in {"coarse": [0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
 print(f"true p95             = {true_p95 * 1000:5.1f} ms")
 ```
 
-- coarse buckets: estimated p95 =  97.2 ms
-- fine   buckets: estimated p95 =  90.9 ms
-- true p95             =  90.7 ms
-
+```output
+coarse buckets: estimated p95 =  97.2 ms
+fine   buckets: estimated p95 =  90.9 ms
+true p95             =  90.7 ms
+```
 
 With coarse buckets the true p95 sits inside the wide 50 to 100 ms bucket and the estimate is off by 6.5 ms. Adding buckets between 50 and 100 ms brings it within 0.2 ms. The practical rule: **put bucket boundaries densely around your latency target**, because that's where the answer has to be accurate. Prometheus also supports **native histograms**, which choose exponentially spaced buckets automatically and give good accuracy everywhere at a modest storage cost.
 
@@ -334,13 +336,14 @@ tests:
 
 Both checks pass with Prometheus 3.5's `promtool`:
 
-- $ promtool check rules rules.yml
-- Checking rules.yml
--   SUCCESS: 3 rules found
--
-- $ promtool test rules tests.yml
--   SUCCESS
+```output
+$ promtool check rules rules.yml
+Checking rules.yml
+  SUCCESS: 3 rules found
 
+$ promtool test rules tests.yml
+  SUCCESS
+```output
 
 <GoDeeper title="Go deeper: why two windows, and why not alert on a single bad minute">
 

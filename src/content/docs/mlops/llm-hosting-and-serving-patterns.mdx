@@ -116,14 +116,15 @@ for users, ctx in [(1, 8_192), (32, 8_192), (32, 32_768)]:
     print(f"{users:>2} concurrent requests x {ctx:>6} tokens: KV cache {kv_cache_gib(users * ctx, 32, 8, 128):5.1f} GiB")
 ```
 
-- KV cache per token (BF16): 128 KiB
-- 8B weights in BF16:  15.0 GiB
-- 8B weights in FP8 :   7.5 GiB
-- 8B weights in INT4:   3.7 GiB
--  1 concurrent requests x   8192 tokens: KV cache   1.0 GiB
-- 32 concurrent requests x   8192 tokens: KV cache  32.0 GiB
-- 32 concurrent requests x  32768 tokens: KV cache 128.0 GiB
-
+```output
+KV cache per token (BF16): 128 KiB
+8B weights in BF16:  15.0 GiB
+8B weights in FP8 :   7.5 GiB
+8B weights in INT4:   3.7 GiB
+ 1 concurrent requests x   8192 tokens: KV cache   1.0 GiB
+32 concurrent requests x   8192 tokens: KV cache  32.0 GiB
+32 concurrent requests x  32768 tokens: KV cache 128.0 GiB
+```
 
 The weights fit easily on a 24 GB GPU; the problem is concurrency. Thirty-two simultaneous 8K-token conversations need 32 GiB of KV cache on top of 15 GiB of weights, more than a 40 GB GPU holds, and long contexts multiply it again: 32 users at 32K tokens need 128 GiB of cache. That's why engines manage the cache in pages (PagedAttention), why they queue requests when cache space runs out, and why FP8 KV-cache quantization, which halves these numbers, is widely used.
 
@@ -161,11 +162,12 @@ for utilization in [1.0, 0.5, 0.2, 0.05]:
     print(f"utilization {utilization:4.0%}: ${gpu_per_hour / tokens_per_hour * 1e6:6.2f} per 1M output tokens")
 ```
 
-- utilization 100%: $  0.28 per 1M output tokens
-- utilization  50%: $  0.56 per 1M output tokens
-- utilization  20%: $  1.39 per 1M output tokens
-- utilization   5%: $  5.56 per 1M output tokens
-
+```output
+utilization 100%: $  0.28 per 1M output tokens
+utilization  50%: $  0.56 per 1M output tokens
+utilization  20%: $  1.39 per 1M output tokens
+utilization   5%: $  5.56 per 1M output tokens
+```
 
 At full use, self-hosting is very cheap per token. At 5% utilization, an internal tool used during office hours, it's twenty times more expensive, and likely more than an API charges for a comparable model. **Self-hosting pays when traffic is high and steady;** for spiky or low traffic, an API or serverless GPUs win. The inputs here are assumptions: benchmark your own model, engine and request mix, since peak throughput depends heavily on prompt and output lengths, and price in the engineers who run it. [AI Cost Engineering](/docs/mlops/ai-cost-engineering) covers the wider cost picture.
 
@@ -189,8 +191,9 @@ Fine-tuning and serving are separate jobs done by separate tools, and mixing the
 
 <FineTuningToInferenceHandoffDiagram />
 
-- Base model → fine-tuning framework (Unsloth, TRL, Axolotl; LoRA or QLoRA) → adapter or merged weights → inference engine → endpoint
-
+```output
+Base model → fine-tuning framework (Unsloth, TRL, Axolotl; LoRA or QLoRA) → adapter or merged weights → inference engine → endpoint
+```
 
 Fine-tuning frameworks like **Unsloth** make training adapters faster and lighter on memory; that's their job. They're not built to serve production traffic. The output, either a small **LoRA adapter** or a **merged** model with the adapter folded into the base weights, is handed to an inference engine. The handoff deserves the same discipline as any model release: register the adapter with its base model's exact revision (an adapter is meaningless on a different base), evaluate it with the serving engine and the serving precision, since quantizing for serving can change behaviour, and promote it through the registry and a gate ([CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd)).
 
@@ -286,9 +289,10 @@ for policy in ["round robin", "prefix-aware"]:
     print(f"{policy:<26} TTFT p50 {t50 * 1000:5.0f} ms  p99 {t99 * 1000:5.0f} ms   time per token p99 {tpot99 * 1000:3.0f} ms")
 ```
 
-- round robin                TTFT p50  3329 ms  p99  4817 ms   time per token p99 114 ms
-- prefix-aware               TTFT p50   134 ms  p99  3125 ms   time per token p99  88 ms
-
+```output
+round robin                TTFT p50  3329 ms  p99  4817 ms   time per token p99 114 ms
+prefix-aware               TTFT p50   134 ms  p99  3125 ms   time per token p99  88 ms
+```
 
 The median time to first token falls from 3.3 seconds to 0.13, because most requests now land where their prefix is already cached and skip a 2,000-token prefill. The tail improves less: some requests still overflow to a replica without their prefix. The simulation is simplified (no request queue, an approximate load signal), but the effect is the one production routers such as the vLLM production stack's router, SGLang's router and NVIDIA Dynamo's KV-aware routing are built to capture. The trade-off to watch is hot spots: pure stickiness can overload the replica that owns a popular tenant, which is why the policy falls back to the least-loaded replica past a threshold.
 
@@ -334,10 +338,11 @@ for n in [32, 512, 2048]:
 
 After the warm-up run (PyTorch 2.14 on CPU, Transformers):
 
-- prompt    33 tokens: TTFT    124 ms   time per output token  53.8 ms   (  19 tokens/s)
-- prompt   513 tokens: TTFT    978 ms   time per output token  55.2 ms   (  18 tokens/s)
-- prompt  2049 tokens: TTFT   4598 ms   time per output token  79.9 ms   (  13 tokens/s)
-
+```output
+prompt    33 tokens: TTFT    124 ms   time per output token  53.8 ms   (  19 tokens/s)
+prompt   513 tokens: TTFT    978 ms   time per output token  55.2 ms   (  18 tokens/s)
+prompt  2049 tokens: TTFT   4598 ms   time per output token  79.9 ms   (  13 tokens/s)
+```
 
 The two phases behave differently. **TTFT grows with the prompt**: 62 times more prompt tokens (33 to 2,049) took 37 times longer before the first token, because prefill processes every prompt token (and attention over a longer prompt costs more per token). **TPOT grows only slowly**, from 54 to 80 ms, because each decode step generates one token, though it does read a longer KV cache. On a GPU with a production engine every number is far smaller, but the shape is the same, which is why long-prompt applications such as RAG with many retrieved passages, and long chat histories, show high TTFT first, and why prefix caching (reusing the KV cache of a shared system prompt or document) is one of the most effective optimizations ([LLM Inference Optimization](/docs/mlops/llm-inference-optimization)).
 

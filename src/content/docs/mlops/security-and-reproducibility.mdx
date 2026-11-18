@@ -83,16 +83,17 @@ GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
 Scanning the repository's *history* with [gitleaks](https://github.com/gitleaks/gitleaks) 8.28 still finds it:
 
-- $ gitleaks git . --redact -v
-- Finding:     REDACTED
-- Secret:      REDACTED
-- RuleID:      github-pat
-- File:        train.py
-- Line:        2
-- Commit:      7d57f85
-- 2 commits scanned.
-- leaks found: 1
-
+```output
+$ gitleaks git . --redact -v
+Finding:     REDACTED
+Secret:      REDACTED
+RuleID:      github-pat
+File:        train.py
+Line:        2
+Commit:      7d57f85
+2 commits scanned.
+leaks found: 1
+```
 
 The scanner exits with code 1, which is what makes it useful as a pre-commit hook and a CI step: the push is rejected. If a secret does reach a shared repository, the only safe response is to **revoke and rotate it**. Rewriting history afterwards reduces exposure but can't guarantee that nobody copied it.
 
@@ -125,10 +126,11 @@ save_file({"weights": np.arange(6, dtype=np.float32).reshape(2, 3)}, "model.safe
 print(load_file("model.safetensors")["weights"])
 ```
 
-- !! code chosen by the file's author just ran during pickle.load
-- [[0. 1. 2.]
--  [3. 4. 5.]]
-
+```output
+!! code chosen by the file's author just ran during pickle.load
+[[0. 1. 2.]
+ [3. 4. 5.]]
+```
 
 The call here is a harmless `print`, but it could equally be `os.system` running anything with the loading process's permissions: reading credentials from the environment, opening a reverse shell, or altering the model's behaviour. Malicious pickles have been found on public model hubs.
 
@@ -178,9 +180,10 @@ print(f"{path}: sha256 verified")
 
 On the file as registered, and then after appending a single byte to it:
 
-- model.safetensors: sha256 verified
-- refusing to load model.safetensors: sha256 4c2818d2ec47ea4e... does not match the registry
-
+```output
+model.safetensors: sha256 verified
+refusing to load model.safetensors: sha256 4c2818d2ec47ea4e... does not match the registry
+```
 
 The same principle applies at every layer: container images referenced by **digest** rather than tag ([Containers](/docs/mlops/containers)), Python dependencies installed from a lock file with hashes (`pip install --require-hashes`, or `uv` and Poetry lock files), and Terraform providers pinned in `.terraform.lock.hcl`. A hash proves the bytes are the ones you recorded. A **signature** goes further and proves *who* produced them: Sigstore's cosign signs container images, and the OpenSSF model-signing project applies the same idea to model files, so a serving system can refuse any model not signed by the training pipeline.
 
@@ -260,13 +263,14 @@ a = np.float32(1e8); b = np.float32(-1e8); c = np.float32(1.0)
 print("(a + b) + c =", (a + b) + c, "   a + (b + c) =", a + (b + c))
 ```
 
-- seed 0, run 1:         ab720329813c
-- seed 0, run 2:         ab720329813c
-- seed 0, 4 threads:     ab720329813c
-- no seed, run 1:        2f5ba1ad4587
-- no seed, run 2:        e304ae1ca7cb
-- (a + b) + c = 1.0    a + (b + c) = 0.0
-
+```output
+seed 0, run 1:         ab720329813c
+seed 0, run 2:         ab720329813c
+seed 0, 4 threads:     ab720329813c
+no seed, run 1:        2f5ba1ad4587
+no seed, run 2:        e304ae1ca7cb
+(a + b) + c = 1.0    a + (b + c) = 0.0
+```
 
 With a fixed seed, the model is bit-identical across runs and even across thread counts, because scikit-learn derives each tree's randomness from the seed rather than from the thread that builds it. Without a seed, every run produces a different model.
 

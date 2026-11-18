@@ -50,23 +50,24 @@ The paper's practical algorithm, **FederatedAveraging (FedAvg)**, runs in synchr
 
 The real pseudocode from the paper (Algorithm 1), unsimplified:
 
-- Server executes:
--   initialize w0
--   for each round t = 1, 2, ... do
--     m ← max(C·K, 1)                        # C = fraction of clients this round
--     St ← (random set of m clients)
--     for each client k ∈ St in parallel do
--       w^k_&#123;t+1&#125; ← ClientUpdate(k, wt)
--     mt ← Σ_&#123;k∈St&#125; n_k
--     w_&#123;t+1&#125; ← Σ_&#123;k∈St&#125; (n_k / mt) · w^k_&#123;t+1&#125;   # weighted by each client's data size
--
-- ClientUpdate(k, w):                          # runs locally on client k
--   split client k's data into batches of size B
--   for each local epoch i = 1 to E do
--     for each batch b do
--       w ← w − η · ∇ℓ(w; b)
--   return w to server
+```output
+Server executes:
+  initialize w0
+  for each round t = 1, 2, ... do
+    m ← max(C·K, 1)                        # C = fraction of clients this round
+    St ← (random set of m clients)
+    for each client k ∈ St in parallel do
+      w^k_{t+1} ← ClientUpdate(k, wt)
+    mt ← Σ_{k∈St} n_k
+    w_{t+1} ← Σ_{k∈St} (n_k / mt) · w^k_{t+1}   # weighted by each client's data size
 
+ClientUpdate(k, w):                          # runs locally on client k
+  split client k's data into batches of size B
+  for each local epoch i = 1 to E do
+    for each batch b do
+      w ← w − η · ∇ℓ(w; b)
+  return w to server
+```output
 
 Three hyperparameters control the whole algorithm's behavior: **C** (fraction of clients sampled per round — trades speed for statistical quality), **E** (local epochs per round — more local computation per round of communication), and **B** (local minibatch size; $B=\infty$ treats a client's whole dataset as one batch). Setting $E=1, B=\infty$ reduces FedAvg exactly to **FedSGD**, a simpler baseline that does one gradient step per client per round instead of several — the paper's actual contribution is showing that doing *more* local computation (larger $E$) before each communication round, not less, is what makes federated training practical: their real reported result is a **10–100× reduction in communication rounds** versus synchronized SGD, at approximately no cost in final model quality, because computation on-device is nearly free compared to the cost of a communication round.
 

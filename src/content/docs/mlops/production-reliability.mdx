@@ -73,10 +73,11 @@ for name, a in paths.items():
     print(f"{name:<47} {a:.4%}  ~{(1 - a) * minutes_per_month:5.0f} min down/month")
 ```
 
-- API alone (99.9%)                               99.9000%  ~   43 min down/month
-- API + feature store + model + LLM provider      99.2018%  ~  345 min down/month
-- same, LLM with fallback provider (99.5% each)   99.6978%  ~  131 min down/month
-
+```output
+API alone (99.9%)                               99.9000%  ~   43 min down/month
+API + feature store + model + LLM provider      99.2018%  ~  345 min down/month
+same, LLM with fallback provider (99.5% each)   99.6978%  ~  131 min down/month
+```
 
 Four components that are each "three nines" or close give a path with almost six hours of downtime a month. A second LLM provider as a fallback cuts that by more than half, because the weakest link stops being a single point of failure. (Real failures are rarely fully independent, since providers share clouds and regions, so redundancy helps less than this formula says; it still helps a lot.)
 
@@ -127,10 +128,11 @@ trial("1 s timeout, no retry", lambda i: once(i, 1.0, "b"))
 trial("1 s timeout, 3 attempts", lambda i: with_retries(i, 1.0, "c"))
 ```
 
-- no timeout, no retry       success  82%   median    57 ms   worst  10058 ms   total  22.1 s
-- 1 s timeout, no retry      success  78%   median    57 ms   worst   1019 ms   total   3.9 s
-- 1 s timeout, 3 attempts    success 100%   median    57 ms   worst   2120 ms   total   6.7 s
-
+```output
+no timeout, no retry       success  82%   median    57 ms   worst  10058 ms   total  22.1 s
+1 s timeout, no retry      success  78%   median    57 ms   worst   1019 ms   total   3.9 s
+1 s timeout, 3 attempts    success 100%   median    57 ms   worst   2120 ms   total   6.7 s
+```
 
 - **No timeout:** the hung calls eventually return, so success looks acceptable, but the worst request took 10 seconds and the run took 22. A dependency that hangs *forever*, which happens, would hold those requests forever.
 - **Timeout only:** the worst case drops to about a second and total time falls by more than 80%, at the cost of turning the slow calls into failures.
@@ -211,14 +213,15 @@ for t, state, outcome, ms in log:
         print(f"t={t:>3}s  {outcome:<13} {ms:>4} ms  breaker now {state}")
 ```
 
-- 25 requests in 5 s; 19 rejected at once by the open breaker, without calling the dependency
-- t=0.0s  TimeoutError   500 ms  breaker now closed
-- t=0.6s  TimeoutError   501 ms  breaker now closed
-- t=1.2s  TimeoutError   500 ms  breaker now closed
-- t=1.8s  TimeoutError   500 ms  breaker now closed
-- t=2.4s  TimeoutError   500 ms  breaker now open
-- t=4.9s  ok               0 ms  breaker now closed
-
+```output
+25 requests in 5 s; 19 rejected at once by the open breaker, without calling the dependency
+t=0.0s  TimeoutError   500 ms  breaker now closed
+t=0.6s  TimeoutError   501 ms  breaker now closed
+t=1.2s  TimeoutError   500 ms  breaker now closed
+t=1.8s  TimeoutError   500 ms  breaker now closed
+t=2.4s  TimeoutError   500 ms  breaker now open
+t=4.9s  ok               0 ms  breaker now closed
+```
 
 Five failures each cost the caller half a second. Then the breaker opened, and the next 19 requests were rejected instantly, each free to use a fallback instead of waiting. At 4.9 seconds the cool-down ended, a single trial call found the dependency healthy again, and the breaker closed. Production libraries (resilience4j, Polly, `pybreaker`, or the outlier detection built into service meshes such as Istio and Envoy) add sliding windows, failure-rate thresholds and per-endpoint state, but the state machine is the one above.
 
@@ -321,9 +324,10 @@ for name, fn in [("check, then act", charge_check_then_act), ("claim key first",
     print(f"{name:<16} -> customer charged {db.execute('SELECT COUNT(*) FROM charges').fetchone()[0]} time(s)")
 ```
 
-- check, then act  -> customer charged 3 time(s)
-- claim key first  -> customer charged 1 time(s)
-
+```output
+check, then act  -> customer charged 3 time(s)
+claim key first  -> customer charged 1 time(s)
+```
 
 The check-then-act version charged the customer three times. The fix is to **claim the key atomically before doing the work**, with an operation that only one caller can win: a unique-key insert in a database, as here, or `SET key NX` in Redis. Later attempts see the claim and return the stored result, or a "still in progress" response if the first attempt hasn't finished. Store the result with the key, keep keys for longer than any client retries (24 hours is common), and scope keys to the client so one customer's keys can't collide with another's.
 

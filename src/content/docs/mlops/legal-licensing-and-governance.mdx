@@ -87,12 +87,13 @@ for repo in candidates:
     print(f"{repo:<42} {license_tag:<14} gated={str(bool(info.gated)):<5} -> {verdict}")
 ```
 
-- Qwen/Qwen2.5-7B-Instruct                   apache-2.0     gated=False -> approved
-- mistralai/Mistral-7B-Instruct-v0.3         apache-2.0     gated=False -> approved
-- meta-llama/Llama-3.1-8B-Instruct           llama3.1       gated=True  -> needs legal review
-- google/gemma-2-9b-it                       gemma          gated=True  -> needs legal review
-- sentence-transformers/all-MiniLM-L6-v2     apache-2.0     gated=False -> approved
-
+```output
+Qwen/Qwen2.5-7B-Instruct                   apache-2.0     gated=False -> approved
+mistralai/Mistral-7B-Instruct-v0.3         apache-2.0     gated=False -> approved
+meta-llama/Llama-3.1-8B-Instruct           llama3.1       gated=True  -> needs legal review
+google/gemma-2-9b-it                       gemma          gated=True  -> needs legal review
+sentence-transformers/all-MiniLM-L6-v2     apache-2.0     gated=False -> approved
+```
 
 The custom licences aren't forbidden; they're routed to a person who reads them once and adds the decision, with any conditions, to the allow-list. Run the check in CI on every model reference, so an unreviewed model can't reach the registry.
 
@@ -237,9 +238,10 @@ log[1]["basis"] = "approved by phone"                    # someone rewrites hist
 print("after edit:", verify(log))
 ```
 
-- before: intact
-- after edit: tampered at entry 1
-
+```output
+before: intact
+after edit: tampered at entry 1
+```
 
 The edited approval is detected. A determined insider could recompute every later hash, so in practice the chain is anchored somewhere they can't rewrite: the latest hash periodically written to write-once storage (S3 Object Lock, or a managed ledger service), or to a separate system owned by another team.
 

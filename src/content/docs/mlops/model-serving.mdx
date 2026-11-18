@@ -166,10 +166,12 @@ with TestClient(app) as client:                         # runs the lifespan, so 
     print(nokey.status_code, nokey.json())
 ```
 
-- &#123;'status': 'ready', 'model_version': '3'&#125;
-- 200 &#123;'probability': 0.6588, 'model_version': '3'&#125;
-- 422 List should have at least 30 items after validation, not 5
-- 401 &#123;'detail': 'invalid API key'&#125;
+```output
+{'status': 'ready', 'model_version': '3'}
+200 {'probability': 0.6588, 'model_version': '3'}
+422 List should have at least 30 items after validation, not 5
+401 {'detail': 'invalid API key'}
+```
 
 Each piece answers a production need:
 
@@ -231,9 +233,11 @@ for path in ["/async-blocking", "/sync", "/async-offloaded"]:
 server.should_exit = True
 ```
 
-- /async-blocking   20 concurrent requests took 2.06 s
-- /sync             20 concurrent requests took 0.12 s
-- /async-offloaded  20 concurrent requests took 0.22 s
+```output
+/async-blocking   20 concurrent requests took 2.06 s
+/sync             20 concurrent requests took 0.12 s
+/async-offloaded  20 concurrent requests took 0.22 s
+```
 
 The blocking `async def` handled the 20 requests one at a time: 20 × 100 ms ≈ 2 seconds. The plain `def` and the offloaded version overlapped them. The rule: **use `async def` only when everything slow inside it is awaited**; otherwise use `def`, or move the blocking call to a thread with `asyncio.to_thread` or `run_in_threadpool`.
 
@@ -305,9 +309,11 @@ for max_batch, max_wait in [(1, 0.0), (16, 0.005), (64, 0.005)]:
     asyncio.run(run(max_batch, max_wait))
 ```
 
-- max_batch= 1 max_wait= 0 ms: p50   5211 ms  p99  10285 ms  throughput    47 req/s
-- max_batch=16 max_wait= 5 ms: p50     48 ms  p99     68 ms  throughput   239 req/s
-- max_batch=64 max_wait= 5 ms: p50     48 ms  p99     69 ms  throughput   242 req/s
+```output
+max_batch= 1 max_wait= 0 ms: p50   5211 ms  p99  10285 ms  throughput    47 req/s
+max_batch=16 max_wait= 5 ms: p50     48 ms  p99     68 ms  throughput   239 req/s
+max_batch=64 max_wait= 5 ms: p50     48 ms  p99     69 ms  throughput   242 req/s
+```
 
 (The script asks for 300 requests a second; asyncio's timer granularity makes the real arrival rate about 240, which is why the batched runs report that throughput: they kept up with everything that arrived.)
 

@@ -162,16 +162,17 @@ for shift in [0.0, 0.05, 0.1, 0.5]:
               f"{wasserstein_distance(reference, current):>12.2f} {ks_2samp(reference, current).pvalue:>11.2g}")
 ```
 
-- shift (std)       n     PSI      JS  Wasserstein  KS p-value
--         0.0    1000  0.0147  0.0018         0.39        0.19
--         0.0  100000  0.0010  0.0001         0.11        0.42
--        0.05    1000  0.0132  0.0016         0.43        0.41
--        0.05  100000  0.0031  0.0004         0.46     5.6e-09
--         0.1    1000  0.0250  0.0031         1.35     6.9e-05
--         0.1  100000  0.0100  0.0013         0.97     1.9e-27
--         0.5    1000  0.2659  0.0325         5.22     3.3e-40
--         0.5  100000  0.2348  0.0287         4.95           0
-
+```output
+shift (std)       n     PSI      JS  Wasserstein  KS p-value
+        0.0    1000  0.0147  0.0018         0.39        0.19
+        0.0  100000  0.0010  0.0001         0.11        0.42
+       0.05    1000  0.0132  0.0016         0.43        0.41
+       0.05  100000  0.0031  0.0004         0.46     5.6e-09
+        0.1    1000  0.0250  0.0031         1.35     6.9e-05
+        0.1  100000  0.0100  0.0013         0.97     1.9e-27
+        0.5    1000  0.2659  0.0325         5.22     3.3e-40
+        0.5  100000  0.2348  0.0287         4.95           0
+```
 
 Three lessons are in that table.
 
@@ -226,10 +227,11 @@ for name, (X, y) in scenarios.items():
     print(f"{name:14} smallest input KS p-value {ks_p:9.2g}   AUC {auc:.3f}")
 ```
 
-- no drift       smallest input KS p-value      0.79   AUC 0.886
-- data drift     smallest input KS p-value         0   AUC 0.889
-- concept drift  smallest input KS p-value     0.031   AUC 0.713
-
+```output
+no drift       smallest input KS p-value      0.79   AUC 0.886
+data drift     smallest input KS p-value         0   AUC 0.889
+concept drift  smallest input KS p-value     0.031   AUC 0.713
+```
 
 The results are the reverse of what an input-only dashboard would suggest. The data drift scenario sets off the loudest alarm (a p-value of 0) and does no harm: AUC is unchanged, because the model's rule still holds in the new region. The concept drift scenario produces at most a marginal signal on the inputs (the smallest of three p-values is 0.031, which isn't significant once you account for testing three features) and drops AUC from 0.886 to 0.713.
 
@@ -303,11 +305,12 @@ for metric in snapshot.dict()["metrics"]:
 snapshot.save_html("drift_report.html")
 ```
 
-- DriftedColumnsCount(drift_share=0.5)                                   &#123;'count': 2.0, 'share': 0.6666666666666666&#125;
-- ValueDrift(column=amount,method=Wasserstein distance (normed),threshold=0.1) 0.8129
-- ValueDrift(column=hour,method=Wasserstein distance (normed),threshold=0.1) 0.0262
-- ValueDrift(column=country,method=Jensen-Shannon distance,threshold=0.1) 0.1595
-
+```output
+DriftedColumnsCount(drift_share=0.5)                                   {'count': 2.0, 'share': 0.6666666666666666}
+ValueDrift(column=amount,method=Wasserstein distance (normed),threshold=0.1) 0.8129
+ValueDrift(column=hour,method=Wasserstein distance (normed),threshold=0.1) 0.0262
+ValueDrift(column=country,method=Jensen-Shannon distance,threshold=0.1) 0.1595
+```
 
 Notice which methods it chose. With more than 1,000 rows, Evidently uses a *magnitude* measure for each column, Wasserstein distance normalized by the reference standard deviation for numbers and JS distance for categories, rather than a p-value, for exactly the reason section 4 showed. The shifted `amount` (0.81 standard deviations) and `country` mix are flagged; the unchanged `hour` isn't.
 
