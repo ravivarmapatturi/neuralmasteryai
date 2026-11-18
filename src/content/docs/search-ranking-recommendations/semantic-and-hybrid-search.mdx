@@ -10,12 +10,33 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import SemanticHybridSearchDiagram from '../../../viz/diagrams/SemanticHybridSearchDiagram';
 import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Semantic & Hybrid Search
 
 <ELI5>
 Imagine visiting an enormous museum archive. If you ask an archivist for a document containing the exact phrase "Apollo 11 mission log", they look up the exact title in the physical card catalog and pull the folder in ten seconds. But if you ask for "records about astronauts walking on the lunar surface during the Cold War", the card catalog fails because the words "astronauts" or "Cold War" might not appear in the title. Instead, a knowledgeable curator who understands historical concepts finds related files based on conceptual meaning. Hybrid search combines both experts: the card catalog provides exact keyword precision, the conceptual curator catches related ideas, and a fair fusion score decides the final reading list.
 </ELI5>
+
+## Why it exists
+
+Lexical search can miss a relevant document when the wording differs, while dense retrieval can blur exact identifiers. A hybrid system searches both channels, then merges their ranked lists without comparing incompatible raw score scales.
+
+## The big picture
+
+The query fans out to a keyword index and a vector index, then rank fusion combines their candidates before a reranker spends more compute on the short list.
+
+<SemanticHybridSearchDiagram />
+
+Notice that keyword and vector retrieval meet at rank fusion before the smaller candidate list is reranked.
+
+The worksheet uses the two channel rankings from the Reciprocal Rank Fusion example below.
+
+<Worksheet title="Fuse two search rankings" ariaLabel="Reciprocal Rank Fusion worksheet using the four-document example" stages={[
+  { tag: 'Ranks', color: 'yellow', note: 'RRF uses rank positions, not raw BM25 or cosine values.', grid: { head: ['', 'D1', 'D2', 'D3', 'D4'], rows: [{ label: 'lexical', cells: ['1', '2', '4', '3'] }, { label: 'dense', cells: ['3', '1', '2', '4'] }] } },
+  { tag: 'RRF score', color: 'blue', note: 'With k = 60 and equal weights, D2 edges ahead of D1.', grid: { head: ['', 'D1', 'D2'], rows: [{ label: 'score', cells: ['0.032266', '0.032522'] }] } },
+  { tag: 'Final order', color: 'green', note: 'Sort the fused scores from highest to lowest.', grid: { head: ['', 'rank 1', 'rank 2'], rows: [{ label: 'document', cells: ['D2', 'D1'] }], hide: [[0, 0], [0, 1]] } },
+]} />
 
 ## Why Neither Lexical Nor Dense Retrieval Suffices Alone
 
@@ -154,7 +175,7 @@ $$
 
 Where:
 - $r_m(d) \in \{1, 2, 3, \dots\}$ is the 1-based rank of document $d$ in channel $m$. If document $d$ is not retrieved by channel $m$, its reciprocal term for that channel is $0$.
-- $k \in \mathbb{Z}^+$ is a smoothing constant that dampens the penalty difference between adjacent ranks. Cormack et al. (2009) evaluated values across TREC collections and observed that $k = 60$ served as an empirically robust reference default.
+- $k \in \mathbb{Z}^+$ is a smoothing constant that dampens the penalty difference between adjacent ranks. Cormack et al. (2009) evaluated values across TREC collections and found that $k = 60$ worked well as a reference setting.
 - $w_m \ge 0$ is an optional channel weight (default $w_m = 1.0$).
 
 <PredictFirst
@@ -166,7 +187,7 @@ Where:
     "Larger k values alter the underlying dense embedding projections."
   ]}
   correctIndex={0}
-  explanation="Cormack et al. (2009) proposed RRF and found empirically that k ≈ 60 provided robust fusion across disparate retrieval methods. As an illustrative calculation, when k=1, the score ratio between rank 1 and rank 2 is (1/2)/(1/1) = 0.5 (a 50% score drop), allowing a single noisy rank 1 to dominate. With k=60, rank 1 contributes 1/61 ≈ 0.01639 and rank 2 contributes 1/62 ≈ 0.01613 (a modest ~1.6% drop). Dampening top-rank decay rewards candidates that demonstrate consensus across multiple retrieval lists."
+  explanation="Cormack et al. (2009) proposed RRF and found that k ≈ 60 produced stable rankings across different retrieval methods. As an illustrative calculation, when k=1, the score ratio between rank 1 and rank 2 is (1/2)/(1/1) = 0.5 (a 50% score drop), allowing a single noisy rank 1 to dominate. With k=60, rank 1 contributes 1/61 ≈ 0.01639 and rank 2 contributes 1/62 ≈ 0.01613 (a modest ~1.6% drop). Dampening top-rank decay rewards candidates that demonstrate consensus across multiple retrieval lists."
 />
 
 ### An Illustrative Worked Example
@@ -217,13 +238,13 @@ If we increase the lexical weight for technical keyword queries:
 
 Adjusting channel weights dynamically prioritizes channels matching inferred query intent.
 
-## The Shape of It: Interactive RRF Fusion Explorer
+## Worked example
 
 Use the interactive visualizer below to step through our worked example. Toggle between equal weights and biased channels, or alter the smoothing parameter $k$ to observe how the fused result ordering updates.
 
 <SemanticHybridSearchDiagram />
 
-### Run It Yourself: Python RRF Implementation
+## Try it yourself
 
 Run the exact worked example using pure Python standard library. Notice how the output scores match our derivations to six decimal places.
 
@@ -331,7 +352,7 @@ In an illustrative multi-stage serving pipeline:
 
 For architectural patterns on deploying cross-encoders with caching and dynamic windowing, consult our guide on [Retrieval and Reranking Architectures](/docs/llms-genai/retrieval-and-reranking-architectures).
 
-## Common Problems & Fixes
+## Common mistakes
 
 | Failure Mode | Root Cause | Engineering Fix |
 | :--- | :--- | :--- |
@@ -340,7 +361,7 @@ For architectural patterns on deploying cross-encoders with caching and dynamic 
 | **Out-of-vocabulary technical jargon misretrieved** | Subword tokenizers fragment domain terms into rare subwords with erratic embeddings. | Maintain domain custom vocabularies, expand inverted index synonym dictionaries, or employ late-interaction ColBERT indexes. |
 | **Cross-encoder reranker times out SLA** | Scoring an excessively large candidate pool through a heavy transformer reranker exceeds the latency SLA. | Reduce the candidate reranking window (e.g. from 200 to an illustrative 50 candidates); quantize the reranker model (such as INT8 via ONNX Runtime or TensorRT). |
 
-## When Not to Use Complex Hybrid Search
+## When not to use it
 
 | Situation | Recommended Alternative | Reason |
 | :--- | :--- | :--- |

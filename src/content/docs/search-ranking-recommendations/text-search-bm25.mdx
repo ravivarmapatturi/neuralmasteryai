@@ -10,12 +10,33 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import InvertedIndexVisualizer from '../../../viz/diagrams/InvertedIndexVisualizer';
 import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Text Search & Inverted Indexes
 
 <ELI5>
 Imagine looking up recipes in the back index of a 1,000-page cookbook. Instead of reading every page from front to back to see if it contains the word "vanilla", you turn straight to the letter V, locate "vanilla", and look at the list of recipe page numbers printed beside it. If you search for "vanilla AND sugar", you take the page list for vanilla and the page list for sugar and keep only the page numbers that appear on both lists. An inverted index does the exact same thing for computer search.
 </ELI5>
+
+## Why it exists
+
+Searching every document for every query gets slower as the collection grows. An inverted index stores each term beside the documents that contain it, so a query can visit only relevant postings.
+
+## The big picture
+
+Normalize text into terms, build a term-to-document map, then intersect or union postings to answer Boolean queries.
+
+<InvertedIndexVisualizer />
+
+Notice that a term's posting list lets a query visit matching documents without scanning the full collection.
+
+The worksheet uses the four short documents from the runnable example below.
+
+<Worksheet title="Build two postings lists" ariaLabel="Inverted index worksheet using the four-document runnable example" stages={[
+  { tag: 'Documents', color: 'yellow', note: 'D1 and D2 contain both search and ranking.', grid: { head: ['', 'D1', 'D2', 'D3', 'D4'], rows: [{ label: 'text', cells: ['search ranking engine', 'search ranking neural ranking', 'neural search recommendation system', 'recommendation deep learning model'] }] } },
+  { tag: 'Postings', color: 'blue', note: 'Write each matching document once in sorted order.', grid: { head: ['', 'search', 'ranking', 'recommendation'], rows: [{ label: 'documents', cells: ['D1, D2, D3', 'D1, D2', 'D3, D4'] }] } },
+  { tag: 'Queries', color: 'green', note: 'AND keeps shared documents; OR keeps either list.', grid: { head: ['', 'search AND ranking', 'ranking OR recommendation'], rows: [{ label: 'matches', cells: ['D1, D2', 'D1, D2, D3, D4'] }], hide: [[0, 0], [0, 1]] } },
+]} />
 
 ## Why Lexical Retrieval Matters
 
@@ -138,7 +159,11 @@ To solve these problems, search systems transition from binary Boolean matching 
 - **Chapter 3**: [TF-IDF from First Principles](/docs/search-ranking-recommendations/tf-idf) introduces term frequency and inverse document frequency to score matches based on word rarity.
 - **Chapter 4**: [BM25: Term Saturation & Length Normalization](/docs/search-ranking-recommendations/bm25) introduces non-linear saturation curves and document-length normalizers that power production search engines.
 
-## Run It Yourself: Building an Inverted Index in Pure Python
+## Worked example
+
+The four-document example builds postings for `search`, `ranking`, and `recommendation`, then answers AND and OR queries with those lists.
+
+## Try it yourself
 
 Execute the complete text normalization and inverted index implementation below. Notice how the index extracts postings and evaluates Boolean queries directly in Python.
 
@@ -213,7 +238,15 @@ print("\\nQuery: ranking OR recommendation")
 print("Matches:", idx.boolean_or("ranking", "recommendation"))
 `} />
 
-## When Not to Use Pure Lexical Indexing
+## Common mistakes
+
+| Mistake | Why it fails | Fix |
+| :--- | :--- | :--- |
+| Storing postings in insertion order | Set operations can return unstable or incorrect results when a merge assumes sorted IDs. | Keep postings sorted or sort them before intersection. |
+| Treating every token as equally useful | Common words produce long lists and weak matches. | Add a relevance score such as BM25 after candidate retrieval. |
+| Dropping normalization rules between indexing and querying | The same word can end up under different keys. | Apply the same tokenizer and normalization to both paths. |
+
+## When not to use it
 
 | Scenario | Recommended Alternative | Core Reason |
 | :--- | :--- | :--- |
@@ -226,7 +259,7 @@ print("Matches:", idx.boolean_or("ranking", "recommendation"))
 
 | Architectural Element | Definition | Systems Role |
 | :--- | :--- | :--- |
-| **Normalization Pipeline** | Tokenization, case folding, punctuation stripping, stemming | Converts raw text into canonical dictionary terms. |
+| **Normalization Pipeline** | Tokenization, case folding, punctuation stripping, stemming | Converts raw text into normalized dictionary terms. |
 | **Forward Index** | Mapping from document IDs to word tokens ($D \to [w]$) | Natural document representation; inefficient for search. |
 | **Inverted Index** | Mapping from vocabulary terms to posting lists ($w \to [D]$) | Enables sub-millisecond candidate retrieval over millions of documents. |
 | **Posting List** | Sorted array of document IDs and term frequencies | Enables linear merge intersections and skip-pointer lookups. |

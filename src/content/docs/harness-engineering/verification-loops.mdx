@@ -10,6 +10,8 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # The 3-Layer Verification Engine
 
@@ -26,7 +28,7 @@ The **3-Layer Verification Engine** is the strict proctor standing over the desk
 
 </ELI5>
 
-## Why This Exists
+## Why it exists
 
 In autonomous coding evaluations such as SWE-bench (Jimenez et al., 2024), over 60% of agent failures stem not from complex algorithmic deficits, but from unverified assumptions:
 
@@ -36,11 +38,21 @@ In autonomous coding evaluations such as SWE-bench (Jimenez et al., 2024), over 
 
 The 3-layer verification engine decouples completion claims from reality. It enforces an automated filtering funnel where code must clear three distinct gates of increasing complexity before receiving authorization to merge.
 
-## The Shape of It
+## The big picture
 
 The verification engine arranges testing into three progressive layers, optimized for execution velocity and token efficiency:
 
 <VerificationThreeLayerSimulator />
+
+Notice that quick static checks run before slower unit and end-to-end tests.
+
+The diagnostic example turns a 420-byte terminal trace into a 180-byte envelope with the test, location, and error called out.
+
+<Worksheet title="Keep the failure signal" ariaLabel="Verification worksheet comparing raw test output with a compact diagnostic envelope" stages={[
+  { tag: 'Raw trace', color: 'yellow', note: 'The example starts with 420 bytes across 30 lines.', grid: { head: ['', 'bytes', 'lines'], rows: [{ label: 'pytest', cells: ['420', '30'] }] } },
+  { tag: 'Keep', color: 'blue', note: 'Retain the failing test, file location, and exception.', grid: { head: ['', 'test', 'location', 'error'], rows: [{ label: 'signal', cells: ['test_qkv_projection', 'test_attention.py:18', 'ValueError'] }] } },
+  { tag: 'Envelope', color: 'green', note: 'The compact example is 180 bytes, 240 fewer than the raw trace.', grid: { head: ['', 'raw', 'envelope', 'saved'], rows: [{ label: 'size', cells: ['420 B', '180 B', '240 B'] }], hide: [[0, 0], [0, 1], [0, 2]] } },
+]} />
 
 <PredictFirst
   question="Why must a harness always execute Layer 1 (ruff check and mypy typechecking) before triggering Layer 2 (pytest unit tests)?"
@@ -123,30 +135,25 @@ mutmut run --paths-to-mutate=src/models/attention.py --tests-dir=tests/unit/
 
 When Layer 2 fails, dumping 300 lines of raw terminal output clutters the agent's context and causes attention dispersion. The harness parses raw terminal output into a structured, actionable XML diagnostic envelope.
 
-```
-       Raw Pytest Output (420 bytes / 30 lines)
-       [ Internal fixtures, platform metadata, ANSI codes ]
-                                │
-                                ▼
-               Harness Diagnostic Regex Parser
-                                │
-                                ▼
-       Structured XML Diagnostic Envelope (180 bytes)
-       • Layer: 2 (pytest)
-       • Target Test: test_qkv_projection
-       • Location: tests/unit/test_attention.py:18
-       • Error: ValueError: too many values to unpack (expected 3, got 2)
-       • Explicit instruction: Inspect return signature at line 18
-```
+<PenFlow
+  ariaLabel="A long test log is parsed into a short diagnostic envelope containing the test, location, and error"
+  title="Keep the failure signal"
+  rows={[
+    { steps: { title: 'Raw pytest trace', lines: ['420 bytes', '30 lines'], tone: 'ink' } },
+    { arrow: 'extract the useful fields', steps: { title: 'Diagnostic parser', lines: ['test name', 'file and line', 'exception'], tone: 'blue' } },
+    { arrow: 'send a compact result', steps: { title: 'Failure envelope', lines: ['180 bytes', 'actionable next step'], tone: 'green' } },
+  ]}
+  caption="The parser keeps the failing test and location while dropping unrelated terminal noise."
+/>
 
-### A Full Worked Example: Diagnostic Extraction
+## Worked example
 
 Consider an agent implementing a multi-head attention projection layer. The agent mistakenly writes `return q, k` instead of returning the full triad `(q, k, v)`. Pytest fails with:
 `ValueError: too many values to unpack (expected 3, got 2)` at `tests/unit/test_attention.py:18`.
 
 Instead of returning the entire pytest terminal session, the harness extracts the failing test name, source line number, and exception message into a concise XML block.
 
-### Run It Yourself
+## Try it yourself
 
 Execute this self-contained Python implementation to observe how the harness filters terminal noise into a targeted prompt injection:
 
@@ -198,7 +205,7 @@ print(clean_envelope)
 # Try it: Change ValueError to TypeError above and run again to see the updated diagnostic envelope.
 `} />
 
-## Common Problems & Fixes
+## Common mistakes
 
 1. **Test Flakiness Inducing Infinite Retry Loops**: An integration test with network dependencies fails intermittently, causing the agent to repeatedly mutate working code.
    - *Fix*: Mark flaky tests with `@pytest.mark.flaky(reruns=2)` and require unit tests to run strictly offline with mocked network interfaces (`pytest-mock`).
@@ -211,7 +218,7 @@ print(clean_envelope)
 Never permit an agent to mark its own work as complete. Verification must always be performed by an independent deterministic process. If the 3-layer verifier fails, the agent must be re-prompted with the structured diagnostic envelope until all tests pass.
 </NotebookCallout>
 
-## When *Not* to Use It
+## When not to use it
 
 | Situation | Better Choice | Why |
 | :--- | :--- | :--- |

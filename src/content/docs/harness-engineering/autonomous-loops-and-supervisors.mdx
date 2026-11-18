@@ -12,10 +12,11 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Autonomous Loops & Supervisors
 
-The defining characteristic of an autonomous agent is its ability to operate in an unattended cybernetic loop: receiving an open-ended goal, decomposing it into subtasks, executing code modifications, verifying results against compilers, and iterating until all requirements are met.
+The defining characteristic of an autonomous agent is its ability to operate in an unattended feedback loop: receiving an open-ended goal, decomposing it into subtasks, executing code modifications, verifying results against compilers, and iterating until all requirements are met.
 
 However, unbounded autonomous loops introduce critical engineering failure modes: **infinite oscillation cycles**, **runaway token expenditure**, and **drift from the original specification**.
 
@@ -27,7 +28,7 @@ The **Supervisor Harness** provides the physical guardrails: it limits the numbe
 
 </ELI5>
 
-## Why This Exists
+## Why it exists
 
 A conventional assistant operates in a **Single-Turn Request/Response** mode: the human engineer evaluates every line of diff, catches errors, and manually prompts the next step. While safe, this bounds productivity to the human's immediate typing speed.
 
@@ -39,11 +40,21 @@ When teams remove the human from the inner loop to achieve autonomous execution,
 
 The supervisor harness solves these challenges by implementing an outer control plane with deterministic circuit breakers, token velocity limits, and a strict Maker-Checker architectural separation.
 
-## The Shape of It
+## The big picture
 
 An autonomous goal loop runs as a supervised state machine that delegates execution to workers while reserving commit authority for verifiers:
 
 <AutonomousGoalLoopDiagram />
+
+Notice that the agent observes each tool result and verifies progress before choosing another action.
+
+The circuit breaker example below trips when the same state fingerprint appears twice.
+
+<Worksheet title="Catch a repeated agent state" ariaLabel="Circuit breaker worksheet showing repeated state fingerprints across three turns" stages={[
+  { tag: 'Turns', color: 'yellow', note: 'The agent alternates between two files before returning to the first state.', grid: { head: ['', 'turn 1', 'turn 2', 'turn 3'], rows: [{ label: 'file', cells: ['router.py', 'handler.py', 'router.py'] }] } },
+  { tag: 'Fingerprint', color: 'blue', note: 'Turn 1 and turn 3 produce the same state hash.', grid: { head: ['', 'turn 1', 'turn 2', 'turn 3'], rows: [{ label: 'hash', cells: ['fc207e10', 'bfd76fa9', 'fc207e10'] }] } },
+  { tag: 'Decision', color: 'green', note: 'With repeat_threshold = 2, the second occurrence trips the breaker.', grid: { head: ['', 'first seen', 'second seen', 'action'], rows: [{ label: 'state', cells: ['turn 1', 'turn 3', 'halt'] }], hide: [[0, 0], [0, 1], [0, 2]] } },
+]} />
 
 <PredictFirst
   question="If an autonomous coding loop gets stuck in an oscillating ping-pong loop (editing File A breaks File B, editing File B breaks File A), what will happen if you only enforce a step cap (e.g. max 30 turns) without cycle detection?"
@@ -110,7 +121,7 @@ supervisor:
     network_egress: false
 ```
 
-## A Full Worked Example: State Fingerprinting & Circuit Breakers
+## Worked example
 
 Consider an agent attempting to resolve a circular dependency between `router.py` and `handler.py`. The agent generates three sequential turns:
 
@@ -120,20 +131,7 @@ Consider an agent attempting to resolve a circular dependency between `router.py
 
 Because hash `[fc207e10]` has now been observed **2 times** (matching the repetition threshold), the circuit breaker trips immediately. It halts the loop before Turn 4 can execute, preventing 12 additional wasted turns.
 
-```
-       Turn 1: router.py  ──> State Hash [fc207e10] (Count: 1)
-                                      │
-       Turn 2: handler.py ──> State Hash [bfd76fa9] (Count: 1)
-                                      │
-       Turn 3: router.py  ──> State Hash [fc207e10] (Count: 2)
-                                      │
-                                      ▼
-             [ CIRCUIT BREAKER TRIPPED: REPETITION DETECTED ]
-             • Action: Halt execution loop
-             • Strategy: Flush turn history, inject architectural refactor prompt
-```
-
-### Run It Yourself
+## Try it yourself
 
 Execute this self-contained Python implementation of the deterministic cycle detector:
 
@@ -201,7 +199,7 @@ Closing the autonomous loop with verification gates and circuit breakers transfo
 
 Without harness supervision, success rates drop dramatically on multi-file tasks because small errors compound into unrecoverable hallucinations. Structured supervision restores deterministic quality.
 
-## Common Problems & Fixes
+## Common mistakes
 
 1. **Deadlock from Strict Evaluator Rejections**: The Generator and Evaluator get into a permanent disagreement: Generator believes its patch satisfies requirements, but Evaluator repeatedly rejects with minor formatting nitpicks.
    - *Fix*: Implement an **Escalation Arbiter**: if Evaluator rejects 3 times on formatting or non-functional criteria, the harness runs automated formatters (`ruff format`) and escalates to human review.
@@ -214,7 +212,7 @@ Without harness supervision, success rates drop dramatically on multi-file tasks
 An agent should never judge its own work. Always enforce the Maker-Checker separation: the Generator proposes patches inside the sandbox, while an independent Evaluator verifies deterministic proofs and signs off on git commits.
 </NotebookCallout>
 
-## When *Not* to Use It
+## When not to use it
 
 | Situation | Better Choice | Why |
 | :--- | :--- | :--- |

@@ -11,6 +11,7 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # State, Continuity & Memory Compaction
 
@@ -26,7 +27,7 @@ Instead, the foreman leaves a waterproof clipboard on the job site: a checklist 
 
 </ELI5>
 
-## Why This Exists
+## Why it exists
 
 Autonomous software engineering tasks differ fundamentally from single-turn chat completions. A typical feature implementation touches multiple files, runs compilers, executes test suites, and iterates through error traces.
 
@@ -37,11 +38,21 @@ When an autonomous agent runs over dozens of turns without explicit state archit
 
 Production harness architectures resolve this by treating the host filesystem as the ground truth of system state, using **externalized state artifacts** paired with **two-pass token compaction**.
 
-## The Shape of It
+## The big picture
 
 The state continuity architecture separates volatile reasoning history from durable task state:
 
 <ContextCompactionVisualizer />
+
+Notice that recent turns stay detailed while older tool traces are compressed into smaller state.
+
+The worked example reduces a six-turn debugging history to fit a 150-token budget.
+
+<Worksheet title="Compact a six-turn history" ariaLabel="State compaction worksheet with the worked example history size and budget" stages={[
+  { tag: 'History', color: 'yellow', note: 'The raw conversation is estimated at 551 tokens across six turns.', grid: { head: ['', 'turns', 'tokens'], rows: [{ label: 'conversation', cells: ['6', '551'] }] } },
+  { tag: 'Budget', color: 'blue', note: 'The target keeps the active history within 150 tokens.', grid: { head: ['', 'target'], rows: [{ label: 'budget', cells: ['150 tokens'] }] } },
+  { tag: 'Passes', color: 'green', note: 'First replace older traces; if needed, shorten long recent tool output.', grid: { head: ['', 'pass 1', 'pass 2'], rows: [{ label: 'action', cells: ['prune older traces', 'summarize long traces'] }], hide: [[0, 0], [0, 1]] } },
+]} />
 
 <PredictFirst
   question="When an agent's conversational history is aggressively compacted by 70% to fit within budget, what is the single most reliable mechanism to prevent it from repeating work it completed 20 turns ago?"
@@ -65,7 +76,7 @@ Observe how externalized state guides coordination across agent roles:
 
 <AnthropicSupervisorTriadVisualizer />
 
-### The Canonical State Schema
+### The State Schema
 
 Below is the production JSON specification for `feature_list.json`, maintained in the repository workspace root:
 
@@ -173,7 +184,7 @@ git branch -D agent/task-flash-kernel
 
 This isolation ensures that failed agent experiments leave zero residual artifacts in the primary codebase, and resetting state requires a single filesystem unlink rather than complex git reconciliations.
 
-## A Full Worked Example: Two-Pass History Compaction
+## Worked example
 
 Consider an agent running a test-fix cycle. Its raw conversational history contains 551 tokens across 6 turns, dominated by 400+ tokens of verbose compiler and pytest logs.
 
@@ -181,7 +192,7 @@ The target context budget for conversation history is **150 tokens**.
 
 <TwoPassCompactionFlowDiagram />
 
-### Run It Yourself
+## Try it yourself
 
 Execute this self-contained Python implementation of the two-pass compaction engine. Notice how historical test failures and verbose assertion outputs are compacted into semantic markers without losing user intent:
 
@@ -257,7 +268,7 @@ for m in compacted_history:
 # Try it: Change budget_tokens to 300 above to see what changes when more budget is available.
 `} />
 
-## Common Problems & Fixes
+## Common mistakes
 
 1. **State Desynchronization with Git**: An agent updates `feature_list.json` to mark a feature "passed", but fails to stage or commit the matching Python files.
    - *Fix*: The harness links state transitions to git commits. A task in `feature_list.json` cannot transition to `passed` unless the working directory has a clean git status and matching commit hash.
@@ -270,7 +281,7 @@ for m in compacted_history:
 Treat the filesystem as the source of truth, not the context window. Always write task status to `feature_list.json` and human milestones to `progress.txt`. When context is cleared or refreshed, reloading these two files restores full autonomous momentum.
 </NotebookCallout>
 
-## When *Not* to Use It
+## When not to use it
 
 | Situation | Better Choice | Why |
 | :--- | :--- | :--- |

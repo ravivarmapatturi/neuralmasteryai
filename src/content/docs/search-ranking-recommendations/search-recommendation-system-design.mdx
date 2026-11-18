@@ -10,12 +10,31 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import RunnableCode from '../../../components/content/RunnableCode';
 import SearchSystemDesignExplorer from '../../../viz/diagrams/SearchSystemDesignExplorer';
 import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Search & Recommendation System Design
 
 <ELI5>
 Building a search and recommendation engine for tens of millions of items is like designing an airport terminal that handles ten thousand passengers a minute. If every passenger had to be thoroughly interviewed by the chief security director at the front door, the airport would grind to a halt within seconds. Instead, the airport uses fast ticket scanners at the entrance, automated baggage belts in the middle, and reserves thorough inspections for only a small, flagged group. System design is the art of orchestrating fast, specialized stages so every request finishes in milliseconds without crashing under load.
 </ELI5>
+
+## Why it exists
+
+A search or recommendation request passes through several services, each adding latency and failure risk. A stage budget makes the end-to-end target concrete and leaves room for variation under peak load.
+
+## The big picture
+
+The system narrows 50 million catalog items to ten results within a 100 ms p99 server budget. The worksheet uses the stage allocations shown in the latency table.
+
+<SearchSystemDesignExplorer />
+
+Notice that the six stage budgets total 100 ms and leave 16 ms beyond the typical p99 sum.
+
+<Worksheet title="Spend the 100 ms latency budget" ariaLabel="Latency budget worksheet using the six stages from the system design page" stages={[
+  { tag: 'Early stages', color: 'yellow', note: 'Gateway, retrieval, and filtering use 40 ms.', grid: { head: ['', 'gateway', 'retrieval', 'filtering'], rows: [{ label: 'budget', cells: ['5 ms', '25 ms', '10 ms'] }] } },
+  { tag: 'Ranking stages', color: 'blue', note: 'Ranking, reranking, and egress use 60 ms.', grid: { head: ['', 'ML rank', 'rerank', 'egress'], rows: [{ label: 'budget', cells: ['40 ms', '10 ms', '10 ms'] }] } },
+  { tag: 'Total', color: 'green', note: 'The allocated stages sum to the stated 100 ms envelope.', grid: { head: ['', 'allocated', 'typical p99', 'headroom'], rows: [{ label: 'system', cells: ['100 ms', '84 ms', '16 ms'] }], hide: [[0, 0], [0, 1], [0, 2]] } },
+]} />
 
 ## The System Design Interview Scenario
 
@@ -177,7 +196,11 @@ Circuit breakers (e.g. Resilience4j / Envoy) monitor downstream error rates and 
 Never let a non-critical feature take down the recommendation engine. If the real-time feature store times out, score with static features. If candidate generation times out, serve cached recommendations. If the cache fails, serve static top-sellers. A degraded recommendation slate is infinitely better than a broken user experience.
 </NotebookCallout>
 
-## Runnable Python Example: Capacity Sizing & Fallback Simulation
+## Worked example
+
+The capacity example uses the 100 ms budget above to calculate concurrent requests and show how the service degrades when a dependency is slow.
+
+## Try it yourself
 
 The following executable Python script calculates the end-to-end latency budget breakdown, validates SLA margins, computes cluster capacity via Little's Law, and simulates the 4-level fallback degradation ladder.
 
@@ -295,7 +318,7 @@ print("\n--- 3. Resilience Fallback Ladder Metrics ---")
 for l in levels:
     print(f"Level {l['lvl']} ({l['name']:25}) | p99: {l['p99']:2d} ms | NDCG: {l['ndcg']:.2f} | Catalog Reach: {l['coverage']}%")`} />
 
-## Common Problems & Fixes
+## Common mistakes
 
 | Failure Mode | Root Cause | Engineering Fix |
 | :--- | :--- | :--- |
@@ -305,7 +328,7 @@ for l in levels:
 | **Cold-Start Pipeline Starvation** | Newly indexed items have no engagement features in the online store | Populate default feature priors from item category and text embeddings at ingestion time. |
 | **Model Drift Silently Degrades CTR** | User consumption habits change without model retraining | Deploy automated drift detectors tracking Population Stability Index (PSI) and feature distributions daily. |
 
-## When Not to Build a Multi-Stage System
+## When not to use it
 
 | Scenario | Recommended Alternative | Rationale |
 | :--- | :--- | :--- |
@@ -324,7 +347,7 @@ for l in levels:
 | **Degradation Ladder** | 4-tier fallback: Full ML → Light Ranker → Redis Cache → Static Top-Sellers | High availability ($99.99\%$); zero user-facing 500 errors. |
 | **Capacity Sizing** | Little's Law ($L = \lambda W$) with 65% target CPU utilization | Prevents queuing tail latency explosions under peak 5,000 QPS. |
 
-Search, Ranking & Recommendations track complete. Return to [Search & Recommendation Pipelines](/docs/search-ranking-recommendations/overview) to review the unified progression from lexical indexing to large-scale serving architectures.
+Next: [Search & Recommendation Pipelines](/docs/search-ranking-recommendations/overview) — review how lexical retrieval, ranking, recommendations, and serving fit into one path.
 
 ## Sources
 
