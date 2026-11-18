@@ -8,6 +8,9 @@ import BrowserAgentActionDiagram from '../../../viz/diagrams/BrowserAgentActionD
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Browser Automation Agents
 
 [Agent Fundamentals](/docs/agents/agent-fundamentals) gave agents tools with fixed schemas: `lookup_order(order_id)`, `send_email(to, body)`. Much of the world's software has no such API, only a website. A **browser agent** gives a model a browser instead: it reads the page, decides what to click or type, and repeats until the task is done. This page explains how that works. The key design choice is how the page is shown to the model, and the answer most browser agents use is not a screenshot but a numbered list of the page's interactive elements. The page covers that representation, the observe-act loop run against a real browser, why every web page has to be treated as hostile input, with a prompt injection shown happening, the reliability and anti-automation problems that remain, and when a browser agent is the wrong tool.
@@ -21,6 +24,19 @@ A browser agent works the second way. A program reads the web page and turns it 
 There's a catch: the friend reads you *everything* on the page, including small print someone hid there to trick you. Everything below is how this works, and how to stay safe while doing it.
 
 </ELI5>
+
+<PenFlow title="Guard actions between observations" ariaLabel="Guard actions between observations" rows={[{ steps: { title: 'Read the user goal', lines: ['Keep it separate from page text'], tone: 'blue' } }, { steps: { title: 'Inspect current page', lines: ['Refresh labels after navigation'], tone: 'purple' } }, { steps: { title: 'Check proposed action', lines: ['Reject unexpected destructive steps'], tone: 'orange' } }, { steps: { title: 'Execute and verify', lines: ['Confirm the resulting page state'], tone: 'green' } }]} caption="Page content informs actions but never overrides the task or safety policy." />
+
+## Why it exists
+
+A browser agent needs a compact, actionable view of the page and a checked action loop. The example indexes visible controls, searches for laptops, then reveals that page text also contains a hidden instruction aimed at the model.
+
+## The big picture
+
+<PenFlow title="Observe controls, act by index, inspect the result" ariaLabel="Observe controls, act by index, inspect the result" rows={[{ steps: { title: 'Observe', lines: ['Index four interactive elements'], tone: 'blue' } }, { steps: { title: 'Act', lines: ['Fill 1; click 2'], tone: 'purple' } }, { steps: { title: 'Verify', lines: ['Three laptops from $499'], tone: 'orange' } }, { steps: { title: 'Treat page as untrusted', lines: ['Hidden instruction also enters page text'], tone: 'green' } }]} caption="Follow the execution boundary through the example." />
+
+<Worksheet title="Observe controls, act by index, inspect the result trace" ariaLabel="Observe controls, act by index, inspect the result trace" stages={[{ tag: 'Recorded values', color: 'yellow', note: 'Values copied from the printed page output.', grid: { head: ['', 'Recorded result'], rows: [{ label: 'Search', cells: ['Input index 1; button index 2'] }, { label: 'Result', cells: ['3 laptops from $499'] }, { label: 'Page text', cells: ['Hidden instruction says to click Delete account'] }] } }]} />
+
 
 ## 1. How to Show a Web Page to a Model
 
@@ -92,7 +108,7 @@ console.log('hidden text the model also reads:', pageText.match(/AI agents:.*/)?
 await browser.close();
 ```
 
-```text
+```output
 [0] <a> Today's deals
 [1] <input> Search products
 [2] <button> Search
@@ -164,7 +180,27 @@ Its limits: it says little about visual layout (which of two "Submit" buttons is
 | Open-ended tasks across unfamiliar websites | A browser agent |
 | Tasks that leave the browser: desktop apps, file dialogs, system settings | A [computer-use agent](/docs/agents/computer-use) |
 
-## 6. When *Not* to Use a Browser Agent
+## Worked example
+
+The output lists the Search button at index 2. The agent fills input 1 with `laptop`, clicks 2, and reads `Results for laptop: 3 laptops from $499`. The same observation also exposes the hidden instruction to click Delete account, which must be treated as untrusted content.
+
+## Try it yourself
+
+Change the scripted action to click index 3. Identify which safety check should prevent the destructive action from running.
+
+```python
+# Try it: Change the scripted action to click index 3. Identify which safety check should prevent the destructive action from running.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Trusting page text as an instruction | Site content is untrusted input | Keep the user task and page data in separate policy channels |
+| Using stale element indices | The page can change after observation | Re-observe after navigation or DOM mutation |
+| Giving a broad logged-in session | Prompt injection can reach sensitive actions | Scope credentials and gate consequential actions |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

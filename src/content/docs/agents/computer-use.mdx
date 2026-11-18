@@ -8,6 +8,9 @@ import ComputerUseLoopDiagram from '../../../viz/diagrams/ComputerUseLoopDiagram
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Computer-Use and GUI Agents
 
 [Browser automation agents](/docs/agents/browser-automation) act on a web page's structure: a numbered list of buttons and fields. Outside the browser, most software offers no such structure to an outside program: a desktop accounting package, a design tool, a legacy internal application, the operating system's own settings. A **computer-use agent** handles those the way a person does. It looks at a screenshot, decides where to click or what to type, does it, and looks again. This page covers how that loop works, the action set of Anthropic's current computer-use toolset, what screenshots cost in tokens, the coordinate-scaling mistake almost everyone makes once (both computed below), why a click is far riskier than a tool call, and the rules for running these agents safely.
@@ -21,6 +24,19 @@ And there's a bigger worry: unlike a calculator that can only do sums, a mouse c
 A computer-use agent is the AI in that position. Everything below is how it works, why it's expensive, and how to make sure a wrong click can't do real harm.
 
 </ELI5>
+
+<PenFlow title="Safe screenshot action cycle" ariaLabel="Safe screenshot action cycle" rows={[{ steps: { title: 'Capture and resize', lines: ['Record source and sent dimensions'], tone: 'blue' } }, { steps: { title: 'Map coordinates', lines: ['Convert to real display space'], tone: 'purple' } }, { steps: { title: 'Classify target', lines: ['Detect consequential controls'], tone: 'orange' } }, { steps: { title: 'Confirm and observe', lines: ['Gate high-impact actions; capture again'], tone: 'green' } }]} caption="A fresh observation closes the coordinate and action loop." />
+
+## Why it exists
+
+Computer-use agents map screenshot coordinates back to the real display and consume visual tokens on every observation. The recorded run shows why both scaling and human confirmation matter when a resized screenshot contains a consequential button.
+
+## The big picture
+
+<PenFlow title="Measure screenshots and map clicks back to screen space" ariaLabel="Measure screenshots and map clicks back to screen space" rows={[{ steps: { title: 'Capture', lines: ['1280×800 image from 2560×1600 display'], tone: 'blue' } }, { steps: { title: 'Estimate cost', lines: ['1,334 tokens per image'], tone: 'purple' } }, { steps: { title: 'Scale coordinates', lines: ['(1125, 720) → (2250, 1440)'], tone: 'orange' } }, { steps: { title: 'Gate action', lines: ['Pay $1,240 requires human confirmation'], tone: 'green' } }]} caption="Follow the execution boundary through the example." />
+
+<Worksheet title="Measure screenshots and map clicks back to screen space trace" ariaLabel="Measure screenshots and map clicks back to screen space trace" stages={[{ tag: 'Recorded values', color: 'yellow', note: 'Values copied from the printed page output.', grid: { head: ['', 'Recorded result'], rows: [{ label: '1280×800', cells: ['1,334 tokens per screenshot'] }, { label: '30 screenshots', cells: ['40,020 tokens'] }, { label: 'Pay target', cells: ['(1125, 720) → (2250, 1440); human confirmation'] }] } }]} />
+
 
 ## 1. Pixels In, Actions Out
 
@@ -83,7 +99,7 @@ for model_xy in [(1100, 165), (1125, 720)]:             # the model's clicks, in
     print(f"model clicks {model_xy} -> without scaling hits {unscaled}; scaled to {real} hits {target!r}: {gate}")
 ```
 
-```text
+```output
 1024x768 screenshot: 1,036 tokens; 30 screenshots in one task: 31,080
 1280x800 screenshot: 1,334 tokens; 30 screenshots in one task: 40,020
 1920x1080 screenshot: 2,691 tokens; 30 screenshots in one task: 80,730
@@ -147,7 +163,27 @@ Benchmarks flatter in two ways. Tasks are short and well specified, while real w
 | Open-ended tasks in desktop applications or across several programs | A computer-use agent in a sandbox |
 | Checking how a user interface actually looks | Computer use, which sees the rendered result |
 
-## 7. When *Not* to Use Computer Use
+## Worked example
+
+For the 1280×800 screenshot, the printed estimate is 1,334 tokens per image and 40,020 for 30 screenshots. A model click at `(1125, 720)` maps to `(2250, 1440)` on the 2560×1600 display and lands on `Pay $1,240`, so the run requests human confirmation.
+
+## Try it yourself
+
+Change the sent screenshot width or one model coordinate. Recompute the scale and identify whether the mapped point lands on Search or Pay.
+
+```python
+# Try it: Change the sent screenshot width or one model coordinate. Recompute the scale and identify whether the mapped point lands on Search or Pay.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Applying resized-image coordinates directly | Coordinates use the screenshot’s pixel space | Scale them back to display coordinates |
+| Sending full-resolution screenshots every turn | Image tokens dominate context and cost | Use a suitable resolution and retain only useful recent frames |
+| Executing consequential clicks automatically | Pixel actions have context-dependent meaning | Add a human gate before pay, delete, send, or accept |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

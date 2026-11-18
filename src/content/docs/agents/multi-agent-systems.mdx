@@ -22,6 +22,17 @@ The leader version is the easiest to keep on track. The free-for-all is flexible
 
 </ELI5>
 
+## Why it exists
+
+Adding agents helps only when independent attempts or specialist roles add useful evidence. The simulation compares majority-vote accuracy under independent errors and a shared blind spot, showing why correlated mistakes limit voting.
+
+## The big picture
+
+<PenFlow title="Separate useful diversity from duplicated attempts" ariaLabel="Separate useful diversity from duplicated attempts" rows={[{ steps: { title: 'Sample attempts', lines: ['N = 1, 5, 15, 45'], tone: 'blue' } }, { steps: { title: 'Vote', lines: ['Independent errors improve with N'], tone: 'purple' } }, { steps: { title: 'Add shared blind spot', lines: ['Correlated errors set a ceiling'], tone: 'orange' } }, { steps: { title: 'Choose structure', lines: ['Use diversity where it changes evidence'], tone: 'green' } }]} caption="Follow the execution boundary through the example." />
+
+<Worksheet title="Separate useful diversity from duplicated attempts trace" ariaLabel="Separate useful diversity from duplicated attempts trace" stages={[{ tag: 'Recorded values', color: 'yellow', note: 'Values copied from the printed page output.', grid: { head: ['', 'Recorded result'], rows: [{ label: 'N=1', cells: ['independent 0.60; shared 0.60'] }, { label: 'N=15', cells: ['independent 0.79; shared 0.74'] }, { label: 'N=45', cells: ['independent 0.91; shared 0.76'] }] } }]} />
+
+
 ## 1. Topologies
 
 ### Coordination Patterns
@@ -77,6 +88,8 @@ The simplest "many agents" result, sampling the same model several times and tak
 
 ```python
 import random
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # "More agents" in its simplest form: N independent attempts, then a majority vote.
 # Each attempt is right with probability p. How often is the majority right?
@@ -97,7 +110,7 @@ for n in (1, 5, 15, 45):
           f"with a 25% shared blind spot {majority_accuracy(n, 0.6 / 0.75, shared=0.25):.2f}")
 ```
 
-```text
+```output
 N= 1 attempts: independent errors 0.60   with a 25% shared blind spot 0.60
 N= 5 attempts: independent errors 0.68   with a 25% shared blind spot 0.71
 N=15 attempts: independent errors 0.79   with a 25% shared blind spot 0.74
@@ -127,7 +140,27 @@ Further reading: ["Multi-Agent Collaboration Mechanisms: A Survey of LLMs"](http
 - **Tool-calling hallucination** (calling tools that don't exist, or with malformed arguments) → strict schema validation on tool calls, clear error messages fed back to the model so it can self-correct, retry logic with backoff
 - **Runaway cost/latency in multi-agent chains** → caching repeated sub-results, using smaller/cheaper models for simple sub-tasks and reserving the largest model for the parts that need it, parallelizing independent sub-agent calls instead of running them sequentially
 
-## 6. When *Not* to Use Each Topology
+## Worked example
+
+At 45 attempts the printed simulation reaches 0.91 accuracy with independent errors, but 0.76 with a 25% shared blind spot. The ceiling comes from attempts that repeat the same error, not a lack of votes.
+
+## Try it yourself
+
+Change the number of attempts or the shared blind-spot rate and compare both output columns.
+
+```python
+# Try it: Change the number of attempts or the shared blind-spot rate and compare both output columns.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Adding copies of the same model | Shared blind spots make errors correlated | Add different evidence, tools, prompts, or models |
+| Assuming parallelism is free | Coordination, latency, and conflict costs remain | Compare wall-clock benefit with coordination cost |
+| Letting agents write shared state freely | Concurrent edits conflict | Assign disjoint ownership or use explicit locking/resolution |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

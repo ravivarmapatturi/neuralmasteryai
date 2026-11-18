@@ -205,3 +205,9 @@ Static gates pass: notebook (18 changed pages/0 violations on current tree), mat
 Standardized Agent Fundamentals, Agent Architectures, ReAct Agents in Production, and Loops and Graphs using their existing output traces and numeric examples. The order lookup worksheet preserves the malformed/valid IDs, carrier, and ETA; the ReAct Worksheet recomputes the page's 42,500-token total; the graph worksheet records four worker calls. Agent Architectures uses the page's qualitative pattern choices without inventing benchmark values. Scorecard: `agents-1/scorecard.md`.
 
 Static checks passed on the combined worktree: notebook (22 pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the documented low-memory gate. No push.
+
+## Agents batch 2 — four pages
+
+Standardized Agentic Coding Assistants, Multi-Agent Systems, Browser Automation Agents, and Computer-Use and GUI Agents. Worksheets use the checked-in executable output for test failure/fix recovery, majority voting under independent and correlated errors, indexed browser search and hidden text, and screenshot token/coordinate mapping. Scorecard: `agents-2/scorecard.md`.
+
+Static checks passed on the combined worktree: notebook (4 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the low-memory rule. No push.

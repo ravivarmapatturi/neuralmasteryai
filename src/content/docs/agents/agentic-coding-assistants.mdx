@@ -25,6 +25,17 @@ A coding agent does exactly that, using a few tools: search, read a file, edit a
 
 </ELI5>
 
+## Why it exists
+
+A coding agent can only close its loop when it checks real repository state. The recorded run begins with a failing test, searches and reads the implementation, makes one exact edit, and stops only when the test passes.
+
+## The big picture
+
+<PenFlow title="Search, edit, verify" ariaLabel="Search, edit, verify" rows={[{ steps: { title: 'Failing check', lines: ['Test reports -1800 != 180'], tone: 'blue' } }, { steps: { title: 'Locate cause', lines: ['Search and read the function'], tone: 'purple' } }, { steps: { title: 'Make narrow edit', lines: ['Divide percentage by 100'], tone: 'orange' } }, { steps: { title: 'Run check again', lines: ['Test suite returns OK'], tone: 'green' } }]} caption="Follow the execution boundary through the example." />
+
+<Worksheet title="Search, edit, verify trace" ariaLabel="Search, edit, verify trace" stages={[{ tag: 'Recorded values', color: 'yellow', note: 'Values copied from the printed page output.', grid: { head: ['', 'Recorded result'], rows: [{ label: 'First test', cells: ['FAILED; assertion -1800 != 180'] }, { label: 'Edit', cells: ['price * percent / 100'] }, { label: 'Second test', cells: ['OK'] }] } }]} />
+
+
 ## The Core Loop
 
 The loop is the same one [Loops and Graphs](/docs/agents/loops-and-graphs#loop-vs-graph-precisely) describes generically — produce, check, correct, repeat — applied concretely: gather context, decide a plan, take an action, verify the result against something real (a test, a build), and go back for more context if it didn't work.
@@ -39,6 +50,8 @@ Here is the whole loop in miniature against a real repository on disk with a rea
 
 ```python
 import pathlib, subprocess, sys, tempfile, textwrap
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # A tiny repository with a bug and a test, like the ones a coding agent works in.
 repo = pathlib.Path(tempfile.mkdtemp())
@@ -87,7 +100,7 @@ for name, args in plan:
         break
 ```
 
-```text
+```output
 run_tests() -> (1, 'FAILED (failures=1) AssertionError: -1800 != 180')
 grep('apply_discount',) -> ./test_prices.py:3:from prices import apply_discount | ./test_prices.py:6:        self.assertEqual(apply_disco
 read('prices.py',) -> def apply_discount(price, percent): |     return price - price * percent
@@ -163,7 +176,27 @@ None of this eliminates the need for human judgment on *intent* — did the code
 
 The [qa_rag_application](https://github.com/ravivarmapatturi/qa_rag_application) and [Multi_Agent_Research_System](https://github.com/ravivarmapatturi/Multi_Agent_Research_System) projects referenced throughout [MLOps](/docs/mlops/roadmap) and [Agents](/docs/agents/roadmap) were built using exactly this loop — an agentic coding assistant reading the real repository, editing real files, running real tests, and iterating on real failures, with the safety and context-gathering mechanics described above, not a simplified stand-in for them.
 
-## When *Not* to Hand a Task to a Coding Agent
+## Worked example
+
+The first test returns `-1800 != 180`. The agent finds `price - price * percent`, changes it to `price - price * percent / 100`, then the second test run returns `OK` and the loop stops.
+
+## Try it yourself
+
+Change the percentage formula in the example and rerun the test. Compare the assertion before and after the edit.
+
+```python
+# Try it: Change the percentage formula in the example and rerun the test. Compare the assertion before and after the edit.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Editing before locating the failing behavior | The agent guesses from a task description | Run the failing check and inspect the relevant implementation first |
+| Broad text replacement | A repeated string can change unrelated code | Require one exact match and inspect the diff |
+| Trusting the agent’s completion claim | The edit may not satisfy the requirement | Use tests or another explicit acceptance check |
+
+## When not to use it
 
 | Situation | Better approach |
 |---|---|
