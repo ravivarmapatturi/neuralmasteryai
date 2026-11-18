@@ -13,6 +13,9 @@ import McpLocalVsRemoteDiagram from '../../../../viz/diagrams/McpLocalVsRemoteDi
 import PredictFirst from '../../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../../components/notebook/PenFlow';
+import Worksheet from '../../../../components/notebook/Worksheet';
+
 # Model Context Protocol (MCP)
 
 [Agent Fundamentals](/docs/agents/agent-fundamentals) showed how a model calls a tool: the application describes a function, the model replies with the function's name and arguments, and the application runs it. That works for one application and a handful of tools. It stops working when every AI application needs to reach every system a company runs. This page covers the protocol that was built for that problem: what it standardizes, the exact messages on the wire, how the July 2026 revision made it stateless, a working server written from scratch, and the problems it deliberately leaves to you.
@@ -26,6 +29,17 @@ AI applications had the same drawer. Every chat app, coding assistant and agent 
 The plug doesn't decide what the device does with the power. MCP is the same: it standardizes how an application *finds and calls* tools, not whether the model uses them well or safely.
 
 </ELI5>
+
+## Why it exists
+
+MCP standardizes how a host discovers tools and sends requests to servers. The minimal stdio example shows the protocol boundary: newline-delimited JSON-RPC on stdin/stdout, explicit version metadata, and separate protocol errors versus tool-result errors.
+
+## The big picture
+
+<PenFlow title="MCP request from host to tool result" ariaLabel="MCP request from host to tool result" rows={[{ steps: { title: 'Discover server', lines: ['Negotiate version and capabilities'], tone: 'blue' } }, { steps: { title: 'List tools', lines: ['Read schemas and names'], tone: 'purple' } }, { steps: { title: 'Call tool', lines: ['Send arguments as JSON-RPC'], tone: 'orange' } }, { steps: { title: 'Return result', lines: ['Keep protocol and tool errors distinct'], tone: 'green' } }]} caption="MCP carries typed tool requests across a standard host-server boundary." />
+
+<Worksheet title="MCP stdio exchange" ariaLabel="MCP stdio exchange" stages={[{ tag: 'Printed client output', color: 'yellow', note: 'Values copied from the server/client example.', grid: { head: ['', 'Result'], rows: [{ label: 'Discovery', cells: ['Supported version 2026-07-28'] }, { label: 'Tool list', cells: ['read_note'] }, { label: 'Valid call', cells: ['Demo the MCP server at 10:00.'] }, { label: 'Unknown note', cells: ['Tool error; available notes standup, todo'] }] } }]} />
+
 
 ## 1. What Is Model Context Protocol?
 
@@ -274,7 +288,11 @@ The messages are the same whichever way they travel. MCP defines two standard tr
 | Typical use | Filesystem, local git, a local database | SaaS integrations shared by many users |
 | Scaling | One process per host | Many stateless replicas behind a load balancer |
 
-## 8. Minimal Implementation
+## Worked example
+
+The client discovers protocol version 2026-07-28, lists read_note, and reads the standup note. Asking for stand-up returns a normal tool result with isError true and the available note names; it is distinct from a JSON-RPC protocol error.
+
+## Try it yourself
 
 SDKs exist for Python, TypeScript and other languages, and you should use one for real servers. But a server is small enough to write by hand, and doing it once makes everything above concrete. Here is a complete stdio server with one tool, in plain Python:
 
@@ -340,6 +358,7 @@ for line in sys.stdin:                      # one JSON-RPC message per line
     except ProtocolError as e:
         reply = {"jsonrpc": "2.0", "id": message["id"], "error": e.error}
     print(json.dumps(reply), flush=True)    # stdout carries only protocol messages
+# Try it: Change the requested note to todo, then request one missing title. Compare the successful content result with the tool error result.
 ```
 
 And a client that starts it and makes three requests, the way a host would:
@@ -370,7 +389,7 @@ Running the client prints:
 ['read_note']
 Demo the MCP server at 10:00.
 {'resultType': 'complete', 'isError': True, 'content': [{'type': 'text', 'text': "No note called 'stand-up'. Notes: ['standup', 'todo']"}]}
-```
+```output
 
 Everything a real server adds is more of the same: more tools, schema validation of arguments, resources and prompts, the HTTP transport, and authorization. An SDK handles the plumbing so you write only the tool functions. Most turn a decorated function's signature and docstring into the tool's `inputSchema` and `description` for you.
 
@@ -398,7 +417,15 @@ Three things help:
 
 [Context Engineering](/docs/agents/context-engineering) covers the wider question of what deserves a place in the prompt.
 
-## 11. When *Not* to Use MCP
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat every error as a protocol failure | Tool errors are ordinary results the model can interpret | Preserve the distinction between protocol and tool errors |
+| Print logs to stdout | The host expects protocol messages there | Send diagnostics to stderr |
+| Trust tool descriptions and results | Server text enters model context | Treat remote content as untrusted and validate actions |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

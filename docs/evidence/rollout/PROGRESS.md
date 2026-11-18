@@ -223,3 +223,9 @@ Static checks passed on the combined worktree: notebook (8 changed pages/0 viola
 Standardized Plan-and-Execute, Reflection and Self-Critique, Routing and the Supervisor Pattern, and Single-Agent vs Multi-Agent. Worksheets record the failed URL/replanner trace, factorial trial feedback, route classification including its mixed-intent miss, and the one-versus-ten-subtask cost/context/time comparison. Scorecard: `agents-4/scorecard.md`.
 
 Static checks passed on the combined worktree: notebook (12 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the low-memory rule. No push.
+
+## Agents batch 5 — protocol pages
+
+Standardized MCP overview, MCP Protocol Deep Dive, and A2A overview. The minimal implementation sections were renamed to Try it yourself and each runnable code example received the requested `# Try it:` edit. Worksheets use the actual note server outputs, HTTP validation/confirmation/signature trace, and FX task lifecycle. Scorecard: `agents-5/scorecard.md`.
+
+Static checks passed on the combined worktree: notebook (15 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the low-memory rule. No push.

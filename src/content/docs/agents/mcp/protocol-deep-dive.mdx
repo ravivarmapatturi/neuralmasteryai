@@ -12,6 +12,9 @@ import TokenAudienceBindingDiagram from '../../../../viz/diagrams/TokenAudienceB
 import PredictFirst from '../../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../../components/notebook/PenFlow';
+import Worksheet from '../../../../components/notebook/Worksheet';
+
 # MCP Protocol Deep Dive
 
 [The MCP overview](/docs/agents/mcp/overview) explained what the Model Context Protocol is for: hosts, clients and servers, the three primitives, and why the July 2026 revision made every request stand alone. This page goes one level down, to the bytes. It follows the current specification, revision **2026-07-28**, rule by rule: what every message must carry, how a client finds out what a server supports, how messages are framed on stdio and on HTTP, how tool schemas and errors work, how a server asks for more input without keeping state, how authorization works for remote servers, and what a server has to check to be safe. It ends with an HTTP server written and tested from scratch, so each rule is something you have seen run.
@@ -27,6 +30,17 @@ In the new system, every order ticket says everything: the table, the dietary ru
 MCP's 2026 revision made that switch. Every message now carries its own "table information", so any copy of a server can answer it. Everything below is that idea made exact: which fields go on the ticket, how the ticket travels, and what the cook must check before acting on it.
 
 </ELI5>
+
+## Why it exists
+
+A protocol implementation must validate the transport, request body, version, authorization, and state carried between calls. The tested HTTP server demonstrates header/body agreement, an explicit user-confirmation round trip, and HMAC protection against edited request state.
+
+## The big picture
+
+<PenFlow title="Validate and complete an MCP HTTP call" ariaLabel="Validate and complete an MCP HTTP call" rows={[{ steps: { title: 'Check request', lines: ['Validate origin, headers, body, version'], tone: 'blue' } }, { steps: { title: 'Request confirmation', lines: ['Return input_required without deletion'], tone: 'purple' } }, { steps: { title: 'Verify retry state', lines: ['Reject tampered HMAC state'], tone: 'orange' } }, { steps: { title: 'Complete action', lines: ['Delete only after valid acceptance'], tone: 'green' } }]} caption="The server is stateless between requests and verifies the signed state on retry." />
+
+<Worksheet title="HTTP server security trace" ariaLabel="HTTP server security trace" stages={[{ tag: 'Printed client results', color: 'yellow', note: 'Response fields copied from the executed example.', grid: { head: ['', 'Observed result'], rows: [{ label: 'Discovery', cells: ['Version 2026-07-28'] }, { label: 'Header mismatch', cells: ['HTTP 400; rejected before method execution'] }, { label: 'First delete request', cells: ['input_required; confirm'] }, { label: 'Tampered state', cells: ['requestState failed verification'] }, { label: 'Valid confirmation', cells: ['Deleted todo; standup remains'] }] } }]} />
+
 
 ## 1. What Every Request Carries
 
@@ -153,7 +167,7 @@ A load balancer that wants to route `tools/call` for an expensive tool to a bigg
 | `Mcp-Name` | `params.name` or `params.uri` | `tools/call`, `resources/read`, `prompts/get` |
 | `Mcp-Param-{Name}` | A tool argument marked `x-mcp-header` in its schema | When that argument is present |
 
-```http
+```output
 POST /mcp HTTP/1.1
 Content-Type: application/json
 Accept: application/json, text/event-stream
@@ -360,7 +374,11 @@ The protocol rules above close the attacks that live in the protocol. Several at
 - **Installing a server is installing code.** A stdio server runs with the user's permissions. Pin versions and review what you install.
 - **Handles are capabilities.** Since state lives in explicit handles like `basket_id`, the server must check on *every* call that the caller may use the handle they present.
 
-## 11. Minimal Implementation: an HTTP Server, Tested
+## Worked example
+
+The client’s mismatched method header receives HTTP 400. A delete call first returns input_required with a confirm request. Editing the signed requestState fails verification; retrying with the original state completes and deletes todo while standup remains.
+
+## Try it yourself
 
 The overview built a stdio server. Here is the HTTP side, with the rules this page has covered: `POST` only, `Origin` checking, header-to-body validation, version errors, and a `delete_note` tool that confirms with the user through a multi round-trip request whose `requestState` is HMAC-signed. It uses only the Python standard library.
 
@@ -457,6 +475,7 @@ class MCPEndpoint(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     ThreadingHTTPServer(("127.0.0.1", 8765), MCPEndpoint).serve_forever()   # localhost only
+# Try it: Change the request header or edit requestState. Trace which validation boundary rejects the call and whether the delete action runs.
 ```
 
 A client that exercises it, including one request whose headers lie and one whose `requestState` has been tampered with:
@@ -502,7 +521,7 @@ print(post("tools/call", {**call, "inputResponses": {"confirm": {"action": "acce
 
 With the server running, the client prints:
 
-```text
+```output
 ['2026-07-28']
 ['delete_note']
 (400, {'jsonrpc': '2.0', 'id': 3, 'error': {'code': -32020, 'message': 'HTTP headers do not match the request body'}})
@@ -525,7 +544,15 @@ A team running many servers for many people meets the same problems as with any 
 - **Audit logs of tool calls,** with OpenTelemetry trace context from `_meta`, so an action taken by an agent can be traced back to the request, the user and the model turn that caused it. See [Legal, Licensing and Governance](/docs/mlops/legal-licensing-and-governance).
 - **Network limits.** A compromised server should be able to reach only the systems it wraps.
 
-## 13. When *Not* to Write Protocol Code Yourself
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Trust the HTTP header without checking JSON-RPC body | Header/body disagreement can confuse routing | Validate both representations before dispatch |
+| Store confirmation state only in server memory | The next stateless request cannot resume safely | Return signed state and verify it on retry |
+| Forward a caller token to an upstream API | Creates a confused deputy | Validate audience and use the server’s own scoped credential |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

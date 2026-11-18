@@ -12,6 +12,9 @@ import CrossOrgInteropDiagram from '../../../../viz/diagrams/CrossOrgInteropDiag
 import PredictFirst from '../../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../../components/notebook/PenFlow';
+import Worksheet from '../../../../components/notebook/Worksheet';
+
 # A2A (Agent-to-Agent)
 
 [The Model Context Protocol](/docs/agents/mcp/overview) standardizes how an agent reaches *tools*: functions it calls, with arguments it chooses, that return a result. A growing share of work instead involves an agent handing a whole job to *another agent*: a travel agent asking an airline's booking agent for seats, a company's procurement agent asking a supplier's sales agent for a quote. That other agent has its own model, its own reasoning, its own owner, and it may take minutes or days. The **Agent2Agent protocol (A2A)** is the open standard for that conversation. This page explains why delegation needs a different protocol from tool calling, then covers the protocol piece by piece: how agents advertise themselves with Agent Cards, how work is modelled as tasks with explicit states, what messages and artifacts carry, how long-running work streams progress, how agents authenticate, and a working agent and client built from scratch on the A2A 1.0 message shapes.
@@ -25,6 +28,17 @@ Delegating to an agent is like hiring a contractor to redo your kitchen. First y
 A2A is the shared paperwork for hiring contractors: the business card, the job ticket with its status, the progress updates and the handover of results. Everything below is that paperwork made exact.
 
 </ELI5>
+
+## Why it exists
+
+A2A connects agents that own their own runtime, identity, and task lifecycle. The working example discovers a remote Agent Card, pauses for a missing currency, resumes the same task, and retrieves its completed artifact.
+
+## The big picture
+
+<PenFlow title="Delegate a task over A2A" ariaLabel="Delegate a task over A2A" rows={[{ steps: { title: 'Discover', lines: ['Read the remote Agent Card'], tone: 'blue' } }, { steps: { title: 'Submit task', lines: ['Agent asks for target currency'], tone: 'purple' } }, { steps: { title: 'Continue task', lines: ['Reply using the same task id'], tone: 'orange' } }, { steps: { title: 'Read artifact', lines: ['Task completes with conversion'], tone: 'green' } }]} caption="A2A models asynchronous agent tasks rather than a single function result." />
+
+<Worksheet title="A2A task lifecycle" ariaLabel="A2A task lifecycle" stages={[{ tag: 'Printed client output', color: 'yellow', note: 'States and values copied from the client run.', grid: { head: ['', 'Result'], rows: [{ label: 'Discovery', cells: ['FX Agent; skill convert'] }, { label: 'First message', cells: ['INPUT_REQUIRED: which currency?'] }, { label: 'Same task resumed', cells: ['COMPLETED: 120 USD = 103.20 EUR'] }, { label: 'Later lookup', cells: ['GetTask returns COMPLETED'] }] } }]} />
+
 
 ## 1. Why Agents Need a Different Protocol Than Tools
 
@@ -48,9 +62,7 @@ You *could* wrap a remote agent as an MCP tool, and for quick, simple delegation
 
 Before delegating, a client agent has to find out what a remote agent can do and how to talk to it. Every A2A agent publishes an **Agent Card**, a JSON document, conventionally at a well-known address on its domain:
 
-```text
-https://{agent-domain}/.well-known/agent-card.json
-```
+`https://{agent-domain}/.well-known/agent-card.json`
 
 A card describes:
 
@@ -171,7 +183,11 @@ Agents acting for different organizations need the same security as any business
 - **Messages are untrusted input.** A remote agent's text goes into your agent's context, so it can carry prompt injection just like a web page. Treat what comes back as data, check artifacts before acting on them, and don't let a remote agent's message trigger irreversible actions without your own checks. [AI Security](/docs/ai-security/overview) covers the defences.
 - **Verify who you're talking to.** Signed Agent Cards and TLS tell a client that a card and endpoint really belong to the organization they claim.
 
-## 8. A Working Agent and Client
+## Worked example
+
+The client discovers the FX Agent and its convert skill. The first message moves the task to INPUT_REQUIRED, asking for a target currency. The client replies with EUR using the same task id; the task completes with 120 USD = 103.20 EUR, and GetTask later returns COMPLETED.
+
+## Try it yourself
 
 Here is a complete, if tiny, A2A exchange in one Python file using only the standard library: a currency-conversion agent that serves an Agent Card and a JSON-RPC endpoint, and a client agent that discovers it, delegates, answers its clarifying question, and checks the task later. The message shapes follow A2A 1.0; a real deployment would use an official SDK, which also handles streaming, push notifications and authentication.
 
@@ -254,11 +270,12 @@ task = rpc(endpoint, "SendMessage", user_message("EUR", task_id=task["id"]))["ta
 print(task["status"]["state"], "->", task["artifacts"][0]["parts"][0]["text"])
 print("GetTask later:", rpc(endpoint, "GetTask", {"id": task["id"]})["status"]["state"])
 server.shutdown()
+# Try it: Change the first request to omit the amount or target currency. Trace the task state and decide what clarification the client must send.
 ```
 
 Output:
 
-```text
+```output
 found: FX Agent | skills: ['convert']
 TASK_STATE_INPUT_REQUIRED -> Which currency should I convert to?
 TASK_STATE_COMPLETED -> 120 USD = 103.20 EUR
@@ -283,7 +300,15 @@ Many real systems use both: an orchestrator calls its own sub-agents as tools an
 
 [Multi-agent systems](/docs/agents/multi-agent-systems) are about *architecture*: how to divide a job between agents (an orchestrator with specialists, a pipeline, peers that hand off to each other) and when doing so beats one agent. A2A is one *communication layer* for implementing those designs, most useful when the agents run as separate services. If all your agents live in one Python process under one team, a framework's in-process handoffs are simpler. When they run as separate services, are written by separate teams, or belong to separate companies, a shared protocol saves every pair from inventing its own.
 
-## 10. When *Not* to Use A2A
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat a remote agent like a local function | Work can outlast a request and need clarification | Track task ids and lifecycle states |
+| Trust returned message text | Remote content can contain prompt injection | Treat messages and artifacts as untrusted data |
+| Skip identity checks | A forged card can redirect delegation | Verify the card, endpoint, and TLS identity |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
