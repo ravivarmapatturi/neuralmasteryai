@@ -83,7 +83,7 @@ export default function SectionSteps() {
     <nav ref={boxRef} aria-label="Page steps" className="nm-section-steps not-prose"
       style={{ position: 'sticky', top: 56, zIndex: 20, margin: '0 0 28px', padding: '10px 0 14px', width: '100%', maxWidth: 'none',
         background: paper, boxShadow: `0 -12px 0 ${paper}`, fontFamily: FONT_FAMILY, color: t.textPrimary }}>
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px 9px', background: t.surface, maxWidth: 940, margin: '0 auto',
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px 9px', background: t.surface, maxWidth: 1200, margin: '0 auto',
         border: `1.8px solid ${t.textPrimary}`, borderRadius: '14px 9px 15px 10px', overflow: 'hidden',
         boxShadow: t.mode === 'dark' ? '0 6px 16px rgba(0,0,0,.35)' : '0 6px 16px rgba(30,41,90,.10)' }}>
         <button type="button" aria-label="Previous step" disabled={cur === 0} onClick={() => go(cur - 1)} style={arrow(cur === 0)}>‹</button>
@@ -99,7 +99,7 @@ export default function SectionSteps() {
       </div>
 
       {open && (
-        <ol role="listbox" aria-label="All steps" style={{ maxWidth: 940, marginLeft: 'auto', marginRight: 'auto', listStyle: 'none', marginTop: 6, marginBottom: 0, padding: 8, background: t.surface,
+        <ol role="listbox" aria-label="All steps" style={{ maxWidth: 1200, marginLeft: 'auto', marginRight: 'auto', listStyle: 'none', marginTop: 6, marginBottom: 0, padding: 8, background: t.surface,
           border: `1.8px solid ${t.textPrimary}`, borderRadius: '12px 8px 13px 9px', maxHeight: '60vh', overflowY: 'auto',
           boxShadow: t.mode === 'dark' ? '0 10px 24px rgba(0,0,0,.45)' : '0 10px 24px rgba(30,41,90,.14)' }}>
           {secs.map((s, i) => {
