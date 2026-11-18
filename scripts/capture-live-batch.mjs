@@ -359,6 +359,79 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  6: [
+    {
+      route: '/docs/mlops/model-serving',
+      diagrams: [
+        { name: 'AdaptiveBatchingQueueDiagram', match: 'Batch window collects' },
+        { name: 'AsyncBlockingDiagram', match: 'Endpoint style' },
+        { name: 'BatchOnlineStreamingDiagram', match: 'throughput' },
+        { name: 'ModelServingRequestFlowDiagram', match: 'Model inference' },
+      ],
+    },
+    {
+      route: '/docs/mlops/monitoring-and-drift',
+      diagrams: [
+        { name: 'DataVsConceptDriftDiagram', match: 'Data drift' },
+        { name: 'KsTestDiagram', match: 'Distribution shift' },
+        { name: 'PsiCalculatorDiagram', match: 'reference (training)' },
+        { name: 'ThreeMonitoringLayersDiagram', match: 'ML-specific' },
+        { name: 'WassersteinDistanceDiagram', match: 'Distance between distributions' },
+      ],
+    },
+    {
+      route: '/docs/mlops/observability',
+      diagrams: [
+        { name: 'MonitoringVsObservabilityDiagram', match: 'something is wrong' },
+        { name: 'PrometheusGrafanaFlowDiagram', match: 'Service exposes /metrics' },
+        { name: 'StructuredLogsDiagram', match: 'Structured (JSON)' },
+        { name: 'ThreePillarsIncidentDiagram', match: 'Metric spike' },
+        { name: 'TraceWaterfallDiagram', match: 'Downstream DB' },
+      ],
+    },
+    {
+      route: '/docs/mlops/pipeline-orchestration',
+      diagrams: [
+        { name: 'BackfillDiagram', match: 'Backfill range' },
+        { name: 'DagDependencyDiagram', match: 'A: extract' },
+        { name: 'PipelineCachingDiagram', match: 'Click a stage to simulate its inputs changing' },
+        { name: 'RetryBackoffDiagram', match: 'Attempt 1' },
+      ],
+    },
+    {
+      route: '/docs/mlops/production-reliability',
+      diagrams: [
+        { name: 'BackpressureQueueDiagram', match: 'No backpressure' },
+        { name: 'CircuitBreakerStateDiagram', match: 'Closed' },
+        { name: 'GracefulDegradationLadderDiagram', match: 'Full service' },
+        { name: 'IdempotencyKeyDiagram', match: 'No idempotency key' },
+        { name: 'TimeoutCascadeDiagram', match: 'connection pool' },
+      ],
+    },
+    {
+      route: '/docs/mlops/security-and-reproducibility',
+      diagrams: [
+        { name: 'LeastPrivilegeAgencyDiagram', match: 'Web search' },
+        { name: 'LlmAttackSurfaceDiagram', match: 'Prompt injection' },
+        { name: 'ReproducibilityChecklistDiagram', match: 'Seeds' },
+        { name: 'SecretsInjectionDiagram', match: 'Secrets Manager / Vault' },
+      ],
+    },
+    {
+      route: '/docs/harness-engineering/autonomous-loops-and-supervisors',
+      diagrams: [
+        { name: 'AutonomousGoalLoopDiagram', match: 'Loop Phase' },
+        { name: 'HarnessAblationStudio', match: 'Benchmark Scenario' },
+      ],
+    },
+    {
+      route: '/docs/harness-engineering/context-and-instruction-design',
+      diagrams: [
+        { name: 'ContextCompactionVisualizer', match: 'Strategy' },
+        { name: 'InstructionBudgetVisualizer', match: 'Context Strategy' },
+      ],
+    },
+  ],
 };
 
 async function main() {
@@ -426,7 +499,25 @@ async function main() {
 
     for (const diag of pageConfig.diagrams) {
       console.log(`  Locating diagram: ${diag.name} (match: "${diag.match}")...`);
-      const container = page.locator(`div[role="group"]:has-text("${diag.match}")`).first();
+      let container = page.locator(`div[role="group"]:has-text("${diag.match}")`).first();
+      const hasMatch = await container.count().then(c => c > 0).catch(() => false);
+      if (!hasMatch) {
+        console.log(`  Diagram not found in DOM, mounting fallback for ${diag.name}...`);
+        await page.evaluate(async (diagName) => {
+          const React = (await import('/node_modules/.vite/deps/react.js')).default;
+          const ReactDOM = (await import('/node_modules/.vite/deps/react-dom_client.js')).default;
+          const { ThemeProvider } = await import('/src/theme/ThemeProvider.tsx');
+          const mod = await import(`/src/viz/diagrams/${diagName}.tsx`);
+          const mountEl = document.createElement('div');
+          mountEl.id = `diag-fallback-mount-${diagName}`;
+          mountEl.style.padding = '20px';
+          (document.querySelector('article.prose') || document.querySelector('main') || document.body).appendChild(mountEl);
+          const root = ReactDOM.createRoot(mountEl);
+          root.render(React.createElement(ThemeProvider, null, React.createElement(mod.default)));
+        }, diag.name);
+        await page.waitForTimeout(1000);
+        container = page.locator(`div[role="group"]:has-text("${diag.match}")`).first();
+      }
       await container.waitFor({ state: 'visible', timeout: 10000 });
       await container.scrollIntoViewIfNeeded();
       await page.waitForTimeout(600);

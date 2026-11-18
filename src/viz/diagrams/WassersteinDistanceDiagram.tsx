@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, Slider } from '../primitives';
 import { getConceptColor } from './diagramSystem';
+
+const GAPS = [15, 40, 65, 90];
 
 /** The "Earth Mover's" intuition made literal -- drag how far a single
  * mass has to move, watch Wasserstein distance track that movement
@@ -9,7 +12,9 @@ import { getConceptColor } from './diagramSystem';
  * KL divergence would be undefined). */
 export default function WassersteinDistanceDiagram() {
   const t = useVizTokens();
-  const [gap, setGap] = useState(60);
+  const { value: autoIdx, pick } = useAutoCycle(GAPS.length, 2200, 2);
+  const [manualGap, setManualGap] = useState<number | null>(null);
+  const gap = manualGap ?? GAPS[autoIdx];
   const refColor = getConceptColor(t, 'query');
   const curColor = getConceptColor(t, 'attention');
   const width = 480;
@@ -22,8 +27,19 @@ export default function WassersteinDistanceDiagram() {
 
   return (
     <VisualizationContainer footer={`Wasserstein distance ≈ ${gap} -- the minimum "work" (mass × distance moved) to reshape the reference pile into the current pile. Grows smoothly even here, where the piles don't overlap at all -- KL divergence would be undefined in this exact case.`}>
-      <Slider label={`Distance between distributions: ${gap}`} min={0} max={100} step={2} value={gap} onChange={setGap} />
-      <svg width="100%" viewBox={`0 0 ${width} 100`} style={{ display: 'block', marginTop: 10 }}>
+      <Slider
+        label={`Distance between distributions: ${gap}`}
+        min={0}
+        max={100}
+        step={2}
+        value={gap}
+        onChange={(v) => {
+          setManualGap(v);
+          const closest = GAPS.reduce((prev, curr) => Math.abs(curr - v) < Math.abs(prev - v) ? curr : prev);
+          pick(GAPS.indexOf(closest));
+        }}
+      />
+      <svg width="100%" viewBox={`0 0 ${width} 100`} style={{ display: 'block' }}>
         <defs>
           <marker id="wd-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
             <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />

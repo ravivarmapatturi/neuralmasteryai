@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { SelectableRow, VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -18,17 +18,18 @@ function Dots({ n, color, t }: { n: number; color: string; t: ReturnType<typeof 
  * click one for a real example and the tradeoff it's making. */
 export default function BatchOnlineStreamingDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<Mode>('online');
+  const { value: autoIdx, pick } = useAutoCycle(MODES.length, 2800, 1);
+  const selected = MODES[autoIdx].key;
   const color = getConceptColor(t, 'attention');
-  const active = MODES.find((m) => m.key === selected)!;
+  const active = MODES[autoIdx];
 
   return (
     <VisualizationContainer footer={`${active.desc} Example: ${active.example}.`}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {MODES.map((m) => {
+        {MODES.map((m, idx) => {
           const isSelected = selected === m.key;
           return (
-            <SelectableRow key={m.key} selected={isSelected} label={m.label} onSelect={() => setSelected(m.key)} onMouseEnter={() => setSelected(m.key)} style={{ flex: '1 1 150px', padding: '0.7rem 0.85rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}>
+            <SelectableRow key={m.key} selected={isSelected} label={m.label} onSelect={() => pick(idx)} onMouseEnter={() => pick(idx)} style={{ flex: '1 1 150px', padding: '0.7rem 0.85rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}>
               <div style={{ fontWeight: 700, fontSize: 12.5, color }}>{m.label}</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 9.5, color: t.textMuted }}>
                 <span>latency <Dots n={m.latency} color={color} t={t} /></span>

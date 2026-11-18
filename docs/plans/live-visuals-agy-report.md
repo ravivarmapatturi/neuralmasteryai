@@ -231,3 +231,44 @@ Pages covered:
 - Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 29 captured cleanly in `docs/evidence/live-visuals/agy/batch-5/`.
+
+## Batch 6 Report
+
+### Motion Rationales:
+1. `AdaptiveBatchingQueueDiagram.tsx`: Autocycles (3000ms) batch sizes [1, 2, 4, 8, 16] down the cost curve, because batching amortizes weight loading memory bandwidth over concurrent requests.
+2. `AsyncBlockingDiagram.tsx`: Autocycles (3500ms) between sync blocking and async polling/webhooks, because long-running inference ties up client connections without decoupling.
+3. `BatchOnlineStreamingDiagram.tsx`: Autocycles (3200ms) between batch, online, and streaming, because latency budgets dictate ingestion architecture.
+4. `ModelServingRequestFlowDiagram.tsx`: Autocycles (2500ms) through 5 serving pipeline stages with FlowDots along request path, because serving pipelines separate validation, batching, kernel execution, and streaming response.
+5. `DataVsConceptDriftDiagram.tsx`: Autocycles (3500ms) between data drift P(X) and concept drift P(Y|X), because input distribution changes and ground-truth relationship changes require distinct remediation strategies.
+6. `KsTestDiagram.tsx`: Autocycles (3000ms) distribution shifts [5, 15, 25, 35], showing expanding KS distance gap between baseline and production CDFs, because non-parametric hypothesis testing identifies continuous feature shift.
+7. `PsiCalculatorDiagram.tsx`: Autocycles (3000ms) across PSI zone shifts [0.03, 0.12, 0.22, 0.28], because Population Stability Index thresholds directly trigger automated retraining alerts.
+8. `ThreeMonitoringLayersDiagram.tsx`: Autocycles (3200ms) across infra, app, and ML layers, showing how infrastructure metrics remain healthy while statistical ML accuracy silently degrades.
+9. `WassersteinDistanceDiagram.tsx`: Autocycles (3000ms) distribution separation [15, 40, 65, 90], showing earth mover's cost scaling linearly where KL divergence produces infinite distance.
+10. `MonitoringVsObservabilityDiagram.tsx`: Autocycles (3500ms) between monitoring ("something is wrong") and observability ("here's why"), because pre-aggregated alerts cannot diagnose novel distributed system failure modes.
+11. `PrometheusGrafanaFlowDiagram.tsx`: Autocycles (2500ms) through scrape, write, query, and dashboard stages with FlowDots, because time-series observability relies on periodic pull-based metrics collection.
+12. `StructuredLogsDiagram.tsx`: Autocycles (3200ms) between unstructured text and structured JSON logs with trace IDs, because machine-queryable fields enable distributed log aggregation.
+13. `ThreePillarsIncidentDiagram.tsx`: Autocycles (2500ms) through metric spike, trace pivot, and log isolation, because root-causing production incidents requires drilling down through the three observability pillars in sequence.
+14. `TraceWaterfallDiagram.tsx`: Autocycles (2500ms) through 4 waterfall spans, highlighting how distributed parent-child spans locate the downstream database bottleneck.
+15. `BackfillDiagram.tsx`: Autocycles (3000ms) backfill windows [2, 5, 8, 12], because retroactive data pipeline execution must reprocess historical partition slices without data leakage.
+16. `DagDependencyDiagram.tsx`: Autocycles (2500ms) across 4 DAG nodes with FlowDots along active dependency paths, because orchestrators dispatch tasks strictly as upstream topological dependencies resolve.
+17. `PipelineCachingDiagram.tsx`: Autocycles (3000ms) stage invalidation cascading downstream, because task output hashing prevents redundant re-computation of unchanged pipeline stages.
+18. `RetryBackoffDiagram.tsx`: Autocycles (2600ms) through exponential retry attempts [0, 1, 2], because immediate retries overwhelm failing dependencies while exponential jitter allows recovery.
+19. `BackpressureQueueDiagram.tsx`: Autocycles (3500ms) between unbounded queue overflow (OOM crash) and backpressure rejection (HTTP 429), because bounded buffers preserve system availability under load spikes.
+20. `CircuitBreakerStateDiagram.tsx`: Autocycles (3000ms) across Closed, Open, and Half-Open states, because automated circuit breaking prevents cascading failure when downstream dependencies degrade.
+21. `GracefulDegradationLadderDiagram.tsx`: Autocycles (3200ms) through full service, degraded cached fallbacks, and hard failure, because partial availability is vastly superior to total system outage.
+22. `IdempotencyKeyDiagram.tsx`: Autocycles (3500ms) between duplicated non-idempotent operations and deduplicated idempotent requests with keys, because network timeouts cause clients to retry side-effecting operations.
+23. `TimeoutCascadeDiagram.tsx`: Autocycles (3500ms) between cascading thread pool exhaustion and deadline propagation timeouts, because unconstrained downstream calls exhaust upstream server resources.
+24. `LeastPrivilegeAgencyDiagram.tsx`: Autocycles (3000ms) through 3 agent tool privilege tiers (read-only, scoped write, administrative), because autonomous agents must be constrained by capability boundaries.
+25. `LlmAttackSurfaceDiagram.tsx`: Autocycles (3000ms) across 5 LLM vulnerability categories, because generative systems introduce threats spanning prompt injection, insecure output handling, and supply chain poisoning.
+26. `ReproducibilityChecklistDiagram.tsx`: Autocycles (2200ms) across 7 reproducibility checklist items, because reproducible ML pipelines require pinning seeds, code commits, container images, and dataset digests.
+27. `SecretsInjectionDiagram.tsx`: Autocycles (3500ms) between hardcoded environment leakage and runtime Secrets Manager injection, because credential hygiene requires dynamic ephemeral secrets retrieval.
+28. `AutonomousGoalLoopDiagram.tsx`: Autocycles (2500ms) through 5 loop phases with FlowDots along dispatch, execution, audit, and feedback branches, because autonomous agents iteratively sense, plan, execute, and verify against goal invariants.
+29. `HarnessAblationStudio.tsx`: Autocycles (3500ms) across 3 benchmark scenarios (feature, bugfix, refactor), because evaluating harness effectiveness requires measuring completion rates across diverse task domains.
+30. `ContextCompactionVisualizer.tsx`: Autocycles (3500ms) between naive truncation and structured compaction, because uncompacted conversational context overflows token windows and destroys working memory.
+31. `InstructionBudgetVisualizer.tsx`: Autocycles (3500ms) between dumb inlining and map-and-manual budgeting, because prompt space allocation dictates reasoning capacity and instruction adherence.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 31 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-6/`. Note: `ThreePillarsIncidentDiagram` fallback mount was utilized during batch capture due to an upstream unclosed code fence typo (` ```output ` instead of ` ``` ` at line 346) in `src/content/docs/mlops/observability.mdx`. The MDX page itself was left untouched per lane rules; a ticket/fix should be applied by the page owner.

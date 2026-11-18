@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -9,7 +9,7 @@ const STAGES = ['Validation', 'Preprocessing', 'Feature Eng.', 'Training', 'Eval
  * only from there forward -- earlier, unaffected stages stay cached. */
 export default function PipelineCachingDiagram() {
   const t = useVizTokens();
-  const [changedStage, setChangedStage] = useState(2);
+  const { value: changedStage, pick } = useAutoCycle(STAGES.length, 2500, 2);
   const cachedColor = getConceptColor(t, 'attention');
   const rerunColor = t.accentWarn;
 
@@ -21,7 +21,7 @@ export default function PipelineCachingDiagram() {
           const reruns = i >= changedStage;
           return (
             <div key={s} style={{ display: 'flex', alignItems: 'center', flex: i < STAGES.length - 1 ? '1 1 0' : '0 0 auto' }}>
-              <div onClick={() => setChangedStage(i)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setChangedStage(i); } }} style={{ flex: 1, cursor: 'pointer', padding: '0.6rem 0.4rem', borderRadius: 7, textAlign: 'center', background: reruns ? `${rerunColor}18` : `${cachedColor}18`, border: `1.5px solid ${reruns ? rerunColor : cachedColor}` }}>
+              <div onClick={() => pick(i)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(i); } }} style={{ flex: 1, cursor: 'pointer', padding: '0.6rem 0.4rem', borderRadius: 7, textAlign: 'center', background: reruns ? `${rerunColor}18` : `${cachedColor}18`, border: `1.5px solid ${reruns ? rerunColor : cachedColor}` }}>
                 <div style={{ fontSize: 9.5, fontWeight: 700, color: reruns ? rerunColor : cachedColor }}>{reruns ? 'rerun' : 'cached'}</div>
                 <div style={{ fontSize: 8.5, color: t.textMuted, marginTop: 3 }}>{s}</div>
               </div>

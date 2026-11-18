@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 
@@ -12,8 +12,9 @@ const STATES = [
  * closed → open → half-open to see what each state actually does. */
 export default function CircuitBreakerStateDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('open');
-  const s = STATES.find((x) => x.key === active)!;
+  const { value: activeIdx, pick } = useAutoCycle(STATES.length, 2500, 1);
+  const active = STATES[activeIdx].key;
+  const s = STATES[activeIdx];
 
   const stateColor = (k: string) => (k === 'closed' ? t.accentPrimary : k === 'open' ? t.accentDanger : t.accentWarn);
 
@@ -25,7 +26,7 @@ export default function CircuitBreakerStateDiagram() {
           const c = stateColor(x.key);
           return (
             <div key={x.key} style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
-              <div onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', flex: 1, textAlign: 'center', padding: '0.6rem 0.4rem', borderRadius: 7, background: isActive ? `${c}20` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}>
+              <div onClick={() => pick(i)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(i); } }} onMouseEnter={() => pick(i)} style={{ cursor: 'pointer', flex: 1, textAlign: 'center', padding: '0.6rem 0.4rem', borderRadius: 7, background: isActive ? `${c}20` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}>
                 <span style={{ fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? c : t.textPrimary }}>{x.label}</span>
               </div>
               {i < STATES.length - 1 && <span style={{ color: t.textMuted, fontSize: 12 }}>→</span>}

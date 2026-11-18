@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, Slider } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+
+const BATCH_SIZES = [1, 2, 4, 8, 16];
 
 /** Why batching wins on a GPU: cost per request drops sharply as batch
  * size grows, because the GPU forward pass for a batch of 8 costs barely
@@ -9,7 +12,9 @@ import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
  * per-request GPU-time actually fall. */
 export default function AdaptiveBatchingQueueDiagram() {
   const t = useVizTokens();
-  const [batchSize, setBatchSize] = useState(4);
+  const { value: autoIdx, pick } = useAutoCycle(BATCH_SIZES.length, 2500, 2);
+  const [manualBatch, setManualBatch] = useState<number | null>(null);
+  const batchSize = manualBatch ?? BATCH_SIZES[autoIdx];
   const color = getConceptColor(t, 'attention');
 
   // Toy model: fixed forward-pass overhead + small marginal cost per extra
@@ -31,7 +36,18 @@ export default function AdaptiveBatchingQueueDiagram() {
 
   return (
     <VisualizationContainer footer={`Batch of ${batchSize}: ${totalMs.toFixed(1)}ms total GPU time, ${perRequestMs.toFixed(2)}ms per request -- vs. ${unbatchedPerRequestMs.toFixed(1)}ms per request if each ran alone. The fixed overhead (kernel launch, memory transfer) is paid once per BATCH, not once per REQUEST.`}>
-      <Slider label={`Batch window collects: ${batchSize} request${batchSize !== 1 ? 's' : ''}`} min={1} max={maxBatch} step={1} value={batchSize} onChange={setBatchSize} />
+      <Slider
+        label={`Batch window collects: ${batchSize} request${batchSize !== 1 ? 's' : ''}`}
+        min={1}
+        max={maxBatch}
+        step={1}
+        value={batchSize}
+        onChange={(v) => {
+          setManualBatch(v);
+          const closest = BATCH_SIZES.reduce((prev, curr) => Math.abs(curr - v) < Math.abs(prev - v) ? curr : prev);
+          pick(BATCH_SIZES.indexOf(closest));
+        }}
+      />
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={50} y1={chartBottom} x2={width - 20} y2={chartBottom} stroke={t.border} strokeWidth={1} />
         <line x1={50} y1={chartTop} x2={50} y2={chartBottom} stroke={t.border} strokeWidth={1} />

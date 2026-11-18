@@ -1,13 +1,18 @@
 import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, Slider, PillSelect } from '../primitives';
 
 const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
+type Strategy = 'compacted' | 'naive';
+const STRATEGIES: Strategy[] = ['compacted', 'naive'];
+
 export default function ContextCompactionVisualizer() {
   const t = useVizTokens();
+  const { value: modeIdx, pick } = useAutoCycle(STRATEGIES.length, 3500, 0);
+  const mode = STRATEGIES[modeIdx];
   const [turns, setTurns] = useState<number>(12);
-  const [mode, setMode] = useState<'naive' | 'compacted'>('compacted');
 
   // Model parameters
   const CONTEXT_LIMIT = 128000;
@@ -38,10 +43,13 @@ export default function ContextCompactionVisualizer() {
       }
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <PillSelect<'compacted' | 'naive'>
+        <PillSelect<Strategy>
           label="Strategy"
           value={mode}
-          onChange={setMode}
+          onChange={(val) => {
+            const next = typeof val === 'function' ? val(mode) : val;
+            pick(STRATEGIES.indexOf(next));
+          }}
           options={[
             { value: 'compacted', label: 'Harness Compaction (State Artifacts)' },
             { value: 'naive', label: 'Naive (Full History Accumulation)' },

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useAutoCycle, FlowDots } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
 
 type LoopState = 'overview' | 'executing' | 'verifying' | 'failed_turn' | 'success';
+const LOOP_STATES: LoopState[] = ['overview', 'executing', 'verifying', 'failed_turn', 'success'];
 
 interface StateDetail {
   key: LoopState;
@@ -52,7 +53,8 @@ const STATES: Record<LoopState, StateDetail> = {
 
 export default function AutonomousGoalLoopDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<LoopState>('overview');
+  const { value: stateIdx, pick } = useAutoCycle(LOOP_STATES.length, 3500, 0);
+  const selected = LOOP_STATES[stateIdx];
   const active = STATES[selected];
 
   return (
@@ -70,7 +72,10 @@ export default function AutonomousGoalLoopDiagram() {
         <PillSelect<LoopState>
           label="Loop Phase"
           value={selected}
-          onChange={setSelected}
+          onChange={(val) => {
+            const next = typeof val === 'function' ? val(selected) : val;
+            pick(LOOP_STATES.indexOf(next));
+          }}
           options={[
             { value: 'overview', label: '1. Loop Overview' },
             { value: 'executing', label: '2. Worker Turn' },
@@ -93,6 +98,12 @@ export default function AutonomousGoalLoopDiagram() {
             <path d="M0,0 L6,3 L0,6 Z" fill={t.accentDanger} />
           </marker>
         </defs>
+
+        <FlowDots d="M 190 45 L 235 45" count={2} color={t.accentPrimary} dur={1.6} />
+        <FlowDots d="M 340 75 L 340 100" count={2} color={t.accentPrimary} dur={1.6} />
+        <FlowDots d="M 340 160 L 340 185" count={2} color={t.accentPrimary} dur={1.6} />
+        <FlowDots d="M 440 217 L 485 217" count={2} color={t.accentTeal} dur={1.6} />
+        <FlowDots d="M 240 217 L 195 217" count={2} color={t.accentDanger} dur={1.6} />
 
         {/* Node 1: User Goal */}
         <rect x={20} y={20} width={170} height={50} rx={8} fill={t.surface} stroke={t.border} strokeWidth={1.5} />

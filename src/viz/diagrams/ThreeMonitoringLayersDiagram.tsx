@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { SelectableRow, VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
@@ -14,20 +14,21 @@ const LAYERS = [
  * silently failed. */
 export default function ThreeMonitoringLayersDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('ml');
+  const { value: activeIdx, pick } = useAutoCycle(LAYERS.length, 2500, 2);
+  const active = LAYERS[activeIdx].key;
   const okColor = t.accentPrimary;
   const badColor = t.accentDanger;
-  const info = LAYERS.find((l) => l.key === active)!;
+  const info = LAYERS[activeIdx];
 
   return (
     <VisualizationContainer footer={info.desc}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {LAYERS.map((l) => {
+        {LAYERS.map((l, idx) => {
           const isActive = active === l.key;
           const isBad = l.status === 'degraded';
           const c = isBad ? badColor : okColor;
           return (
-            <SelectableRow key={l.key} selected={isActive} label={l.label} onSelect={() => setActive(l.key)} onMouseEnter={() => setActive(l.key)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.85rem', borderRadius: 8, background: isActive ? `${c}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}>
+            <SelectableRow key={l.key} selected={isActive} label={l.label} onSelect={() => pick(idx)} onMouseEnter={() => pick(idx)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.85rem', borderRadius: 8, background: isActive ? `${c}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}>
               <span style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? c : t.textPrimary }}>{l.label}</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: c }}>{isBad ? 'silently degraded' : '✓ 100% healthy'}</span>
             </SelectableRow>

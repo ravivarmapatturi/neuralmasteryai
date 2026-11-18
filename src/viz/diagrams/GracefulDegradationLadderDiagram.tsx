@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
@@ -13,19 +13,20 @@ const RUNGS = [
  * failing by doing less against failing completely. */
 export default function GracefulDegradationLadderDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('degraded');
+  const { value: activeIdx, pick } = useAutoCycle(RUNGS.length, 2500, 1);
+  const active = RUNGS[activeIdx].key;
   const color = getConceptColor(t, 'attention');
-  const r = RUNGS.find((x) => x.key === active)!;
+  const r = RUNGS[activeIdx];
   const toneColor = (tone: string) => (tone === 'ok' ? t.accentPrimary : tone === 'warn' ? t.accentWarn : t.accentDanger);
 
   return (
     <VisualizationContainer footer={r.desc}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {RUNGS.map((x) => {
+        {RUNGS.map((x, idx) => {
           const isActive = active === x.key;
           const c = toneColor(x.tone);
           return (
-            <div key={x.key} onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.55rem 0.8rem', borderRadius: 7, background: isActive ? `${c}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}>
+            <div key={x.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer', padding: '0.55rem 0.8rem', borderRadius: 7, background: isActive ? `${c}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}>
               <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? c : t.textPrimary }}>{x.label}</span>
             </div>
           );

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
@@ -18,17 +18,18 @@ const ITEMS = [
  * started behaving differently" unanswerable. */
 export default function ReproducibilityChecklistDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('seeds');
+  const { value: activeIdx, pick } = useAutoCycle(ITEMS.length, 2500, 5);
+  const active = ITEMS[activeIdx].key;
   const color = getConceptColor(t, 'attention');
-  const item = ITEMS.find((x) => x.key === active)!;
+  const item = ITEMS[activeIdx];
 
   return (
     <VisualizationContainer footer={item.desc}>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        {ITEMS.map((x) => {
+        {ITEMS.map((x, idx) => {
           const isActive = active === x.key;
           return (
-            <div key={x.key} onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.7rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
+            <div key={x.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer', padding: '0.5rem 0.7rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
               <span style={{ fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{x.label}</span>
             </div>
           );

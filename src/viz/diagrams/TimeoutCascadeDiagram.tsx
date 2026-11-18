@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
@@ -10,7 +10,8 @@ const POOL_SIZE = 6;
  * pool, versus fail fast and free the slot back up. */
 export default function TimeoutCascadeDiagram() {
   const t = useVizTokens();
-  const [hasTimeout, setHasTimeout] = useState(false);
+  const { value: modeIdx, pick } = useAutoCycle(2, 3500, 0);
+  const hasTimeout = modeIdx === 1;
   const color = getConceptColor(t, 'attention');
   const badColor = t.accentDanger;
   const okColor = t.accentPrimary;
@@ -19,10 +20,10 @@ export default function TimeoutCascadeDiagram() {
   return (
     <VisualizationContainer footer={hasTimeout ? 'With a timeout, the hung request fails fast -- its connection slot frees up immediately for the next request.' : 'Without a timeout, each new request against the slow dependency hangs indefinitely -- the connection pool fills with stuck requests until nothing gets through, for callers unrelated to the slow dependency.'}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <button type="button" onClick={() => setHasTimeout(false)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: !hasTimeout ? 700 : 500, background: !hasTimeout ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${!hasTimeout ? color : t.border}`, color: !hasTimeout ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button type="button" onClick={() => pick(0)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: !hasTimeout ? 700 : 500, background: !hasTimeout ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${!hasTimeout ? color : t.border}`, color: !hasTimeout ? color : t.textSecondary, cursor: 'pointer' }}>
           No timeout
         </button>
-        <button type="button" onClick={() => setHasTimeout(true)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: hasTimeout ? 700 : 500, background: hasTimeout ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${hasTimeout ? color : t.border}`, color: hasTimeout ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button type="button" onClick={() => pick(1)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: hasTimeout ? 700 : 500, background: hasTimeout ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${hasTimeout ? color : t.border}`, color: hasTimeout ? color : t.textSecondary, cursor: 'pointer' }}>
           2s timeout
         </button>
       </div>

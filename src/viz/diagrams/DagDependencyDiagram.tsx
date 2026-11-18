@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle, FlowDots } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -14,12 +14,13 @@ const NODES = [
  * dependencies highlight, click A or B to see what's waiting on them. */
 export default function DagDependencyDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('c');
+  const { value: selectedIdx, pick } = useAutoCycle(NODES.length, 2500, 2);
+  const selected = NODES[selectedIdx].key;
   const color = getConceptColor(t, 'attention');
   const readyColor = t.accentPrimary;
   const waitingColor = t.textMuted;
 
-  const node = NODES.find((n) => n.key === selected)!;
+  const node = NODES[selectedIdx];
   const highlighted = new Set([selected, ...node.deps]);
 
   return (
@@ -33,6 +34,9 @@ export default function DagDependencyDiagram() {
             <path d="M0,0 L7,3.5 L0,7 Z" fill={color} />
           </marker>
         </defs>
+        <FlowDots d="M 105 30 L 173 65" count={2} color={color} dur={1.8} />
+        <FlowDots d="M 105 100 L 173 65" count={2} color={color} dur={1.8} />
+        <FlowDots d="M 265 65 L 333 65" count={2} color={color} dur={1.8} />
         {NODES.flatMap((n) => n.deps.map((d) => {
           const from = NODES.find((x) => x.key === d)!;
           const isHighlighted = highlighted.has(n.key) && highlighted.has(d);
@@ -54,12 +58,12 @@ export default function DagDependencyDiagram() {
             />
           );
         }))}
-        {NODES.map((n) => {
+        {NODES.map((n, idx) => {
           const isSelected = selected === n.key;
           const isDep = node.deps.includes(n.key);
           const c = isSelected ? color : isDep ? readyColor : waitingColor;
           return (
-            <g key={n.key} onClick={() => setSelected(n.key)} onMouseEnter={() => setSelected(n.key)} style={{ cursor: 'pointer' }}>
+            <g key={n.key} onClick={() => pick(idx)} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer' }}>
               <rect x={n.x - 45} y={n.y - 18} width={90} height={36} rx={7} fill={isSelected || isDep ? `${c}20` : t.surfaceAlt} stroke={c} strokeWidth={isSelected ? 2.5 : 1.5} />
               <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize={9.5} fontWeight={isSelected ? 700 : 500} fill={c}>{n.label}</text>
             </g>

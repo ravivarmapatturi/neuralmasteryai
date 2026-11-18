@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle, FlowDots } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -15,9 +15,10 @@ const STAGES = [
  * model.predict()" -- click a stage to see what it guards against. */
 export default function ModelServingRequestFlowDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('validate');
+  const { value: activeIdx, pick } = useAutoCycle(STAGES.length, 2500, 1);
+  const active = STAGES[activeIdx].key;
   const color = getConceptColor(t, 'attention');
-  const info = STAGES.find((s) => s.key === active)!;
+  const info = STAGES[activeIdx];
   const width = 600;
   const y = 40;
 
@@ -29,6 +30,7 @@ export default function ModelServingRequestFlowDiagram() {
             <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
           </marker>
         </defs>
+        <FlowDots d="M 55 40 L 545 40" count={5} color={color} dur={2.4} />
         {STAGES.map((s, i) => {
           const stepDelta = (width - 100) / (STAGES.length - 1);
           const x = 55 + i * stepDelta;
@@ -36,7 +38,7 @@ export default function ModelServingRequestFlowDiagram() {
           return (
             <g key={s.key}>
               {i > 0 && <line x1={55 + (i - 1) * stepDelta + 47} y1={y} x2={x - 53} y2={y} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#msrf-arrow)" />}
-              <g onClick={() => setActive(s.key)} onMouseEnter={() => setActive(s.key)} style={{ cursor: 'pointer' }}>
+              <g onClick={() => pick(i)} onMouseEnter={() => pick(i)} style={{ cursor: 'pointer' }}>
                 <rect x={x - 47} y={y - 18} width={94} height={36} rx={7} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
                 <text x={x} y={y + 4} textAnchor="middle" fontSize={9.5} fontWeight={isActive ? 700 : 500} fill={color}>{s.label}</text>
               </g>

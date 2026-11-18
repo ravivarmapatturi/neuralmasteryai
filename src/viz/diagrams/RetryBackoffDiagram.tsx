@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -7,18 +7,18 @@ import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
  * between attempts -- click "run" to step through it. */
 export default function RetryBackoffDiagram() {
   const t = useVizTokens();
-  const [attempt, setAttempt] = useState(2);
+  const outcomes = ['fail', 'fail', 'success'];
+  const delays = [0, 30, 90]; // seconds before each attempt
+  const { value: attempt, pick } = useAutoCycle(outcomes.length, 2500, 2);
   const failColor = t.accentDanger;
   const okColor = t.accentPrimary;
   const color = getConceptColor(t, 'attention');
-  const outcomes = ['fail', 'fail', 'success'];
-  const delays = [0, 30, 90]; // seconds before each attempt
 
   return (
     <VisualizationContainer footer={`Attempt ${attempt + 1}: ${outcomes[attempt] === 'success' ? 'succeeds -- the task completes, no human paged.' : `fails (transient error) -- waits ${delays[attempt + 1]}s before retrying, backing off rather than hammering immediately.`}`}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
         {outcomes.map((_, i) => (
-          <button key={i} type="button" onClick={() => setAttempt(i)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: attempt === i ? 700 : 500, background: attempt === i ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${attempt === i ? color : t.border}`, color: attempt === i ? color : t.textSecondary, cursor: 'pointer' }}>
+          <button key={i} type="button" onClick={() => pick(i)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: attempt === i ? 700 : 500, background: attempt === i ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${attempt === i ? color : t.border}`, color: attempt === i ? color : t.textSecondary, cursor: 'pointer' }}>
             Attempt {i + 1}
           </button>
         ))}

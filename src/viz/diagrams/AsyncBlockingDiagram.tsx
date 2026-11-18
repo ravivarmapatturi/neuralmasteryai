@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+
+type Mode = 'sync' | 'async';
+const MODES: Mode[] = ['sync', 'async'];
 
 /** Three requests arriving close together -- a blocking (sync def)
  * endpoint serves them strictly one at a time even while waiting on I/O;
@@ -9,7 +12,8 @@ import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
  * sooner. Toggle to compare timelines directly. */
 export default function AsyncBlockingDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'sync' | 'async'>('async');
+  const { value: modeIdx, pick } = useAutoCycle(MODES.length, 3500, 1);
+  const mode = MODES[modeIdx];
   const colors = [getConceptColor(t, 'query'), getConceptColor(t, 'attention'), t.accentWarn];
 
   const width = 560;
@@ -25,7 +29,15 @@ export default function AsyncBlockingDiagram() {
 
   return (
     <VisualizationContainer footer={mode === 'sync' ? 'Blocking (sync def): request 2 can\'t even START until request 1\'s I/O wait finishes -- one slow feature-store call stalls everyone behind it.' : 'Async (async def): while request 1 waits on I/O, the server starts request 2\'s work immediately -- all three finish sooner, same single process.'}>
-      <PillSelect<'sync' | 'async'> label="Endpoint style" value={mode} onChange={setMode} options={[{ value: 'sync', label: 'Blocking (sync def)' }, { value: 'async', label: 'Async (async def)' }]} />
+      <PillSelect<Mode>
+        label="Endpoint style"
+        value={mode}
+        onChange={(val) => {
+          const next = typeof val === 'function' ? val(mode) : val;
+          pick(MODES.indexOf(next));
+        }}
+        options={[{ value: 'sync', label: 'Blocking (sync def)' }, { value: 'async', label: 'Async (async def)' }]}
+      />
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         {[0, 1, 2].map((i) => {
           const y = 15 + i * rowH;

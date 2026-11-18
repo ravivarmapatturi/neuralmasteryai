@@ -194,44 +194,44 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 6
 - `src/content/docs/mlops/model-serving.mdx`
-  - [ ] `src/viz/diagrams/AdaptiveBatchingQueueDiagram.tsx`
-  - [ ] `src/viz/diagrams/AsyncBlockingDiagram.tsx`
-  - [ ] `src/viz/diagrams/BatchOnlineStreamingDiagram.tsx`
-  - [ ] `src/viz/diagrams/ModelServingRequestFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/AdaptiveBatchingQueueDiagram.tsx`
+  - [x] `src/viz/diagrams/AsyncBlockingDiagram.tsx`
+  - [x] `src/viz/diagrams/BatchOnlineStreamingDiagram.tsx`
+  - [x] `src/viz/diagrams/ModelServingRequestFlowDiagram.tsx`
 - `src/content/docs/mlops/monitoring-and-drift.mdx`
-  - [ ] `src/viz/diagrams/DataVsConceptDriftDiagram.tsx`
-  - [ ] `src/viz/diagrams/KsTestDiagram.tsx`
-  - [ ] `src/viz/diagrams/PsiCalculatorDiagram.tsx`
-  - [ ] `src/viz/diagrams/ThreeMonitoringLayersDiagram.tsx`
-  - [ ] `src/viz/diagrams/WassersteinDistanceDiagram.tsx`
+  - [x] `src/viz/diagrams/DataVsConceptDriftDiagram.tsx`
+  - [x] `src/viz/diagrams/KsTestDiagram.tsx`
+  - [x] `src/viz/diagrams/PsiCalculatorDiagram.tsx`
+  - [x] `src/viz/diagrams/ThreeMonitoringLayersDiagram.tsx`
+  - [x] `src/viz/diagrams/WassersteinDistanceDiagram.tsx`
 - `src/content/docs/mlops/observability.mdx`
-  - [ ] `src/viz/diagrams/MonitoringVsObservabilityDiagram.tsx`
-  - [ ] `src/viz/diagrams/PrometheusGrafanaFlowDiagram.tsx`
-  - [ ] `src/viz/diagrams/StructuredLogsDiagram.tsx`
-  - [ ] `src/viz/diagrams/ThreePillarsIncidentDiagram.tsx`
-  - [ ] `src/viz/diagrams/TraceWaterfallDiagram.tsx`
+  - [x] `src/viz/diagrams/MonitoringVsObservabilityDiagram.tsx`
+  - [x] `src/viz/diagrams/PrometheusGrafanaFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/StructuredLogsDiagram.tsx`
+  - [x] `src/viz/diagrams/ThreePillarsIncidentDiagram.tsx`
+  - [x] `src/viz/diagrams/TraceWaterfallDiagram.tsx`
 - `src/content/docs/mlops/pipeline-orchestration.mdx`
-  - [ ] `src/viz/diagrams/BackfillDiagram.tsx`
-  - [ ] `src/viz/diagrams/DagDependencyDiagram.tsx`
-  - [ ] `src/viz/diagrams/PipelineCachingDiagram.tsx`
-  - [ ] `src/viz/diagrams/RetryBackoffDiagram.tsx`
+  - [x] `src/viz/diagrams/BackfillDiagram.tsx`
+  - [x] `src/viz/diagrams/DagDependencyDiagram.tsx`
+  - [x] `src/viz/diagrams/PipelineCachingDiagram.tsx`
+  - [x] `src/viz/diagrams/RetryBackoffDiagram.tsx`
 - `src/content/docs/mlops/production-reliability.mdx`
-  - [ ] `src/viz/diagrams/BackpressureQueueDiagram.tsx`
-  - [ ] `src/viz/diagrams/CircuitBreakerStateDiagram.tsx`
-  - [ ] `src/viz/diagrams/GracefulDegradationLadderDiagram.tsx`
-  - [ ] `src/viz/diagrams/IdempotencyKeyDiagram.tsx`
-  - [ ] `src/viz/diagrams/TimeoutCascadeDiagram.tsx`
+  - [x] `src/viz/diagrams/BackpressureQueueDiagram.tsx`
+  - [x] `src/viz/diagrams/CircuitBreakerStateDiagram.tsx`
+  - [x] `src/viz/diagrams/GracefulDegradationLadderDiagram.tsx`
+  - [x] `src/viz/diagrams/IdempotencyKeyDiagram.tsx`
+  - [x] `src/viz/diagrams/TimeoutCascadeDiagram.tsx`
 - `src/content/docs/mlops/security-and-reproducibility.mdx`
-  - [ ] `src/viz/diagrams/LeastPrivilegeAgencyDiagram.tsx`
-  - [ ] `src/viz/diagrams/LlmAttackSurfaceDiagram.tsx`
-  - [ ] `src/viz/diagrams/ReproducibilityChecklistDiagram.tsx`
-  - [ ] `src/viz/diagrams/SecretsInjectionDiagram.tsx`
+  - [x] `src/viz/diagrams/LeastPrivilegeAgencyDiagram.tsx`
+  - [x] `src/viz/diagrams/LlmAttackSurfaceDiagram.tsx`
+  - [x] `src/viz/diagrams/ReproducibilityChecklistDiagram.tsx`
+  - [x] `src/viz/diagrams/SecretsInjectionDiagram.tsx`
 - `src/content/docs/harness-engineering/autonomous-loops-and-supervisors.mdx`
-  - [ ] `src/viz/diagrams/AutonomousGoalLoopDiagram.tsx`
-  - [ ] `src/viz/diagrams/HarnessAblationStudio.tsx`
+  - [x] `src/viz/diagrams/AutonomousGoalLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/HarnessAblationStudio.tsx`
 - `src/content/docs/harness-engineering/context-and-instruction-design.mdx`
-  - [ ] `src/viz/diagrams/ContextCompactionVisualizer.tsx`
-  - [ ] `src/viz/diagrams/InstructionBudgetVisualizer.tsx`
+  - [x] `src/viz/diagrams/ContextCompactionVisualizer.tsx`
+  - [x] `src/viz/diagrams/InstructionBudgetVisualizer.tsx`
 
 ## Batch 7
 - `src/content/docs/harness-engineering/harness-architecture.mdx`

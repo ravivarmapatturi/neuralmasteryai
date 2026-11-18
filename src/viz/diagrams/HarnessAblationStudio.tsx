@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 
 const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type BenchmarkTask = 'refactor' | 'bugfix' | 'feature';
+const TASKS: BenchmarkTask[] = ['refactor', 'bugfix', 'feature'];
 
 interface BenchmarkMetrics {
   completionRate: number; // %
@@ -22,7 +23,8 @@ interface TierResult {
 
 export default function HarnessAblationStudio() {
   const t = useVizTokens();
-  const [task, setTask] = useState<BenchmarkTask>('feature');
+  const { value: taskIdx, pick } = useAutoCycle(TASKS.length, 3500, 2);
+  const task = TASKS[taskIdx];
 
   const getTierData = (tId: BenchmarkTask): TierResult[] => {
     switch (tId) {
@@ -103,7 +105,10 @@ export default function HarnessAblationStudio() {
         <PillSelect<BenchmarkTask>
           label="Benchmark Scenario"
           value={task}
-          onChange={setTask}
+          onChange={(val) => {
+            const next = typeof val === 'function' ? val(task) : val;
+            pick(TASKS.indexOf(next));
+          }}
           options={[
             { value: 'feature', label: '1. Multi-Page Feature Addition' },
             { value: 'bugfix', label: '2. Deep Concurrency Bug Fix' },

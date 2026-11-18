@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
@@ -15,17 +15,18 @@ const THREATS = [
  * click one for what it actually is and how it's mitigated. */
 export default function LlmAttackSurfaceDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('injection');
+  const { value: activeIdx, pick } = useAutoCycle(THREATS.length, 2500, 0);
+  const active = THREATS[activeIdx].key;
   const color = getConceptColor(t, 'attention');
-  const x = THREATS.find((y) => y.key === active)!;
+  const x = THREATS[activeIdx];
 
   return (
     <VisualizationContainer footer={x.desc}>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        {THREATS.map((y) => {
+        {THREATS.map((y, idx) => {
           const isActive = active === y.key;
           return (
-            <div key={y.key} onClick={() => setActive(y.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(y.key); } }} onMouseEnter={() => setActive(y.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.7rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
+            <div key={y.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer', padding: '0.5rem 0.7rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
               <span style={{ fontSize: 10, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{y.label}</span>
             </div>
           );

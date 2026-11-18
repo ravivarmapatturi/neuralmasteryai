@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
@@ -8,7 +8,8 @@ import { getConceptColor } from './diagramSystem';
  * from a secrets manager. */
 export default function SecretsInjectionDiagram() {
   const t = useVizTokens();
-  const [correct, setCorrect] = useState(true);
+  const { value: modeIdx, pick } = useAutoCycle(2, 3500, 1);
+  const correct = modeIdx === 1;
   const color = getConceptColor(t, 'attention');
   const badColor = t.accentDanger;
   const okColor = t.accentPrimary;
@@ -16,10 +17,10 @@ export default function SecretsInjectionDiagram() {
   return (
     <VisualizationContainer footer={correct ? 'The secrets manager injects the credential into the running process\'s environment at startup -- it never touches disk, git history, or a Docker layer.' : 'A hardcoded credential in a Dockerfile or .env gets committed to git history (or baked into an image layer) permanently -- rotating it later doesn\'t remove it from history that already leaked.'}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <button type="button" onClick={() => setCorrect(false)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: !correct ? 700 : 500, background: !correct ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${!correct ? color : t.border}`, color: !correct ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button type="button" onClick={() => pick(0)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: !correct ? 700 : 500, background: !correct ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${!correct ? color : t.border}`, color: !correct ? color : t.textSecondary, cursor: 'pointer' }}>
           Hardcoded in .env/Dockerfile
         </button>
-        <button type="button" onClick={() => setCorrect(true)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: correct ? 700 : 500, background: correct ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${correct ? color : t.border}`, color: correct ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button type="button" onClick={() => pick(1)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: correct ? 700 : 500, background: correct ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${correct ? color : t.border}`, color: correct ? color : t.textSecondary, cursor: 'pointer' }}>
           Secrets manager, runtime injection
         </button>
       </div>

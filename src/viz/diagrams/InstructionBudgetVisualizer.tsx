@@ -1,13 +1,16 @@
 import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 
 type Mode = 'dumb_inlining' | 'map_and_manual';
+const MODES: Mode[] = ['dumb_inlining', 'map_and_manual'];
 
 export default function InstructionBudgetVisualizer() {
   const t = useVizTokens();
+  const { value: modeIdx, pick } = useAutoCycle(MODES.length, 3500, 1);
+  const mode = MODES[modeIdx];
   const [fileCount, setFileCount] = useState<number>(60);
-  const [mode, setMode] = useState<Mode>('map_and_manual');
 
   // Naive inlining: each file averages ~1,800 tokens
   const naiveTokens = fileCount * 1800;
@@ -36,7 +39,10 @@ export default function InstructionBudgetVisualizer() {
         <PillSelect<Mode>
           label="Context Strategy"
           value={mode}
-          onChange={setMode}
+          onChange={(val) => {
+            const next = typeof val === 'function' ? val(mode) : val;
+            pick(MODES.indexOf(next));
+          }}
           options={[
             { value: 'dumb_inlining', label: 'Naive File Inlining' },
             { value: 'map_and_manual', label: 'Map vs Manual Pattern' },

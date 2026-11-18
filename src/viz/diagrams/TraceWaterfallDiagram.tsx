@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -14,7 +14,7 @@ const SPANS = [
  * the time, something no single metric can show. */
 export default function TraceWaterfallDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState(3);
+  const { value: active, pick } = useAutoCycle(SPANS.length, 2500, 3);
   const color = getConceptColor(t, 'attention');
   const width = 480;
   const totalDur = 120;
@@ -27,7 +27,7 @@ export default function TraceWaterfallDiagram() {
           const isActive = active === i;
           const y = 15 + i * 26;
           return (
-            <g key={s.label} onClick={() => setActive(i)} onMouseEnter={() => setActive(i)} style={{ cursor: 'pointer' }}>
+            <g key={s.label} onClick={() => pick(i)} onMouseEnter={() => pick(i)} style={{ cursor: 'pointer' }}>
               <text x={5} y={y + 13} fontSize={8} fill={isActive ? color : t.textMuted}>{s.label}</text>
               <rect x={xFor(s.start)} y={y} width={(s.dur / totalDur) * (width - 120)} height={18} rx={3} fill={isActive ? color : `${color}50`} opacity={isActive ? 0.85 : 0.5} />
               <text x={xFor(s.start) + 4} y={y + 13} fontSize={7} fill={t.background}>{s.dur}ms</text>

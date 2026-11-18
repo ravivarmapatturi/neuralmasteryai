@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -14,7 +14,7 @@ const STEPS = [
  * happened." */
 export default function ThreePillarsIncidentDiagram() {
   const t = useVizTokens();
-  const [step, setStep] = useState(0);
+  const { value: step, pick } = useAutoCycle(STEPS.length, 2500, 0);
   const color = getConceptColor(t, 'attention');
 
   return (
@@ -23,8 +23,8 @@ export default function ThreePillarsIncidentDiagram() {
         {STEPS.map((s, i) => (
           <div key={s.key} style={{ display: 'flex', alignItems: 'center' }}>
             <div
-              onClick={() => setStep(i)}
-              onMouseEnter={() => setStep(i)}
+              onClick={() => pick(i)}
+              onMouseEnter={() => pick(i)}
               style={{ cursor: 'pointer', padding: '0.6rem 0.9rem', borderRadius: 8, background: step === i ? `${color}20` : t.surfaceAlt, border: `1.5px solid ${step === i ? color : t.border}`, fontSize: 11, fontWeight: step === i ? 700 : 500, color: step === i ? color : t.textPrimary }}
             >
               {i + 1}. {s.label}

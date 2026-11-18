@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -11,12 +11,13 @@ const STRUCTURED = { timestamp: '2026-08-20T14:32:07Z', level: 'ERROR', user_id:
  * needs consistent fields, not just readable text. */
 export default function StructuredLogsDiagram() {
   const t = useVizTokens();
-  const [structured, setStructured] = useState(true);
+  const { value: modeIdx, pick } = useAutoCycle(2, 3500, 0);
+  const structured = modeIdx === 0;
   const color = getConceptColor(t, 'attention');
 
   return (
     <VisualizationContainer footer={structured ? 'Structured: query "all ERROR logs where endpoint=/predict and duration_ms > 10000" directly -- the fields are consistent and machine-parseable.' : 'Unstructured: fine to grep by hand, but "all timeouts on /predict over 10s" requires parsing free text, not a direct query.'}>
-      <button type="button" onClick={() => setStructured((s) => !s)} style={{ marginBottom: 10, padding: '6px 12px', borderRadius: 6, border: `1px solid ${color}`, background: structured ? `${color}15` : 'transparent', color, cursor: 'pointer', fontSize: 11.5, fontWeight: 700 }}>
+      <button type="button" onClick={() => pick(structured ? 1 : 0)} style={{ marginBottom: 10, padding: '6px 12px', borderRadius: 6, border: `1px solid ${color}`, background: structured ? `${color}15` : 'transparent', color, cursor: 'pointer', fontSize: 11.5, fontWeight: 700 }}>
         {structured ? 'Structured (JSON)' : 'Unstructured (free text)'}
       </button>
       <SketchBox color={color} strokeWidth={1.3}>

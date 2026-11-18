@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
@@ -9,7 +9,8 @@ import { getConceptColor } from './diagramSystem';
  * one. */
 export default function IdempotencyKeyDiagram() {
   const t = useVizTokens();
-  const [hasKey, setHasKey] = useState(true);
+  const { value: keyIdx, pick } = useAutoCycle(2, 3500, 1);
+  const hasKey = keyIdx === 1;
   const color = getConceptColor(t, 'attention');
   const badColor = t.accentDanger;
   const okColor = t.accentPrimary;
@@ -17,10 +18,10 @@ export default function IdempotencyKeyDiagram() {
   return (
     <VisualizationContainer footer={hasKey ? 'The retry carries the same idempotency key as attempt 1. The server recognizes it as already-processed and returns the original result -- no duplicate charge.' : 'Attempt 1 actually succeeded server-side, but the client never saw the response before timing out. The retry looks like a brand-new request -- the customer is charged twice.'}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <button type="button" onClick={() => setHasKey(false)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: !hasKey ? 700 : 500, background: !hasKey ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${!hasKey ? color : t.border}`, color: !hasKey ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button type="button" onClick={() => pick(0)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: !hasKey ? 700 : 500, background: !hasKey ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${!hasKey ? color : t.border}`, color: !hasKey ? color : t.textSecondary, cursor: 'pointer' }}>
           No idempotency key
         </button>
-        <button type="button" onClick={() => setHasKey(true)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: hasKey ? 700 : 500, background: hasKey ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${hasKey ? color : t.border}`, color: hasKey ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button type="button" onClick={() => pick(1)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: hasKey ? 700 : 500, background: hasKey ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${hasKey ? color : t.border}`, color: hasKey ? color : t.textSecondary, cursor: 'pointer' }}>
           With idempotency key
         </button>
       </div>
