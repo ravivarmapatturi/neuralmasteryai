@@ -5,12 +5,26 @@ description: "Separate election from log commitment, calculate majority survival
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ConsensusMajority } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # Consensus, Leader Election, and Committed History
 
 <ELI5>Several clerks keep copies of the same numbered ledger. Choosing a chairperson helps them coordinate, but does not make every note in that person's notebook an agreed entry. They also need rules for voting, preserving agreed entries, and replacing a missing chairperson without inventing a second official history.</ELI5>
+
+## Why it exists
+
+A leader election alone does not say which log entries every future leader must preserve. A protocol uses votes, durable log rules, and a quorum to establish one committed history. The distinction matters when a leader fails after writing locally but before a command is committed.
+
+## The big picture
+
+<PenFlow ariaLabel='Consensus, Leader Election, and Committed History: overview' rows={[{ steps: { title: 'Choose eligible voters', lines: ['five voters in the example'], tone: 'blue' } }, { steps: { title: 'Win a majority', lines: ['three votes; majorities overlap'], tone: 'purple' } }, { steps: { title: 'Commit by protocol', lines: ['current-term rule and log safety'], tone: 'orange' } }, { steps: { title: 'Apply committed prefix', lines: ['state machine advances in order'], tone: 'green' } }]} caption='Three of five voters can form a majority; two cannot commit independently.' />
+
+<Worksheet title="Five-voter majority and commit index" ariaLabel="Five-voter majority and commit index" stages={[{ tag: "Source values", color: "yellow", note: "The code finds a minimum majority overlap of one, then advances the commit index to 10 for a current-term entry replicated on three voters.", grid: { head: ["", "value"], rows: [{ label: "voters", cells: ["5"] }, { label: "majority", cells: ["3"] }, { label: "minimum overlap", cells: ["1"] }, { label: "reachable voters", cells: ["3: yes; 2: no"] }, { label: "commit index", cells: ["10"] }, { label: "applied index", cells: ["9"] }, { label: "committed not applied", cells: ["1"] }] } }]} />
+
+The worksheet follows the same values printed in the runnable example below.
 
 Separate election from log commitment, calculate majority survival, and preserve one recoverable history through leader changes and membership updates.
 **Consensus** lets participants agree on decisions under a defined failure model. A replicated state machine commonly uses consensus to establish a committed log, then applies that log deterministically. Leader election is part of some protocols' coordination, but a leader title alone does not establish which commands are committed or which reads may claim current state.
@@ -111,20 +125,30 @@ Read semantics also need a concrete observation. Suppose a client writes through
 
 Finally, examine restart state rather than only a running quorum. A member that loses its persistent vote or log data is not equivalent to a member that simply pauses and resumes with intact storage. Reusing an old identity with incompatible state can violate assumptions made by the cluster. Follow the implementation's recovery and membership procedures, preserve snapshots and logs consistently, and avoid improvising a new cluster while the old majority may still accept work. The five-voter arithmetic describes which supported failures preserve progress. It does not authorize arbitrary disk replacement, membership rewriting, or simultaneous independent restoration. A recovery runbook should name the authoritative history and the point at which the old authority is conclusively retired before a replacement accepts writes.
 
-## Failure Modes and Better Choices
+## Worked example
 
-A replacement is elected but serves a stale local read as current. Use the protocol's read-authority mechanism. A cluster has five members on one physical host and is called highly available. Place voters across the promised failure domains. A timeout triggers a second independent writer. Preserve quorum authority and fence external effects rather than treating silence as death.
+Five voters require three for a majority, and any two majorities overlap by at least one voter. In the code, entry 10 is from current term 7 and is replicated on three voters, so the simplified rule advances commit index to 10; applied index 9 leaves one committed entry unapplied.
 
-A membership change removes the only caught-up voters. Use supported reconfiguration and verify catch-up before retirement. A restore silently discards acknowledged commands. Treat it as disaster recovery with explicit history reconciliation. A consensus database commits the same business operation twice after client retry. Add operation identity at the state transition rather than blaming log ordering.
+## Try it yourself
 
-## When Not to Add a Consensus Group
+Use the runnable examples above. Make the edit described here, then compare the printed values with the worksheet.
 
-| Situation | Better first boundary |
-| --- | --- |
-| One database transaction already owns the invariant | Use its supported durability and concurrency controls |
-| Data is a harmless approximate cache | A simpler explicitly weaker protocol |
-| The actual bottleneck is one inefficient query | Repair its access path |
-| The team is implementing a protocol from a diagram | Use a maintained complete implementation |
+# Try it: reduce the current-term entry replication count from three to two and rerun.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat election as proof all local entries committed | A leader can hold an uncommitted suffix | Track append, commit, and apply separately |
+| Assume quorum overlap is the whole protocol | Votes also enforce term and log eligibility rules | Use a complete maintained protocol |
+| Retry a committed operation with a new identity | The client may not know whether the first attempt committed | Carry an idempotent operation identity |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| A local database transaction owns the invariant | Use its concurrency and durability controls |
+| The data is an approximate disposable cache | Choose a simpler explicit cache protocol |
 
 ## Remember
 

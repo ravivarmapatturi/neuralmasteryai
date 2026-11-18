@@ -5,6 +5,8 @@ description: "Choose relational, document, or key-value storage from access patt
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import StorageOwnershipExplorer from '../../../viz/diagrams/StorageOwnershipExplorer';
 
@@ -13,6 +15,18 @@ import StorageOwnershipExplorer from '../../../viz/diagrams/StorageOwnershipExpl
 <ELI5>
 An address book records a person's current address once. Printing that address on every delivery slip makes each slip convenient to read, but changing the address now requires deciding which slips should change. A historical receipt may need the old address forever. Choosing a data model begins with that meaning, before choosing how the records are stored.
 </ELI5>
+
+## Why it exists
+
+A storage model decides where a fact lives and how many records a change must update. A current customer name and a historical invoice name can contain identical text but mean different things. We need an update boundary that preserves each meaning under retries and partial failure.
+
+## The big picture
+
+<PenFlow ariaLabel='SQL vs NoSQL: Choose the Update Boundary: overview' rows={[{ steps: { title: 'Name the fact', lines: ['current profile or historical snapshot'], tone: 'blue' } }, { steps: { title: 'Choose its owner', lines: ['one profile or repeated copies'], tone: 'purple' } }, { steps: { title: 'Trace a rename', lines: ['count writes and partial states'], tone: 'orange' } }, { steps: { title: 'Set recovery', lines: ['transaction or durable projection'], tone: 'green' } }]} caption='A current name has one source; a historical name keeps its purchase-time value.' />
+
+<Worksheet title="One customer rename across two orders" ariaLabel="One customer rename across two orders" stages={[{ tag: "Source values", color: "yellow", note: "The example resolves both current names from one profile write; billing snapshots remain Alice.", grid: { head: ["", "order 1", "order 2", "writes"], rows: [{ label: "referenced profile", cells: ["Alicia", "Alicia", "1"] }, { label: "one copy changed", cells: ["Alicia", "Alice", "1 of 2"] }, { label: "both copies changed", cells: ["Alicia", "Alicia", "2 of 2"] }, { label: "billing snapshot", cells: ["Alice", "Alice", "0"] }] } }]} />
+
+The worksheet follows the same values printed in the runnable example below.
 
 A storage decision should identify the operations we must support, the state that changes together, and the failures under which those changes must remain correct. SQL and NoSQL describe broad families of interfaces and models, not complete consistency or scaling contracts. Two products in the same family can have materially different transaction, indexing, replication, and operational behavior.
 
@@ -101,20 +115,30 @@ For a relational implementation, inspect actual constraints and query plans inst
 
 A decision record should include the access patterns, authoritative facts, transaction boundary, partitioning hypothesis, and evidence that would reverse the choice. “Use a relational primary because ownership and inventory updates require a local transactional boundary; revisit distribution after measured write limits” is reviewable. “Use NoSQL for scale” leaves every important guarantee unspecified.
 
-## Common Problems and Fixes
+## Worked example
 
-A flexible schema accumulates incompatible field meanings. Version the interpretation, validate required fields, and migrate readers and writers compatibly. A normalized read becomes slow due to a missing index; inspect the plan before duplicating data everywhere. A denormalized projection becomes stale; give it an owner, version, recovery protocol, and measurable freshness indicator.
+The code writes Alicia once to the profile and reads that value for orders 1 and 2. In the duplicate model, updating one of two current-name copies creates an intermediate mismatch; billing snapshots stay Alice intentionally.
 
-An unbounded embedded array grows with the lifetime of a customer. Separate independently growing records and query them through an appropriate key and index. A transaction spans unrelated tenants and creates contention. Revisit the invariant and ownership boundary before adding replicas. A database family comparison lists features without the workload; write the operations and failure promises first.
+## Try it yourself
 
-## When Not to Add a Second Database Model
+Use the runnable examples above. Make the edit described here, then compare the printed values with the worksheet.
 
-| Situation | Better starting action |
-| --- | --- |
-| One query is slow on an otherwise suitable store | Inspect indexes, cardinality, and its execution plan |
-| The proposed document only mirrors existing rows | Identify the read or invariant the copy improves |
-| No one owns synchronization or recovery | Keep one authority until the projection protocol exists |
-| Data meaning is disputed | Resolve current value versus historical snapshot first |
+# Try it: add a new order after the copy-update loop and decide how it receives the renamed current value.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat a historical snapshot as stale | The field records the name at purchase time | Document field meaning and retention |
+| Duplicate current values without a repair path | A partial update leaves readers with mixed values | Use a transaction or versioned projection |
+| Choose a database family as a scale shortcut | The family name does not define the access or failure contract | Compare concrete operations and engine guarantees |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| One query is slow on a suitable store | Inspect indexes and its query plan |
+| No one owns a duplicated projection | Keep one source of truth until recovery is designed |
 
 ## Remember
 

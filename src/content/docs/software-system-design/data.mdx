@@ -4,12 +4,47 @@ sidebar_position: 3
 description: "Choose storage from access and update boundaries, then reason about indexes, replicas, shards, transaction histories, and cache freshness one mechanism at a time."
 ---
 import { ELI5 } from '../../../components/content/ExpandableDepth';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Data Ownership and Consistency
 
 <ELI5>
 A service needs to know where its records live, who may change them, and which copy a reader can trust. Extra copies help with different problems from splitting records among owners. These chapters separate those decisions and show how they interact under concurrent updates and failure.
 </ELI5>
+
+## Why it exists
+
+A storage design has several separate decisions: where a fact lives, how queries find it, which copies can answer, and who may change it. Combining them under one “database choice” hides costs and correctness boundaries. This section follows each boundary before recombining them in a case study.
+
+## The big picture
+
+<PenFlow ariaLabel='Data Ownership and Consistency: overview' rows={[{ steps: { title: 'Place facts', lines: ['reference or embed'], tone: 'blue' } }, { steps: { title: 'Find records', lines: ['indexes and keys'], tone: 'purple' } }, { steps: { title: 'Copy or divide', lines: ['replication and shards'], tone: 'orange' } }, { steps: { title: 'Define observations', lines: ['consistency and cache freshness'], tone: 'green' } }]} caption='Storage placement, copies, visibility, and freshness are connected decisions.' />
+
+<Worksheet title="One operation across four storage boundaries" ariaLabel="One operation across four storage boundaries" stages={[{ tag: "Decision path", color: "yellow", note: "Use the linked chapters to fill each design boundary for one operation.", grid: { head: ["", "question", "chapter"], rows: [{ label: "ownership", cells: ["who changes the fact?", "SQL vs NoSQL"] }, { label: "access", cells: ["which keys locate it?", "Indexing"] }, { label: "visibility", cells: ["which copy may answer?", "Replication and consistency"] }, { label: "invariant", cells: ["what must stay true?", "Transactions"] }] } }]} />
+
+## Worked example
+
+Trace one operation through the worksheet: state its owner, query key, acceptable read version, and invariant. The linked chapters supply the worked values and simulations for each boundary.
+
+## Try it yourself
+
+Choose one payment or profile update. Fill the worksheet’s four rows with its owner, access key, readable copy, and invariant.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treating every storage or coordination choice as one decision | Different mechanisms protect different boundaries | Trace one operation across ownership, reads, writes, and failure |
+| Reading a chapter list without applying it | Terms stay abstract without a concrete operation | Use one case study and record its invariant and recovery path |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| You need one engine command or protocol detail | Open the linked mechanism chapter |
+| You need to evaluate one product action end to end | Start from its invariant and follow the relevant chapters |
+
 
 Follow the nine topics in order. Each develops a concrete storage decision with a worked example, an interactive explanation, runnable experiments, and failure cases.
 
@@ -48,14 +83,6 @@ Follow the nine topics in order. Each develops a concrete storage decision with 
 ## Caches Need a Staleness Contract
 
 [Caching and invalidation](/docs/software-system-design/caching-and-invalidation) demonstrates a delayed old read filling a cache after a correct database commit and deletion. Its fenced model states the additional lifetime and atomicity assumptions needed to reject that refill.
-
-## Common Problems and Fixes
-
-Name the authoritative fact, the concurrent transition, and the observer before choosing a storage mechanism. The topic pages make their assumptions executable and distinguish calculated models from actual engine guarantees.
-
-## When Not to Shard or Cache
-
-A missing access path, an oversized result, or an unmeasured workload can justify a smaller change. Inspect [index costs](/docs/software-system-design/indexing) and [cache reuse requirements](/docs/software-system-design/caching-and-invalidation) before adding another owner or derived copy.
 
 ## Remember
 

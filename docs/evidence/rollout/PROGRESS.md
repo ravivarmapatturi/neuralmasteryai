@@ -308,3 +308,9 @@ Content pages that still lack `## Remember` and `## Sources` (they never had the
 Standardized the software-system-design roadmap, foundations, requirements, design approach, capacity estimation, scaling overview, vertical/horizontal scaling, and stateless services. Worksheets use the source's 99.900% vs 99.895% denominator comparison, 60-second revocation/300-second cache, 14-instance failure model, shared-store capacity, and local/shared session behavior.
 
 Static checks passed: notebook (8 pages/0 violations), math, MDX (2,019/2,019), links (2,147 valid routes/0 broken anchors), typecheck, tracker and diff check. Browser checks, full Vitest and build deferred under low-memory constraints. See `rest-9/scorecard.md`. No push.
+
+## Rest batch 10 — eight Software System Design pages
+
+Standardized Data Ownership and Consistency, Indexing, SQL vs NoSQL, Transactions and Isolation, Consistency Models, CAP and PACELC, Coordination and Distributed Workflows, and Consensus and Leader Election. The technical worksheets use the existing examples: 2 vs 6 index entries, referenced/duplicated customer names, 0 vs 1 on-call clinicians, version 7/8 session histories, 2 ms vs 42 ms acknowledgement paths, and five-voter quorum/commit values. Overview worksheets map operation boundaries and timeout recovery without inventing benchmark numbers. Scorecard: `rest-10/scorecard.md`.
+
+Static checks passed: notebook (16 changed pages/0 violations), MDX (2,019/2,019), math (1,991 pages), links (2,147 routes/no broken links or anchors; one existing approximate inline-math warning), typecheck, tracker, and diff check. Full Vitest, browser screenshots, and build were deferred because available RAM is 2 GiB, below the 5 GiB build threshold. No push.

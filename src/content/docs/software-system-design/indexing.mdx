@@ -5,6 +5,8 @@ description: "Build indexes from filter and ordering requirements, trace composi
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import CompositeIndexExplorer from '../../../viz/diagrams/CompositeIndexExplorer';
 
@@ -13,6 +15,18 @@ import CompositeIndexExplorer from '../../../viz/diagrams/CompositeIndexExplorer
 <ELI5>
 A library catalogue sorted by author can quickly find one author's books, but it is less convenient for finding every book published yesterday. Both catalogues contain the same books. Their ordering determines which questions require a short lookup and which still require searching many entries. A database index makes that ordering decision explicit and maintains it whenever records change.
 </ELI5>
+
+## Why it exists
+
+A query that scans an entire table can miss its response target as the table grows. An index creates a maintained ordering that can skip unrelated rows, but every write must keep that ordering current. We need to compare the saved scan work with the extra storage and write work.
+
+## The big picture
+
+<PenFlow ariaLabel='Indexing and Query Access Paths: overview' rows={[{ steps: { title: 'Describe the query', lines: ['filter, sort, limit'], tone: 'blue' } }, { steps: { title: 'Order the keys', lines: ['equality before range or sort'], tone: 'purple' } }, { steps: { title: 'Scan the matching range', lines: ['count examined entries'], tone: 'orange' } }, { steps: { title: 'Measure both sides', lines: ['read benefit and write cost'], tone: 'green' } }]} caption='Customer-first keys keep one customer’s latest orders together.' />
+
+<Worksheet title="Twelve orders, customer 2 latest two" ariaLabel="Twelve orders, customer 2 latest two" stages={[{ tag: "Source values", color: "yellow", note: "The customer-first ordering reads two matches after seeking; time-first scan inspects six entries.", grid: { head: ["", "result", "entries read"], rows: [{ label: "customer first", cells: ["(2, 3), (2, 2)", "2"] }, { label: "time first", cells: ["(2, 3), (2, 2)", "6"] }] } }]} />
+
+The worksheet follows the same values printed in the runnable example below.
 
 An **index** is a maintained access structure that helps locate or order records without always reading the entire underlying collection. Its value depends on the query and data distribution. Indexing every field does not make every operation fast; it creates additional structures that writes must keep current, and the optimizer may correctly prefer another path.
 
@@ -110,20 +124,30 @@ for full_indexes in (1, 4):
 
 The logical entry count excludes page splits, logging, compaction, and engine-specific optimizations. It does not predict write latency linearly. Its purpose is to force a maintenance budget into the design conversation: every new access path needs a workload reason and an owner who can remove it when that reason disappears.
 
-## Common Problems and Fixes
+## Worked example
 
-The index contains the right fields but an unhelpful leading order. Trace the filter and sort together, then inspect the chosen range. A query transforms the indexed field with a function; consider an appropriate expression index or change the predicate under the engine's rules. A plan estimates a tiny result but returns many rows; investigate statistics and skew before forcing an access method.
+The twelve-row dataset asks for customer 2 at times 3 and 2. Both orderings return the same rows, while the simple scan counts differ: 2 after the customer-local seek versus 6 when time is the leading key.
 
-A newly indexed read improves while writes and replicas lag. Measure index maintenance, storage pressure, and replication demand as part of rollout. A development dataset always fits in memory while production does not. Test representative cardinality and key width instead of treating a warm small-table plan as capacity evidence.
+## Try it yourself
 
-## When Not to Add an Index
+Use the runnable examples above. Make the edit described here, then compare the printed values with the worksheet.
 
-| Situation | Better next step |
-| --- | --- |
-| Query intentionally returns nearly the whole table | Efficient sequential or analytical processing |
-| The operation transfers an excessive result body | Change pagination or the requested representation |
-| An equivalent access path already exists | Inspect why the optimizer is choosing another path |
-| The write-heavy system has no demonstrated read benefit | Measure the target operation before adding maintenance |
+# Try it: change the query to customer 4 and compare the scan counts for the two orderings.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Put sort key before equality key | Customer rows are spread across time groups | Match key order to filter and ordering |
+| Index every column | Each index adds storage and write maintenance | Require a measured query benefit |
+| Treat toy scan counts as latency | Real engines use caches, plans, and other access paths | Inspect representative execution plans |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| The query returns most table rows | Use a sequential or analytical scan |
+| No workload shows a read benefit | Measure before adding write and storage costs |
 
 ## Remember
 

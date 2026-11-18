@@ -5,6 +5,8 @@ description: "Trace concurrent transactions against a shared invariant, reproduc
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import WriteSkewExplorer from '../../../viz/diagrams/WriteSkewExplorer';
 
@@ -13,6 +15,18 @@ import WriteSkewExplorer from '../../../viz/diagrams/WriteSkewExplorer';
 <ELI5>
 Two people staff a help desk, and at least one must stay on duty. Each checks that the other is present before leaving. If both check at the same moment and leave independently, each followed the local rule while the desk became empty. A transaction must protect the shared decision, not merely ensure each person's own departure is recorded cleanly.
 </ELI5>
+
+## Why it exists
+
+A transaction can make its own writes atomic and still let concurrent transactions violate a shared rule. Two clinicians each see the other on call, then both leave by changing separate rows. The rule applies to the roster as a whole, so the concurrency boundary must protect the read-dependent decision.
+
+## The big picture
+
+<PenFlow ariaLabel='Transactions, Isolation, and Write Skew: overview' rows={[{ steps: { title: 'State the invariant', lines: ['at least one clinician stays'], tone: 'blue' } }, { steps: { title: 'Read shared state', lines: ['Alice and Bob each see both on call'], tone: 'purple' } }, { steps: { title: 'Write separate rows', lines: ['each turns their own duty off'], tone: 'orange' } }, { steps: { title: 'Protect the decision', lines: ['serialize, lock, or retry safely'], tone: 'green' } }]} caption='Disjoint row writes can still violate a shared roster invariant.' />
+
+<Worksheet title="Two on-call clinicians" ariaLabel="Two on-call clinicians" stages={[{ tag: "Source values", color: "yellow", note: "The initial snapshots permit both departures; recomputing Bob\u2019s decision after Alice leaves preserves one clinician.", grid: { head: ["", "Alice", "Bob", "on call"], rows: [{ label: "initial", cells: ["on", "on", "2"] }, { label: "independent snapshots", cells: ["off", "off", "0"] }, { label: "serialized decisions", cells: ["off", "on", "1"] }] } }]} />
+
+The worksheet follows the same values printed in the runnable example below.
 
 A **transaction** groups operations under a commit or rollback boundary. **Isolation** constrains what concurrent transactions can observe and which combined outcomes may commit. A transaction can be all-or-nothing for its own writes while still participating in an invalid business outcome if the isolation and conflict handling do not protect the required invariant.
 
@@ -131,20 +145,30 @@ assert sum(roster.values()) == 1
 
 The sequential model shows the result a safe retry or serialized decision can produce. It does not require Alice always to win. A concurrency contract should preserve the invariant while allowing legitimate scheduling variation. Tests that insist on one winner can fail valid implementations or conceal the actual property being protected.
 
-## Common Problems and Fixes
+## Worked example
 
-The code uses a transaction but still performs a stale read-dependent update. Identify the complete read/write dependency set and select a protecting protocol. A unique constraint prevents duplicate rows but not overselling an aggregate resource. Put each invariant at a boundary that can actually enforce it. A serializable deployment reports errors under load. Implement bounded full-transaction retries before treating the errors as unexpected outages.
+Both transactions read the initial roster as Alice=on and Bob=on, then update different rows. The combined result is 0 on-call. If Alice leaves first and Bob recomputes, Bob stays and the count is 1.
 
-Locks solve the race but produce long waits or deadlocks. Reduce transaction duration, use a consistent acquisition order, and monitor lock wait separately from query execution. A retry repeats an external effect. Separate durable intent from delivery and use effect-level idempotency. A failover loses an acknowledged transaction. Review the [replication acknowledgement policy](/docs/software-system-design/replication), which is separate from isolation.
+## Try it yourself
 
-## When Not to Expand the Transaction
+Use the runnable examples above. Make the edit described here, then compare the printed values with the worksheet.
 
-| Situation | Better boundary |
-| --- | --- |
-| A remote email or webhook can be delivered later | Durable intent plus an outbox/delivery protocol |
-| One row can enforce the invariant atomically | A narrow conditional update |
-| Unrelated tenants do not share a business rule | Independent tenant-local ownership |
-| A read-only analytical job tolerates a stated snapshot | An explicit read snapshot without unnecessary write coordination |
+# Try it: reverse the two sequential decisions; the other clinician stays, and the invariant still holds.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Assume disjoint writes prove safety | Each write invalidates the condition the other read | Protect the full dependency set |
+| Retry only the last update | The decision came from a stale snapshot | Retry the complete transaction logic |
+| Repeat an external effect during retry | A database abort cannot retract an email or charge | Use durable intent and idempotent delivery |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| A single row can enforce the rule | Use an atomic conditional update |
+| An external notification can happen later | Commit durable intent, then deliver separately |
 
 ## Remember
 

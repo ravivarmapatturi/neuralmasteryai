@@ -5,6 +5,8 @@ description: "Compare linearizability, session guarantees, causal visibility, an
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import ConsistencyHistoryExplorer from '../../../viz/diagrams/ConsistencyHistoryExplorer';
 
@@ -13,6 +15,18 @@ import ConsistencyHistoryExplorer from '../../../viz/diagrams/ConsistencyHistory
 <ELI5>
 Two people can look at different copies of a shared notebook. One promise says your own edits remain visible when you look again. Another says you never see an older page after a newer one. A stronger promise says everyone sees changes in an order that respects completed actions. These promises sound similar until a person changes desks and gets a different copy.
 </ELI5>
+
+## Why it exists
+
+Replicas can show different versions while updates travel, and a client can move between them. Eventual convergence does not prevent a person from seeing version 8 and then version 7. We need to state which observations each client and action must be allowed to make.
+
+## The big picture
+
+<PenFlow ariaLabel='Consistency Models and Allowed Histories: overview' rows={[{ steps: { title: 'Record a history', lines: ['operations, clients, returned versions'], tone: 'blue' } }, { steps: { title: 'Check session rules', lines: ['own writes and prior reads'], tone: 'purple' } }, { steps: { title: 'Check dependencies', lines: ['causal parents before replies'], tone: 'orange' } }, { steps: { title: 'Set cross-client promise', lines: ['real-time order or bounded staleness'], tone: 'green' } }]} caption='A guarantee is a rule over observed histories, not a label on a replica.' />
+
+<Worksheet title="Version 8 session histories" ariaLabel="Version 8 session histories" stages={[{ tag: "Source values", color: "yellow", note: "The printed checks distinguish a writer seeing an old value from a read-only session moving backward.", grid: { head: ["", "read-your-writes", "monotonic reads"], rows: [{ label: "write 8 then read 7", cells: ["false", "true"] }, { label: "read 8 then read 7", cells: ["true", "false"] }, { label: "write 8 then read 8", cells: ["true", "true"] }] } }]} />
+
+The worksheet follows the same values printed in the runnable example below.
 
 A **consistency model** describes which observations a system permits across operations. We evaluate a history of requests and responses, including who performed them and which operations happened before others. The latest values eventually matching is only one possible property; it does not establish what users were allowed to observe on the way there.
 
@@ -120,20 +134,30 @@ assert visible == {1, 2} and not pending
 # Try it: omit event 1; event 2 remains buffered because its required parent never becomes visible.
 `} />
 
-## Common Problems and Fixes
+## Worked example
 
-An API promises current reads but routes blindly to replicas. Carry an appropriate barrier or use a reader that can establish the required state. A client moves backward after reconnecting. Preserve session context and inspect replica selection. A reply appears before its parent. Trace dependency propagation through the application, queue, and storage rather than sorting solely by timestamps.
+The code tests three histories. Writing version 8 then reading 7 violates read-your-writes but is not a backward-read history. Reading 8 then 7 violates monotonic reads, while a session that writes and reads 8 satisfies both checks.
 
-A system passes a convergence test but exposes forbidden intermediate histories. Record and check request histories during failure. A test treats numeric value order as version order. Use actual operation versions and object semantics so legitimate decrements are not mistaken for stale reads. A multi-object invariant fails despite correct single-key reads. Review the transaction boundary and concurrency protocol.
+## Try it yourself
 
-## When Not to Demand One Global Strong Mode
+Use the runnable examples above. Make the edit described here, then compare the printed values with the worksheet.
 
-| Situation | Better requirement |
-| --- | --- |
-| A user only needs their saved setting to remain visible | Explicit session guarantees with failure behavior |
-| Independent events can arrive in either order | Preserve relevant dependencies rather than arbitrary wall-clock order |
-| An analytical view may lag by an agreed interval | A measured freshness contract and recovery owner |
-| A reservation must never oversell | An atomic invariant-preserving transition, not only a read preference |
+# Try it: add a read of version 8 before the old read in the first history and inspect both checks.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat eventual convergence as a freshness deadline | Convergence alone gives no fixed time bound | State a measurable staleness limit if needed |
+| Use read-your-writes as a global promise | It applies to one session’s own writes | Specify cross-client ordering separately |
+| Infer order from a business value | A later valid write can have a smaller number | Use versions or operation identities |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| One endpoint has a different safety need | Scope guarantees by action and object |
+| A harmless display can tolerate stale data | Use an explicit weaker read contract |
 
 ## Remember
 

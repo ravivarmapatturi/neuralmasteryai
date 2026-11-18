@@ -5,6 +5,8 @@ description: "Trace a partitioned read/write history, distinguish CAP availabili
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import PartitionDecisionExplorer from '../../../viz/diagrams/PartitionDecisionExplorer';
 
@@ -13,6 +15,18 @@ import PartitionDecisionExplorer from '../../../viz/diagrams/PartitionDecisionEx
 <ELI5>
 Two ticket offices share the same seat inventory over a telephone line. When the line breaks, one office cannot know which seats the other has just sold. It can stop promising uncertain seats, or keep selling under a rule that accepts possible conflicts. A faster telephone normally helps coordination, but it cannot carry information while the offices are disconnected.
 </ELI5>
+
+## Why it exists
+
+During a network partition, one side may not know about a write completed on the other. A later read that returns old data breaks linearizable ordering; refusing that read preserves the ordering promise but does not complete the request. Healthy-network coordination also adds latency to ordinary operations.
+
+## The big picture
+
+<PenFlow ariaLabel='CAP and PACELC: Decisions Under Partition: overview' rows={[{ steps: { title: 'Start with value 7', lines: ['both replicas hold 7'], tone: 'blue' } }, { steps: { title: 'Partition the replicas', lines: ['A and B cannot exchange updates'], tone: 'purple' } }, { steps: { title: 'A acknowledges 8', lines: ['write completes before B read'], tone: 'orange' } }, { steps: { title: 'Choose a contract', lines: ['stale result or refused read'], tone: 'green' } }]} caption='The same partition history makes the progress and ordering choices visible.' />
+
+<Worksheet title="Partition history and normal path" ariaLabel="Partition history and normal path" stages={[{ tag: "Source values", color: "yellow", note: "The source prints B returning 7 under local-read policy and a 42 ms remote acknowledgement path from the stated 2 ms and 20 ms inputs.", grid: { head: ["", "result"], rows: [{ label: "A acknowledged", cells: ["8"] }, { label: "B local read", cells: ["7; stale"] }, { label: "coordination policy", cells: ["read refused"] }, { label: "local durable path", cells: ["2 ms"] }, { label: "remote durable path", cells: ["42 ms"] }] } }]} />
+
+The worksheet follows the same values printed in the runnable example below.
 
 CAP explains an impossibility under a defined network-failure model, not a shopping rule that assigns every database two permanent letters. During a partition, a replicated read/write object cannot guarantee both linearizable behavior and successful completion of every request at every non-failing node. The engineering task is to name which operations wait, fail, or accept weaker observations when the necessary communication is unavailable.
 
@@ -112,20 +126,30 @@ Test the policy by cutting communication in a controlled environment while prese
 
 When reviewing a database setting, inspect actual guarantees rather than turning “quorum” or “synchronous” into a synonym for every strong property. Quorum intersection is part of some protocols' arguments, while version handling, read repair, concurrent writes, and membership determine the rest. The [replication chapter](/docs/software-system-design/replication) explains why acknowledgement stage also matters.
 
-## Common Problems and Fixes
+## Worked example
 
-A design treats CAP availability as a percentage. Separate formal progress from the service's [SLO](/docs/software-system-design/availability-and-slos). A “CP” service silently falls back to stale reads. Make the weaker contract explicit or preserve the required refusal behavior. A supposedly “AP” application rejects some operations that need global invariants. Document the operation-specific boundaries instead of forcing a single service-wide label.
+A starts at 7, acknowledges 8, then B is read after that completion while partitioned. A local-read policy returns 7 and violates the stated ordering; a coordination-required policy refuses the read. With the example’s inputs, remote acknowledgement is 20+2+20=42 ms versus a 2 ms local boundary.
 
-A partition test only kills a process. Exercise communication loss with both sides still running when that failure is in scope. A system heals but old writers continue accepting work. Review fencing and membership transitions. A normal-operation latency target ignores inter-region acknowledgement. Budget the actual critical path with measured topology and the chosen durability policy.
+## Try it yourself
 
-## When Not to Use CAP as the Diagnosis
+Use the runnable examples above. Make the edit described here, then compare the printed values with the worksheet.
 
-| Situation | Better question |
-| --- | --- |
-| One query has a poor access path | Which index or query plan reduces work? |
-| A single-process transaction violates a rule | Which isolation and application invariant were required? |
-| Healthy-network latency is excessive | Which coordination path and queue consume the budget? |
-| A product needs several distinct guarantees | Which contract applies to each operation and object? |
+# Try it: set one_way_ms to 1 and recompute the remote acknowledgement path.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Count a fast error as successful availability | The requested read did not complete | Separate progress definitions from response-time SLOs |
+| Call CAP consistency the ACID C | The terms describe different properties | Name linearizability or the exact database invariant |
+| Use illustrative latency as a cloud benchmark | The inputs omit real topology and queueing | Measure the deployed path |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| A healthy-network latency problem | Trace the coordination path and queue |
+| A query or transaction bug without partitions | Inspect its access path or isolation boundary |
 
 ## Remember
 
