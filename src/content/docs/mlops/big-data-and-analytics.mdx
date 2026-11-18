@@ -5,12 +5,43 @@ description: "Cloud data warehouses, and turning processed data into trustworthy
 ---
 
 import { Remember } from '../../../components/content/Remember';
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Big Data & Analytics
 
+<ELI5>
+
+A transactional database is like a filing cabinet: it is good at finding or changing one customer's record. An analytical warehouse is like a ledger laid open across a long table: it is built to add up columns across many records. Transform tools make the ledger consistent, and dashboards help people act on it.
+
+</ELI5>
+
+## Why it exists
+
 [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning) already covers *processing* data too large for one machine (PySpark, distributed transforms) and *versioning* it (Delta Lake, Iceberg). This page covers what happens next: where that processed data actually gets **stored for fast analytical querying**, how it gets **transformed into trustworthy, reusable tables**, and how it ultimately becomes **something a human can look at and decide something from**.
 
-## Cloud Data Warehouses
+ML teams need both fast application lookups and broad historical analysis. One database rarely serves both jobs well: training and monitoring need summaries over many events, while the product still needs quick reads and writes for individual requests.
+
+## The big picture
+
+Raw records land in analytical storage, transformations create trusted tables, and a dashboard or feature pipeline consumes them. The small worksheet follows one aggregate through that path.
+
+<PenFlow ariaLabel="Analytics path from event records through warehouse and transformations to a dashboard or model feature" rows={[
+  { steps: { title: 'Collect records', lines: ['Events and application data'], tone: 'blue' } },
+  { steps: { title: 'Store for analysis', lines: ['Warehouse or real-time column store'], tone: 'purple' } },
+  { steps: { title: 'Transform and test', lines: ['Reusable SQL models'], tone: 'green' } },
+  { steps: { title: 'Use the result', lines: ['Dashboard or model feature'], tone: 'orange' } },
+]} caption="Separate the storage and query path from the transactional application path." />
+
+<Worksheet title="Aggregate three example sales" ariaLabel="Worksheet summing three illustrative sales records by customer" stages={[
+  { tag: 'Records', color: 'blue', note: 'Use the same three rows in the query and runnable example.', grid: { head: ['Customer', 'Sale'], rows: [{ label: 'A', cells: ['20'] }, { label: 'B', cells: ['30'] }, { label: 'A', cells: ['12'] }] } },
+  { tag: 'Group and sum', color: 'green', note: 'Add the amounts for each customer.', grid: { head: ['Customer', 'Total sales'], rows: [{ label: 'A', cells: ['32'] }, { label: 'B', cells: ['30'] }] } },
+  { tag: 'Check', color: 'yellow', note: 'The aggregate must equal the input total.', children: <>20 + 30 + 12 = 62; 32 + 30 = 62.</> },
+]} />
+
+## Cloud data warehouses
 
 **What is it?** A database purpose-built for **analytical** queries — aggregating and scanning huge volumes of historical data — as opposed to a transactional database ([relational databases](/docs/databases/relational/overview)) built for many small, fast reads and writes.
 
@@ -22,7 +53,7 @@ import { Remember } from '../../../components/content/Remember';
 
 <Remember>A warehouse's columnar layout is exactly why it's fast at "aggregate this column across a billion rows" and exactly why it's slow at "fetch this one record" — the opposite tradeoff a transactional database makes, on purpose.</Remember>
 
-## Real-Time Analytical Databases: ClickHouse
+## Real-time analytical databases: ClickHouse
 
 **What is it?** A database built specifically for **low-latency analytical queries at high ingest volume** — a narrower, faster niche than a general-purpose warehouse.
 
@@ -32,7 +63,7 @@ import { Remember } from '../../../components/content/Remember';
 
 **Limitation:** That real-time-query specialization is a narrower fit than a general-purpose warehouse — less mature ecosystem tooling around it, and it's not the right default choice for the broad, ad hoc historical analysis a warehouse is built for.
 
-## Transformation Tooling: dbt
+## Transformation tooling: dbt
 
 **What is it?** A tool that turns "write SQL to transform raw data into clean, trustworthy tables" from a pile of ad hoc scripts into a version-controlled, testable, dependency-tracked project.
 
@@ -60,7 +91,7 @@ dbt build  # run + test together
 
 <Remember>dbt's actual innovation isn't SQL itself — it's making SQL transformations version-controlled, testable, and dependency-aware, the same rigor software engineering already expects and analytics work often didn't have before it.</Remember>
 
-## Business Intelligence: Tableau and Power BI
+## Business intelligence: Tableau and Power BI
 
 **What is it?** The layer that turns a warehouse's query results into something a non-technical person can actually look at and act on — interactive dashboards and charts, not raw tables.
 
@@ -76,4 +107,73 @@ dbt build  # run + test together
 - **Training data curation**: PySpark processes and cleans raw data (see [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)); the cleaned result frequently lands in a warehouse for further analysis before becoming a training set.
 - **Monitoring and evaluation dashboards**: [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift) and [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops)'s metrics are frequently piped into exactly this stack — a warehouse or ClickHouse for storage, dbt for transformation, a BI tool for the dashboard a team actually watches day to day.
 
-Next: back to [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning) for how data gets processed and versioned before it lands here, or [MLOps Roadmap](/docs/mlops/roadmap) for the full path through this section.
+
+## Worked example
+
+Group three example sales by customer. The totals are the same ones in the worksheet: customer A has 32 and customer B has 30, for an overall total of 62.
+
+<PenFlow ariaLabel="Three sales rows grouped into totals of thirty-two for A and thirty for B" rows={[
+  { steps: { title: 'Input rows', lines: ['A: 20 · B: 30 · A: 12'], tone: 'blue' } },
+  { steps: { title: 'Group by customer', lines: ['Add rows with the same key'], tone: 'purple' } },
+  { steps: { title: 'Totals', lines: ['A: 32 · B: 30 · all: 62'], tone: 'green' } },
+]} caption="Grouping combines rows by key while preserving the total amount." />
+
+```sql
+select customer, sum(amount) as total_sales
+from example_sales
+group by customer
+order by customer;
+```
+
+## Try it yourself
+
+Run the same rows through a small Python aggregation, then add one more sale and see which customer total changes.
+
+<RunnableCode code={`sales = [("A", 20), ("B", 30), ("A", 12)]
+totals = {}
+for customer, amount in sales:
+    totals[customer] = totals.get(customer, 0) + amount
+for customer in sorted(totals):
+    print(customer, totals[customer])
+print("all sales", sum(totals.values()))
+
+# Try it:
+# Add ("B", 5) to sales and compare the totals.
+`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better practice |
+| --- | --- | --- |
+| Run large historical aggregates on the transaction database | Scans compete with user-facing reads and writes | Use analytical storage for analytical queries |
+| Assume a warehouse is good at single-record updates | Columnar layouts optimize scans, not row-by-row changes | Keep transactional workloads in a database designed for them |
+| Treat a dbt model as tested because the SQL ran | A successful query can still contain duplicate or missing rows | Add model tests and validate assumptions |
+| Build a dashboard directly on unvalidated source tables | A clear chart can still report a wrong total | Transform and test shared tables before reporting |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The application needs a fast lookup or update for one record | A transactional database |
+| The dataset fits on one machine and the analysis is a short-lived task | A local dataframe or DuckDB query |
+| A dashboard needs sub-second aggregates over continuously arriving events | A real-time analytical store such as ClickHouse |
+
+## Remember
+
+| Idea | In one line |
+| --- | --- |
+| Warehouses | Columnar storage makes broad aggregates fast and individual row updates a poor fit |
+| ClickHouse | Choose it for low-latency analytical queries over continuously arriving data |
+| dbt | SQL transformations become version-controlled, dependency-aware, and testable |
+| BI tools | A dashboard is only as trustworthy as its source tables and query |
+| ML use | Analytics tables can supply training data, offline features, and monitoring summaries |
+
+Next: [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning) explains how data is processed and versioned before it lands here.
+
+## Sources
+
+- Google Cloud, [BigQuery documentation](https://cloud.google.com/bigquery/docs)
+- ClickHouse, [Documentation](https://clickhouse.com/docs)
+- dbt Labs, [dbt documentation](https://docs.getdbt.com/)
+- Tableau, [Help documentation](https://help.tableau.com/)
+- Microsoft, [Power BI documentation](https://learn.microsoft.com/power-bi/)

@@ -10,12 +10,11 @@ import HyperparameterSweepDiagram from '../../../viz/diagrams/HyperparameterSwee
 import PenFlow from '../../../components/notebook/PenFlow';
 import Worksheet from '../../../components/notebook/Worksheet';
 import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Experiment Tracking
-
-[Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning) made the data reproducible: every dataset has a version you can name and fetch again. A trained model depends on more than its data, though. It also depends on the code, the hyperparameters, the library versions, the hardware and the random seed. This page covers the practice of recording all of that for every training run: what a run has to record, how a tracking system stores it, a real tracked hyperparameter sweep you can run, the statistical trap in picking the best run, and how the chosen run becomes a versioned model that deployment can refer to by name.
 
 <ELI5>
 
@@ -28,6 +27,9 @@ Everything below is that idea made exact: what goes in the notebook, how it is s
 </ELI5>
 
 ## Why it exists
+
+[Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning) made the data reproducible: every dataset has a version you can name and fetch again. A trained model depends on more than its data, though. It also depends on the code, the hyperparameters, the library versions, the hardware and the random seed. This page covers the practice of recording all of that for every training run: what a run has to record, how a tracking system stores it, a real tracked hyperparameter sweep you can run, the statistical trap in picking the best run, and how the chosen run becomes a versioned model that deployment can refer to by name.
+
 
 **The problem.** A teammate says the new model gets 94% accuracy. That number answers almost none of the questions that matter. Which commit of the training code produced it? Which version of the data? Was it measured on the validation set or the test set? Was the learning rate 0.001 or 0.01? Was it the third attempt or the fortieth? If the model behaves badly in production in six months, can anyone rebuild it exactly to find out why?
 
@@ -106,9 +108,15 @@ This becomes a real problem as the number of runs grows. Every validation score 
 
 You can see the size of the effect directly. Suppose every configuration you try is truly 90% accurate, and you measure each on 500 validation examples. Each measured accuracy then has a standard deviation of
 
+<NotebookCallout color="cobalt" title="Noise in validation accuracy">
+
 $$
 \sigma = \sqrt{\frac{p(1-p)}{n}} = \sqrt{\frac{0.9 \times 0.1}{500}} \approx 0.0134
 $$
+
+Where $p$ is the true accuracy, $n$ is the number of validation examples, and $\sigma$ is the standard deviation of measured accuracy.
+
+</NotebookCallout>
 
 and the best of $k$ such measurements is, on average, about $\mu + c_k\,\sigma$, where $c_k$ is the expected maximum of $k$ standard normal draws: about 1.54 for $k=10$, 2.51 for $k=100$ and 3.24 for $k=1000$. It grows roughly like $\sqrt{2 \ln k}$, slowly but without limit. A simulation confirms it:
 

@@ -9,12 +9,14 @@ import ProducerQueueConsumerDiagram from '../../../viz/diagrams/ProducerQueueCon
 import PubSubVsPointToPointDiagram from '../../../viz/diagrams/PubSubVsPointToPointDiagram';
 import DeliverySemanticsDiagram from '../../../viz/diagrams/DeliverySemanticsDiagram';
 import PartitionOrderingDiagram from '../../../viz/diagrams/PartitionOrderingDiagram';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Message Queues & Async Processing
-
-[Pipeline Orchestration](/docs/mlops/pipeline-orchestration) runs a few large, dependent steps on a schedule. Many ML workloads look different: thousands of small, independent jobs arriving all day, such as embedding each uploaded document, scoring each transaction as it happens, or running a slow model behind a request that shouldn't keep the user waiting. The tool for that shape of work is a **message queue**. This page covers why direct calls aren't always enough, the producer-queue-consumer pattern with a real Celery worker, the arithmetic of queues, the two ways messages fan out, delivery guarantees (shown with a worker crashing mid-task and its work being recovered), ordering and partition keys, and how to choose between Kafka, Celery, Redis Streams and SQS.
 
 <ELI5>
 
@@ -26,7 +28,10 @@ Everything below is how the rail is built so that work is never lost and never d
 
 </ELI5>
 
-## 1. Why Not Just Call the Service Directly?
+## Why it exists
+
+[Pipeline Orchestration](/docs/mlops/pipeline-orchestration) runs a few large, dependent steps on a schedule. Many ML workloads look different: thousands of small, independent jobs arriving all day, such as embedding each uploaded document, scoring each transaction as it happens, or running a slow model behind a request that shouldn't keep the user waiting. The tool for that shape of work is a **message queue**. This page covers why direct calls aren't always enough, the producer-queue-consumer pattern with a real Celery worker, the arithmetic of queues, the two ways messages fan out, delivery guarantees (shown with a worker crashing mid-task and its work being recovered), ordering and partition keys, and how to choose between Kafka, Celery, Redis Streams and SQS.
+
 
 A direct call is **synchronous** and **tightly coupled**: the caller waits until the callee responds, and anything wrong with the callee (slow, down, overloaded) hits the caller immediately. For a quick prediction behind a 50-millisecond budget, that's exactly right. For other work it isn't:
 
@@ -35,6 +40,23 @@ A direct call is **synchronous** and **tightly coupled**: the caller waits until
 - **Many consumers of one event.** A "transaction created" event needs fraud scoring, a receipt email and an analytics update. Calling each from the transaction service couples it to all three and to their failures.
 
 A message queue sits between producers and consumers and breaks the coupling in three ways: **decoupling** (the producer doesn't know or care who processes the message, or when), **buffering** (bursts wait in the queue instead of overwhelming workers), and **visible backpressure** (a growing queue shows that consumers can't keep up, long before anything crashes).
+
+## The big picture
+
+The producer accepts work quickly, a durable queue holds it, and consumers process it at the rate the system can support. Compare arrivals with completions: if arrivals stay higher, the backlog grows.
+
+<PenFlow ariaLabel="Message processing path from producer through durable queue to consumers and acknowledged results" rows={[
+  { steps: { title: 'Producer', lines: ['Accept request · enqueue job'], tone: 'blue' } },
+  { steps: { title: 'Queue', lines: ['Buffer work · expose backlog'], tone: 'purple' } },
+  { steps: [{ title: 'Consumer A', lines: ['Process jobs'], tone: 'green' }, { title: 'Consumer B', lines: ['Process jobs'], tone: 'orange' }] },
+  { steps: { title: 'Acknowledge', lines: ['Record completion or retry'], tone: 'red' } },
+]} caption="A queue absorbs bursts only while consumers eventually process work faster than new work arrives." />
+
+<Worksheet title="Estimate backlog growth" ariaLabel="Worksheet calculating backlog growth when eight messages arrive and six finish per second" stages={[
+  { tag: 'Rates', color: 'blue', note: 'Use an illustrative arrival rate of 8 messages/second and completion rate of 6.', grid: { head: ['Rate', 'Messages each second'], rows: [{ label: 'Arrivals, λ', cells: ['8'] }, { label: 'Completions, μ', cells: ['6'] }] } },
+  { tag: 'Difference', color: 'orange', note: 'Subtract completed work from incoming work.', grid: { head: ['Interval', 'Backlog added'], rows: [{ label: '1 second', cells: ['2 messages'] }, { label: '60 seconds', cells: ['120 messages'] }] } },
+  { tag: 'Interpret', color: 'green', note: 'Add consumers, limit incoming work, or accept a growing wait.', children: <>If arrivals keep exceeding completions, the queue has no stable length.</> },
+]} />
 
 ## 2. Sync vs Async
 
@@ -92,16 +114,28 @@ for r in results:
     r.forget()
 ```
 
-```text
-16 tasks enqueued in 13 ms
-all 16 done after 2.0 s with 4 worker processes (16 x 0.5 s = 8 s of work); e.g. {'document_id': 1, 'label': 'invoice'}
-```
+| Measurement | Result |
+| --- | --- |
+| Enqueue time for 16 tasks | 13 ms |
+| Completion time with 4 workers | 2.0 s |
+| Total sequential work | 8 s |
+| Example result | Document 1 labeled `invoice` |
 
 The API would have answered in 13 milliseconds instead of 8 seconds, and four workers finished eight seconds of work in two. Adding workers adds throughput without touching the producer.
 
 ## 4. Queue Arithmetic
 
 A queue is a buffer, and buffers obey simple arithmetic. If messages arrive at rate $\lambda$ and the worker pool completes them at rate $\mu = c / s$ (with $c$ workers each taking $s$ seconds per message):
+
+<NotebookCallout color="cobalt" title="Queue growth">
+
+$$
+\mu = \frac{c}{s}, \qquad \Delta Q = \lambda - \mu
+$$
+
+where $c$ is the number of workers, $s$ is seconds per message, and $\Delta Q$ is the queue's average change in messages per second.
+
+</NotebookCallout>
 
 - If $\lambda < \mu$, the queue drains, and on average stays short. Little's law, $L = \lambda W$, says how many messages are in the system for a given wait ([APIs & Model Serving](/docs/mlops/model-serving#5-latency-throughput-and-queues)).
 - If $\lambda > \mu$, the backlog grows linearly, by $(\lambda - \mu)$ messages per second, without limit.
@@ -174,18 +208,15 @@ print("documents embedded:", sorted(map(int, r.smembers("embedded"))),
       "| pending now:", r.xpending("docs-to-embed", "embedders")["pending"])
 ```
 
-```text
-worker-a processed doc 0
-worker-a processed doc 1
-worker-b embedded doc 2, then crashed before acknowledging
-worker-b embedded doc 3, then crashed before acknowledging
-worker-a processed doc 4
-worker-a processed doc 5
-pending (delivered, never acknowledged): 2
-worker-a reclaimed doc 2 (duplicate, no effect)
-worker-a reclaimed doc 3 (duplicate, no effect)
-documents embedded: [0, 1, 2, 3, 4, 5] | pending now: 0
-```
+| Recovery event | Result |
+| --- | --- |
+| Documents 0 and 1 | Processed and acknowledged |
+| Documents 2 and 3 | Processed, then worker crashed before acknowledgement |
+| Documents 4 and 5 | Processed and acknowledged |
+| Pending before reclaim | 2 messages |
+| Reclaimed documents | 2 and 3; duplicate effects had no impact |
+| Final embedded set | 0, 1, 2, 3, 4, 5 |
+| Pending after reclaim | 0 messages |
 
 Every document was processed, none was lost to the crash, and the two duplicates did no harm because the effect was idempotent. If the effect had been "increment a counter" or "send an email", the redelivery would have double-counted or double-sent. Designing every consumer so a repeated message is harmless is the single most important rule of queue-based systems. Record processed message IDs, write results with keys that overwrite rather than append, or use the idempotency-key pattern from [Production Reliability](/docs/mlops/production-reliability#idempotency-and-distributed-locks).
 
@@ -235,10 +266,10 @@ for name, keys in [("key = user_id", users), ("key = merchant_id", merchants)]:
     print(f"{name:<18} busiest partition {max(shares):.0%} of traffic, quietest {min(shares):.0%}")
 ```
 
-```text
-key = user_id      busiest partition 17% of traffic, quietest 16%
-key = merchant_id  busiest partition 46% of traffic, quietest 3%
-```
+| Partition key | Busiest share | Quietest share |
+| --- | ---: | ---: |
+| `user_id` | 17% | 16% |
+| `merchant_id` | 46% | 3% |
 
 Keyed by user, six partitions share traffic almost evenly. Keyed by merchant, where a few large merchants dominate, one partition carries 46% of all traffic: adding consumers can't help, because that partition can only be read by one consumer at a time. Choose keys with many values of similar volume, key by the finest unit that needs ordering, and for unavoidable hot keys, split them (append a small bucket number to the key) at the cost of ordering across buckets.
 
@@ -257,7 +288,7 @@ A subtle bug appears when a service updates its database and publishes an event 
 ### Kafka, Celery, Redis, SQS: Picking One
 
 | Tool | Model | Strengths | Fits |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Apache Kafka** (and compatible systems such as Redpanda, or managed MSK and Confluent Cloud) | Partitioned, replicated log with retention | Very high throughput, replay, many independent consumer groups; Kafka 4 runs without ZooKeeper and adds queue-style share groups | Event streams feeding several systems, streaming features, data platforms |
 | **Celery** (with Redis or RabbitMQ as broker) | Task queue for Python functions | Simple to adopt, retries, scheduling, result backend | Background jobs in Python services: inference jobs, document processing |
 | **RabbitMQ** | Message broker with flexible routing | Routing patterns, per-message acknowledgements, priorities | Work queues with complex routing |
@@ -274,10 +305,38 @@ The choice usually follows from two questions. Do several independent systems ne
 - **Smoothing GPU load:** a bounded queue in front of GPU workers absorbs bursts so capacity matches typical load, not the worst second.
 - **Orchestrator internals:** Airflow's Celery executor distributes task instances to workers through exactly this mechanism ([Pipeline Orchestration](/docs/mlops/pipeline-orchestration#airflow)).
 
-## 10. When *Not* to Use a Queue
+## Worked example
+
+With 8 messages arriving and 6 completed each second, the queue grows by 2 messages per second. If that continues for one minute, 120 messages accumulate beyond the current backlog.
+
+## Try it yourself
+
+Run the same calculation, then raise the completion rate to 9 messages per second and check whether the backlog grows or drains.
+
+<RunnableCode code={`arrivals_per_second = 8
+completed_per_second = 6
+backlog_change = arrivals_per_second - completed_per_second
+print("backlog change per second:", backlog_change)
+print("backlog change per minute:", backlog_change * 60)
+
+# Try it:
+# Change completed_per_second to 9 and inspect the negative backlog change.
+`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better practice |
+| --- | --- | --- |
+| Add a queue when the caller needs an immediate result | Polling adds delay without decoupling useful work | Keep a direct call with a timeout |
+| Retry forever | Poison messages block capacity and hide failures | Limit retries and use a dead-letter queue |
+| Acknowledge before work is durable | A crash can lose the message and its result | Acknowledge after an idempotent effect is recorded |
+| Leave the queue unbounded | Backlog can exceed storage or freshness limits | Set age/depth limits and apply backpressure |
+| Assume delivery is exactly once | Redelivery can repeat side effects | Design consumers to be idempotent |
+
+## When not to use it
 
 | Situation | Better choice |
-|---|---|
+| --- | --- |
 | Work finishes reliably within the caller's latency budget | A direct synchronous call: simpler, and the result is immediate |
 | The caller needs the result to continue | Synchronous call with timeouts and retries; a queue only adds polling |
 | A few large, dependent steps on a schedule | An orchestrator such as Airflow, Dagster or Prefect |
@@ -287,7 +346,7 @@ The choice usually follows from two questions. Do several independent systems ne
 ## Remember
 
 | Idea | In one line |
-|---|---|
+| --- | --- |
 | Why queue | Decouple producers from consumers, absorb bursts, make backlog visible |
 | Async | Return a job ID now, deliver the result later by polling, webhook or push |
 | Arithmetic | If arrivals exceed $c/s$, the backlog grows by $\lambda - \mu$ per second; watch the oldest message's age |

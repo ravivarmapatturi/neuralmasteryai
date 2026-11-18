@@ -9,12 +9,13 @@ import DataProcessingScaleDiagram from '../../../viz/diagrams/DataProcessingScal
 import GitVsDataVersioningDiagram from '../../../viz/diagrams/GitVsDataVersioningDiagram';
 import DataLineageProvenanceDiagram from '../../../viz/diagrams/DataLineageProvenanceDiagram';
 import SchemaEvolutionDiagram from '../../../viz/diagrams/SchemaEvolutionDiagram';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Data Engineering & Versioning
-
-[Engineering Foundations](/docs/mlops/engineering-foundations) covered the code side of a production ML project: version control, packaging, testing. A model is a function of its code *and* its data, and the data side is where most production failures start. This page covers the path data takes from its sources to a training set: the stages of a pipeline, contracts that stop bad data at the door, how to choose a processing engine (with timings), why git can't version datasets and what does, table formats that keep every past version queryable, lineage, and changing a schema without breaking its consumers.
 
 <ELI5>
 
@@ -26,13 +27,33 @@ Everything below is how each of those checks and labels works in practice.
 
 </ELI5>
 
-## 1. Why Data Engineering Decides Model Quality
+## Why it exists
+
+[Engineering Foundations](/docs/mlops/engineering-foundations) covered the code side of a production ML project: version control, packaging, testing. A model is a function of its code *and* its data, and the data side is where most production failures start. This page covers the path data takes from its sources to a training set: the stages of a pipeline, contracts that stop bad data at the door, how to choose a processing engine (with timings), why git can't version datasets and what does, table formats that keep every past version queryable, lineage, and changing a schema without breaking its consumers.
+
 
 A training run takes a dataset and produces a model that fits it as well as possible. It has no opinion about whether the dataset is right. Duplicate rows get counted twice, a column whose units silently changed from dollars to cents gets learned as a hundredfold signal, and a label leaked into a feature produces a model that looks brilliant offline and fails in production. The model reproduces the data's mistakes precisely, which is why the saying in this field is that a pipeline on bad data produces a model that is *precisely wrong*.
 
 Data problems also surface late. A broken upstream export on Monday shows up as a strange drop in a dashboard on Thursday, after a model was retrained on it Tuesday night. The engineering goal is to move detection as early as possible: to the moment data arrives.
 
 That requires a pipeline with explicit stages, so each stage can be checked.
+
+## The big picture
+
+Records move from source to training data through validation and transformation. The same small transaction batch from the contract example shows how a defect is caught before it can enter a training set.
+
+<PenFlow ariaLabel="Data engineering pipeline from source through validation and transformations to versioned training data" rows={[
+  { steps: { title: 'Collect', lines: ['Database · event stream · file'], tone: 'blue' } },
+  { steps: { title: 'Validate', lines: ['Check schema and allowed values'], tone: 'red' } },
+  { steps: { title: 'Transform and store', lines: ['Clean tables with a version'], tone: 'purple' } },
+  { steps: { title: 'Build features', lines: ['Record source lineage'], tone: 'green' } },
+]} caption="Validation belongs before the batch is consumed by feature building or training." />
+
+<Worksheet title="Inspect the transaction batch" ariaLabel="Worksheet finding duplicate and invalid fields in four transaction rows" stages={[
+  { tag: 'Incoming rows', color: 'blue', note: 'These values are copied from the Pandera contract example.', grid: { head: ['ID', 'Amount', 'Currency'], rows: [{ label: '1', cells: ['t1', '31.0', 'INR'] }, { label: '2', cells: ['t2', '4800.0', 'USD'] }, { label: '3', cells: ['t3', '-5.0', 'usd'] }, { label: '4', cells: ['t3', '120.0', 'GBP'] }] } },
+  { tag: 'Check the contract', color: 'orange', note: 'Find the ID repeated in the batch, the amount below zero, and the currency outside the allowed uppercase set.', children: <>The batch contains a repeated `t3`, one negative amount, and one lower-case currency code.</> },
+  { tag: 'Decision', color: 'green', note: 'Keep the batch out of training until each violation is corrected or quarantined.', children: <>Validation stops the defects at ingestion instead of letting them shape model behavior.</> },
+]} />
 
 ## 2. The Pipeline, Stage by Stage
 
@@ -87,13 +108,12 @@ except pa.errors.SchemaErrors as err:
     print(err.failure_cases[["column", "check", "failure_case", "index"]].to_string(index=False))
 ```
 
-```text
-        column                       check failure_case  index
-transaction_id            field_uniqueness           t3      2
-transaction_id            field_uniqueness           t3      3
-        amount       in_range(0.01, 50000)         -5.0      2
-      currency isin(['INR', 'USD', 'GBP'])          usd      2
-```
+| Column | Failed rule | Value | Row |
+| --- | --- | --- | ---: |
+| transaction_id | Unique | `t3` | 2 |
+| transaction_id | Unique | `t3` | 3 |
+| amount | In allowed range | `-5.0` | 2 |
+| currency | One of INR, USD, GBP | `usd` | 2 |
 
 Every problem is reported, with the column, the rule it broke, the bad value and the row. A pipeline step that runs this and fails stops the batch from reaching training or features.
 
@@ -146,11 +166,11 @@ timed("duckdb", lambda: duckdb.sql("""
 
 On a shared 12-core laptop (pandas 2.3, Polars 2.0, DuckDB 2.0; exact times vary with machine load):
 
-```text
-pandas  20.34 s   rows out: 3,392,259
-polars   1.37 s   rows out: 3,392,259
-duckdb   1.71 s   rows out: 3,392,259
-```
+| Engine | Time | Output groups |
+| --- | ---: | ---: |
+| pandas | 20.34 s | 3,392,259 |
+| Polars | 1.37 s | 3,392,259 |
+| DuckDB | 1.71 s | 3,392,259 |
 
 All three produce the same 3.39 million groups. The order-of-magnitude gap comes from how they execute:
 
@@ -198,20 +218,13 @@ wc -l < data/train.csv
 cat data/train.csv.dvc | grep md5
 ```
 
-```text
---- what git stores: the pointer file
-outs:
-- md5: 90eb2340927a54bba57cbf4e0ccae8d7
-  size: 38
-  hash: md5
-  path: train.csv
---- current data
-4
---- after checking out data-v1
-3
-- md5: fb1feeefc9465ac0e388686cac195ac7
-  hash: md5
-```
+| Git/DVC evidence | Value |
+| --- | --- |
+| Current CSV line count | 4 |
+| `data-v1` line count | 3 |
+| Current content hash | `90eb2340927a54bba57cbf4e0ccae8d7` |
+| Earlier content hash | `fb1feeefc9465ac0e388686cac195ac7` |
+| Git stores | A small pointer to versioned data |
 
 Git versions only the five-line pointer file. Checking out the `data-v1` tag restores the old pointer, and `dvc checkout` fetches the matching content from the cache or remote: the file goes back to its 3 lines (a header and two rows). The pair "git commit plus DVC hash" now names the code and the data together, which is exactly what [Experiment Tracking](/docs/mlops/experiment-tracking) needs a run to record.
 
@@ -261,20 +274,14 @@ print("now:\n", table.to_pandas().sort_values("user_id").to_string(index=False))
 print("as of version 0:\n", DeltaTable(path, version=0).to_pandas().sort_values("user_id").to_string(index=False))
 ```
 
-```text
-2 WRITE Overwrite
-1 WRITE Append
-0 WRITE ErrorIfExists
-now:
-  user_id  avg_7d
-       7    12.0
-       9   250.0
-      42    48.5
-as of version 0:
-  user_id  avg_7d
-       7    12.0
-      42    31.0
-```
+| Version | Operation | user_id | avg_7d |
+| ---: | --- | ---: | ---: |
+| 0 | Initial write | 42 | 31.0 |
+| 0 | Initial write | 7 | 12.0 |
+| 1 | Append | 9 | 250.0 |
+| 2 | Overwrite, current value | 42 | 48.5 |
+| 2 | Overwrite, current value | 7 | 12.0 |
+| 2 | Overwrite, current value | 9 | 250.0 |
 
 The overwrite at version 2 didn't destroy version 0: reading `version=0` returns the original two rows. A training run that records "features_table at version 0" can be reproduced exactly, months later, as long as old versions are retained.
 
@@ -310,7 +317,7 @@ Schemas change: a new column is added, a type widens, a field is renamed. The qu
 The rules come from serialization formats like Avro and Protobuf, and apply to tables too:
 
 | Change | Safe for existing readers? | Why |
-|---|---|---|
+| --- | --- | --- |
 | Add an optional (nullable) column | Yes | Old readers ignore it; new readers handle nulls in old data |
 | Widen a type (int to long, float to double) | Usually | Values still fit; check every engine supports the promotion |
 | Add a required column with no default | No | Old data has no value for it |
@@ -321,10 +328,42 @@ The last row deserves emphasis. A type change fails loudly. A units change from 
 
 **Schema registries** (Confluent Schema Registry for Kafka, the table format's own schema history for lake tables) enforce compatibility rules automatically, rejecting a producer's write that would break readers.
 
-## 9. When *Not* to Build All of This
+## Worked example
+
+The incoming batch has four records. The contract catches the repeated `t3`, the `-5.0` amount, and the lower-case `usd` code before a feature job reads it. Correcting or quarantining those rows leaves the valid records available for downstream transformation.
+
+## Try it yourself
+
+Use the same four rows to count how many records have invalid amounts and how many currency values fail the allowed set. Then add a check for a non-positive user ID.
+
+<RunnableCode code={`rows = [
+    {"id": "t1", "amount": 31.0, "currency": "INR", "user_id": 42},
+    {"id": "t2", "amount": 4800.0, "currency": "USD", "user_id": 7},
+    {"id": "t3", "amount": -5.0, "currency": "usd", "user_id": 7},
+    {"id": "t3", "amount": 120.0, "currency": "GBP", "user_id": 9},
+]
+bad_amounts = sum(row["amount"] <= 0 for row in rows)
+bad_currencies = sum(row["currency"] not in {"INR", "USD", "GBP"} for row in rows)
+print("invalid amounts:", bad_amounts)
+print("invalid currencies:", bad_currencies)
+
+# Try it:
+# Add a check for user_id <= 0 and test it with user_id = 0.
+`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better practice |
+| --- | --- | --- |
+| Validate after feature generation | Bad records can already affect features and labels | Check the contract at ingestion |
+| Keep only a data name, not its version | The name may later point at different contents | Record a digest or immutable snapshot ID |
+| Change a column's meaning without changing its name | Type checks still pass while the model sees different units | Version the schema and use a new field name |
+| Build a large distributed system for a small dataset | Operations cost more than the data workload | Measure on one machine before adding a cluster |
+
+## When not to use it
 
 | Situation | Better choice |
-|---|---|
+| --- | --- |
 | A one-off analysis on a CSV | pandas or DuckDB on a local copy; record the file's hash in your notes |
 | A dataset that never changes, such as a published benchmark | Pin the source URL and a checksum; versioning tooling adds nothing |
 | Data already in a warehouse with time travel and access controls | Use the warehouse's snapshots and record the timestamp or snapshot ID per run, rather than exporting files to DVC |
@@ -334,7 +373,7 @@ The last row deserves emphasis. A type change fails loudly. A units change from 
 ## Remember
 
 | Idea | In one line |
-|---|---|
+| --- | --- |
 | Garbage in | A model reproduces its data's mistakes precisely; catch them when data arrives |
 | Pipeline stages | Sources, ingestion, validation, transformation, storage, features; each writes a dated output |
 | Data contracts | Machine-checked schema, ranges, uniqueness, volume and freshness, agreed with the producer |

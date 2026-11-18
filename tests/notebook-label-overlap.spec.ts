@@ -28,6 +28,10 @@ const ROUTES = [
   'docs/mlops/roadmap',
   'docs/mlops/experiment-tracking',
   'docs/mlops/engineering-foundations',
+  'docs/mlops/big-data-and-analytics',
+  'docs/mlops/data-engineering-and-versioning',
+  'docs/mlops/pipeline-orchestration',
+  'docs/mlops/message-queues-and-async-processing',
   // Keep the already-approved pilot last so the Vite dev server has warmed its
   // route modules before this large lazy-loaded page is checked.
   'docs/search-ranking-recommendations/tf-idf',

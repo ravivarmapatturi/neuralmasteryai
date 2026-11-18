@@ -8,12 +8,14 @@ import DagDependencyDiagram from '../../../viz/diagrams/DagDependencyDiagram';
 import RetryBackoffDiagram from '../../../viz/diagrams/RetryBackoffDiagram';
 import PipelineCachingDiagram from '../../../viz/diagrams/PipelineCachingDiagram';
 import BackfillDiagram from '../../../viz/diagrams/BackfillDiagram';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
+import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 # Pipeline Orchestration
-
-[Experiment Tracking](/docs/mlops/experiment-tracking) made a single training run recordable and repeatable. A production model, though, is not produced by one run that someone starts by hand. It is produced by a chain of steps (fetch data, validate it, build features, train, evaluate, register) that has to run every night, survive a flaky database at 3am, and tell a person exactly which step broke. This page covers the system that runs that chain: the graph model every orchestrator uses, how scheduling and dates work, why tasks must be safe to re-run, retries, caching and backfills, a working Airflow 3 pipeline with a quality gate, and how Prefect and Dagster approach the same problem differently.
 
 <ELI5>
 
@@ -25,7 +27,10 @@ Everything below is that head chef made exact.
 
 </ELI5>
 
-## 1. What Is Pipeline Orchestration?
+## Why it exists
+
+[Experiment Tracking](/docs/mlops/experiment-tracking) made a single training run recordable and repeatable. A production model, though, is not produced by one run that someone starts by hand. It is produced by a chain of steps (fetch data, validate it, build features, train, evaluate, register) that has to run every night, survive a flaky database at 3am, and tell a person exactly which step broke. This page covers the system that runs that chain: the graph model every orchestrator uses, how scheduling and dates work, why tasks must be safe to re-run, retries, caching and backfills, a working Airflow 3 pipeline with a quality gate, and how Prefect and Dagster approach the same problem differently.
+
 
 **The problem.** A first version of a retraining job is usually one script, run by `cron` at 2am:
 
@@ -45,6 +50,23 @@ It works until something goes wrong, and then every weakness shows at once. If t
 - **Not a data processing engine.** Airflow shouldn't do the joins itself; it should tell the warehouse or Spark to do them.
 
 The common structure behind every orchestrator is a graph, so that comes first.
+
+## The big picture
+
+An orchestrator schedules work, follows declared dependencies, retries transient failures, and keeps a record of each run. The worksheet calculates four capped backoff delays using the same 30-second starting delay shown below.
+
+<PenFlow ariaLabel="Orchestration flow from scheduled or event trigger through dependent tasks, retry and recorded result" rows={[
+  { steps: { title: 'Trigger', lines: ['Schedule or new data'], tone: 'blue' } },
+  { steps: { title: 'Run ready tasks', lines: ['Respect the dependency graph'], tone: 'purple' } },
+  { steps: { title: 'Retry transient errors', lines: ['Wait with backoff and jitter'], tone: 'orange' } },
+  { steps: { title: 'Record and alert', lines: ['Keep task and run history'], tone: 'green' } },
+]} caption="The scheduler controls when tasks run; workers perform the computation." />
+
+<Worksheet title="Calculate retry delays" ariaLabel="Worksheet calculating capped exponential backoff delays from a thirty-second starting delay" stages={[
+  { tag: 'Inputs', color: 'blue', note: 'Use a 30-second initial delay and a 300-second maximum.', grid: { head: ['Attempt n', 'Initial delay', 'Cap'], rows: [{ label: '0', cells: ['30 s', '300 s'] }, { label: '1', cells: ['30 s', '300 s'] }, { label: '2', cells: ['30 s', '300 s'] }, { label: '3', cells: ['30 s', '300 s'] }] } },
+  { tag: 'Backoff', color: 'orange', note: 'Double the initial delay for each attempt, then apply the cap.', grid: { head: ['Attempt n', 'delayₙ'], rows: [{ label: '0', cells: ['30 s'] }, { label: '1', cells: ['60 s'] }, { label: '2', cells: ['120 s'] }, { label: '3', cells: ['240 s'] }] } },
+  { tag: 'Check', color: 'green', note: 'The next attempt would be capped at 300 seconds.', children: <>30 × 2⁴ = 480 s, so min(300 s, 480 s) = 300 s.</> },
+]} />
 
 ## 2. The Pipeline as a Graph
 
@@ -100,9 +122,15 @@ Many failures are **transient**: a network timeout, a database at its connection
 
 How long to wait between attempts matters. Retrying immediately often hits the same overloaded service. **Exponential backoff** waits longer after each failure:
 
+<NotebookCallout color="cobalt" title="Exponential backoff">
+
 $$
 \text{delay}_n = \min\left(d_{\max},\; d_0 \cdot 2^{\,n}\right)
 $$
+
+where $d_{\max}$ is the longest allowed wait, $d_0$ is the starting wait, and $n$ is the zero-based retry attempt.
+
+</NotebookCallout>
 
 for attempt $n = 0, 1, 2, \ldots$ With $d_0 = 30$ s, the waits are 30 s, 60 s, 120 s, 240 s. If many tasks failed at the same moment, say because a shared database restarted, they would all retry at the same moments too and knock it over again. **Jitter** fixes that by randomizing each delay, for example drawing uniformly between 0 and $\text{delay}_n$, which spreads the retries out.
 
@@ -170,15 +198,13 @@ if __name__ == "__main__":
 
 The relevant log lines:
 
-```text
-Task run 'fetch_rows-cd8' - Task run failed with exception: ConnectionError('upstream timed out') - Retry 1/3 will start 1 second(s) from now
-Task run 'fetch_rows-cd8' - Task run failed with exception: ConnectionError('upstream timed out') - Retry 2/3 will start 1 second(s) from now
-Task run 'fetch_rows-cd8' - Finished in state Completed()
-Task run 'build_features-a39' - computing features for 2026-10-22
-Flow run 'transparent-antelope' - 2026-10-22: 569 rows -> features/2026-10-22.parquet (fetch attempts: 3)
-Task run 'fetch_rows-d6d' - Finished in state Completed()
-Task run 'build_features-a43' - Finished in state Cached(type=COMPLETED)
-```
+| Event | Result |
+| --- | --- |
+| Fetch attempt 1 | Timed out; retry starts in 1 second |
+| Fetch attempt 2 | Timed out; retry starts in 1 second |
+| Fetch attempt 3 | Completed; 569 rows returned |
+| Feature task | Computed `features/2026-10-22.parquet` |
+| Second run | Fetch completed; feature task was cached |
 
 The second run never printed "computing features": the task was skipped because its inputs matched a stored result.
 
@@ -269,15 +295,19 @@ What each part does:
 
 Running it locally with `airflow dags test retrain_classifier 2026-10-22` executes all four tasks in order in one process. The run succeeds and the gate logs:
 
-```text
-candidate passes with AUC 0.9952
-```
+| Gate output | Value |
+| --- | --- |
+| Candidate decision | Pass |
+| Validation AUC | 0.9952 |
 
 Raising `MIN_AUC` to `0.999` and running again shows the gate doing its job: `extract`, `validate` and `train` succeed, the gate fails once with no retries, and the run is marked failed:
 
-```text
-ValueError: AUC 0.9952 below 0.999: not registering
-```
+| Gate output | Value |
+| --- | --- |
+| Candidate decision | Fail |
+| Measured AUC | 0.9952 |
+| Required AUC | 0.999 |
+| Action | Do not register |
 
 The other commands you'll use day to day are `airflow tasks test retrain_classifier train 2026-10-22`, which runs one task in isolation for debugging, and `airflow backfill create --dag-id retrain_classifier --from-date 2026-10-01 --to-date 2026-10-07`, which queues a backfill.
 
@@ -317,10 +347,11 @@ if __name__ == "__main__":
     print("user_features:", result.output_for_node("user_features"))
 ```
 
-```text
-success: True
-user_features: {42: 48.5, 7: 12.0}
-```
+| Materialization output | Value |
+| --- | --- |
+| Successful | True |
+| User 42 feature | 48.5 |
+| User 7 feature | 12.0 |
 
 Because Dagster knows *what* each asset is rather than only *how* to run a step, it can answer questions a task graph can't easily answer: which assets are stale because their upstream data or their code changed, what the lineage of a model is, and which downstream assets a broken table affects. It also attaches data quality checks to assets directly. The cost is a different mental model, and less of the existing operator ecosystem than Airflow has.
 
@@ -329,7 +360,7 @@ Because Dagster knows *what* each asset is rather than only *how* to run a step,
 ## 9. Choosing an Orchestrator
 
 | Tool | Model | Strong at | Things to know |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Airflow** | Tasks in a DAG, scheduled by logical date | Ubiquity, a huge set of provider integrations, mature operations; managed as AWS MWAA, Google Cloud Composer and Astronomer | Heavier to run; dynamic, data-dependent graphs are possible but less natural |
 | **Prefect** | Python functions as flows and tasks; the graph is whatever the code calls | Low ceremony, dynamic workflows, caching and retries on plain functions | The graph isn't known before the run, so less static validation |
 | **Dagster** | Software-defined assets | Lineage, freshness, asset-level data checks | A different mental model; smaller integration library |
@@ -350,10 +381,38 @@ Managed cloud options (SageMaker Pipelines, Vertex AI Pipelines, Azure ML pipeli
   explanation="A fixed 6am schedule wastes up to five hours on most days and breaks the day features run late. Calling training from the feature pipeline couples two teams' code. Polling every 10 minutes creates noise and failed runs. Asset- or data-aware scheduling lets the producer declare 'this data was updated' and the consumer start on that event, while each pipeline stays independently owned."
 />
 
-## 10. When *Not* to Use an Orchestrator
+## Worked example
+
+With a 30-second start and a 300-second cap, attempts 0 through 3 wait 30, 60, 120, and 240 seconds. Attempt 4 would reach 480 seconds without a cap, so it waits 300 seconds instead.
+
+## Try it yourself
+
+Run the same calculation, then change the cap to 180 seconds and see which later attempts stop growing.
+
+<RunnableCode code={`initial = 30
+maximum = 300
+for attempt in range(5):
+    delay = min(maximum, initial * 2 ** attempt)
+    print(f"attempt {attempt}: {delay} seconds")
+
+# Try it:
+# Set maximum = 180 and compare attempts 3 and 4.
+`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better practice |
+| --- | --- | --- |
+| Retry deterministic quality-gate failures | The same model and data return the same score | Retry transient failures only |
+| Append output rows during a retry | The task can duplicate data | Make writes date-keyed and idempotent |
+| Schedule on the clock when data arrives late | The task runs with missing or stale inputs | Trigger from the upstream data asset |
+| Backfill without limiting concurrency | Historical runs can overload shared systems | Set a safe parallelism limit |
+| Put computation inside the scheduler | The control plane becomes a worker | Dispatch work to the appropriate engine |
+
+## When not to use it
 
 | Situation | Better choice |
-|---|---|
+| --- | --- |
 | One script, run occasionally by a person | Run it by hand; record the run with experiment tracking |
 | A single scheduled job with no dependencies, where a missed run doesn't matter | `cron`, a Kubernetes CronJob, or a cloud scheduler, with an alert on failure |
 | Thousands of small independent jobs per minute, such as per-request inference | A message queue with workers; see [Message Queues & Async Processing](/docs/mlops/message-queues-and-async-processing) |
@@ -363,7 +422,7 @@ Managed cloud options (SageMaker Pipelines, Vertex AI Pipelines, Azure ML pipeli
 ## Remember
 
 | Idea | In one line |
-|---|---|
+| --- | --- |
 | Orchestrator | Runs dependent tasks on a schedule or event, and tracks the state of every run |
 | DAG | Tasks and dependencies with no cycles; ready tasks run in parallel |
 | Logical date | A run is about a period of data, not the moment it started |
