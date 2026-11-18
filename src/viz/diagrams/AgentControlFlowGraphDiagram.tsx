@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, PillSelect, VizButton, ControlRow } from '../primitives';
+import { VisualizationContainer, Slider, PillSelect, VizButton, ControlRow, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -84,6 +84,8 @@ export default function AgentControlFlowGraphDiagram() {
   const [threshold, setThreshold] = useState(0.75);
   const [requireApproval, setRequireApproval] = useState<'yes' | 'no'>('yes');
   const [history, setHistory] = useState<Step[]>([{ node: 'START', actCountAtEntry: 0 }]);
+  const [stopped, setStopped] = useState(false);
+  const reduced = usePrefersReducedMotion();
 
   const color = getConceptColor(t, 'attention');
   const current = history[history.length - 1];
@@ -111,6 +113,15 @@ export default function AgentControlFlowGraphDiagram() {
   };
 
   const reset = () => setHistory([{ node: 'START', actCountAtEntry: 0 }]);
+
+  useEffect(() => {
+    if (reduced || stopped) return;
+    const timer = setTimeout(() => {
+      if (done) reset();
+      else step();
+    }, 2200);
+    return () => clearTimeout(timer);
+  }, [history, done, stopped, reduced]);
 
   const traversed = new Set<string>();
   for (let i = 1; i < history.length; i++) {
@@ -140,21 +151,47 @@ export default function AgentControlFlowGraphDiagram() {
     <VisualizationContainer footer={footer}>
       <ControlRow>
         <div style={{ minWidth: 200 }}>
-          <Slider label="Confidence threshold" value={threshold} onChange={setThreshold} min={0.5} max={0.95} step={0.01} format={(v) => v.toFixed(2)} />
+          <Slider
+            label="Confidence threshold"
+            value={threshold}
+            onChange={(v) => {
+              setStopped(true);
+              setThreshold(v);
+            }}
+            min={0.5}
+            max={0.95}
+            step={0.01}
+            format={(v) => v.toFixed(2)}
+          />
         </div>
         <PillSelect<'yes' | 'no'>
           label="Human approval required"
           value={requireApproval}
-          onChange={setRequireApproval}
+          onChange={(v) => {
+            setStopped(true);
+            setRequireApproval(v);
+          }}
           options={[
             { value: 'yes', label: 'Required' },
             { value: 'no', label: 'Not required' },
           ]}
         />
-        <VizButton onClick={step} disabled={done}>
+        <VizButton
+          onClick={() => {
+            setStopped(true);
+            step();
+          }}
+          disabled={done}
+        >
           Step
         </VizButton>
-        <VizButton variant="secondary" onClick={reset}>
+        <VizButton
+          variant="secondary"
+          onClick={() => {
+            setStopped(true);
+            reset();
+          }}
+        >
           Reset
         </VizButton>
       </ControlRow>

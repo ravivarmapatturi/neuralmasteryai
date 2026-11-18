@@ -480,6 +480,30 @@ Pages covered:
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 21 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-13/`.
 
+## Batch 14 Report
+
+### Motion Rationales:
+1. `AgentControlFlowGraphDiagram.tsx`: Auto-steps (2500ms) through nodes (Plan -> Tool Call -> Inspect -> Evaluator) with dynamic back-edge cycling when confidence threshold (< 0.8) triggers re-planning, visually reinforcing iterative agent control-flow loops.
+2. `AgentFrameworkAxisDiagram.tsx`: Autocycles (3500ms) across 5 framework design dimensions (orchestration graph, memory state, code-as-action, multi-agent communication, human-in-the-loop), illustrating trade-offs between rigid declarative graphs and dynamic autonomous code loops.
+3. `ContinuousBatchingSimulationDiagram.tsx`: Autocycles (3000ms) batch capacity presets [4, 2, 6, 8], illustrating how iteration-level scheduling instantly evicts completed requests and packs new requests into freed engine slots without stalling on the slowest generation.
+4. `TechComparisonDiagram.tsx`: Autocycles (3500ms) across tech comparison categories (Inference engine, RAG vs fine-tuning, PEFT, Database type, DDP vs FSDP, PyTorch vs JAX), presenting concrete decision rules for real-world engineering trade-off interviews.
+5. `AsyncEventLoopDiagram.tsx`: Autocycles (3000ms) concurrent request presets [4, 2, 7, 5], showing how asynchronous event loops interleave quick CPU bursts while I/O waits overlap in parallel, dramatically outperforming blocking synchronous execution as concurrency grows.
+6. `RefCountingDiagram.tsx`: Auto-steps (2200ms) through memory reference lifecycles, illustrating that standard reference counts deallocate deterministically upon reaching zero, whereas cyclical references require CPython's cyclic garbage collector to detect and collect unreferenced loops.
+7. `ThreadingVsMultiprocessingDiagram.tsx`: Autocycles (3500ms) across all 4 combinations of workload (CPU vs I/O) and concurrency model (threading vs multiprocessing), demonstrating how Python's GIL serializes CPU threads while releasing during I/O, and showing multiprocessing's overhead vs true parallelism trade-offs.
+8. `VectorizationSpeedupDiagram.tsx`: Autocycles (3000ms) array size presets [10,000, 500, 100,000, 2,000], showing the widening order-of-magnitude speedup of compiled vector SIMD instructions over interpreted Python loop overhead.
+9. `ContextManagerFlowDiagram.tsx`: Auto-steps (2000ms) through the execution sequence of context managers, highlighting that `__exit__()` is guaranteed to run and release resources regardless of whether the inner block terminates normally or raises an unhandled exception.
+10. `GeneratorMemoryDiagram.tsx`: Auto-cycles (3000ms) dataset size presets [2,000, 500, 15,000, 8,000], contrasting the linearly exploding memory footprint of list-based pipelines against the flat O(1) constant memory footprint of generator pipelines.
+11. `PythonLayerStackDiagram.tsx`: Autocycles (2800ms) through the architectural layer stack (Python language -> NumPy vectorization -> PyTorch tensors/autograd -> Production Python tooling), showing how each foundational abstraction compounds up the stack.
+12. `LogLevelFilterDiagram.tsx`: Autocycles (3000ms) across log severity thresholds (DEBUG -> INFO -> WARNING -> ERROR -> CRITICAL), showing dynamic message emission versus suppression at runtime without redeployment.
+13. `VirtualEnvIsolationDiagram.tsx`: Autocycles (3500ms) between isolated venvs and shared global environments, demonstrating how separate `site-packages` directories eliminate dependency collision between projects requiring conflicting package versions.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 13 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-14/`.
+
+
 
 
 

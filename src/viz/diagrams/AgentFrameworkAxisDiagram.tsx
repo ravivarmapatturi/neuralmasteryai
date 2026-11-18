@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const FRAMEWORKS = [
@@ -43,27 +42,35 @@ const FRAMEWORKS = [
  * from different ecosystems, and one isn't about orchestration at all. */
 export default function AgentFrameworkAxisDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('smolagents');
+  const { value: autoIdx, pick: setAutoIdx, stop } = useAutoCycle(FRAMEWORKS.length, 3500, 0);
   const color = getConceptColor(t, 'attention');
-  const f = FRAMEWORKS.find((x) => x.key === active)!;
+  const f = FRAMEWORKS[autoIdx];
+  const active = f.key;
 
   return (
     <VisualizationContainer footer={f.desc}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {FRAMEWORKS.map((x) => {
+        {FRAMEWORKS.map((x, i) => {
           const isActive = active === x.key;
           return (
             <div
               key={x.key}
-              onClick={() => setActive(x.key)}
-              onMouseEnter={() => setActive(x.key)}
+              onClick={() => {
+                stop();
+                setAutoIdx(i);
+              }}
+              onMouseEnter={() => {
+                stop();
+                setAutoIdx(i);
+              }}
               role="button"
               tabIndex={0}
               aria-pressed={isActive}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  setActive(x.key);
+                  stop();
+                  setAutoIdx(i);
                 }
               }}
               style={{

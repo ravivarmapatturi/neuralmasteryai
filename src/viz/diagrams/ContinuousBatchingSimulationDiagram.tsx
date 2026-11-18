@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generateRequestLengths, simulateStaticBatching, simulateContinuousBatching } from '../lib/serving';
 
 const LENGTHS = generateRequestLengths(24, 5);
+const BATCH_PRESETS = [4, 2, 6, 8];
 
 export default function ContinuousBatchingSimulationDiagram() {
   const t = useVizTokens();
-  const [batchSize, setBatchSize] = useState(4);
+  const { value: autoIdx, stop } = useAutoCycle(BATCH_PRESETS.length, 3000, 0);
+  const [userBatch, setUserBatch] = useState<number | null>(null);
+  const batchSize = userBatch ?? BATCH_PRESETS[autoIdx];
 
   const staticTimes = useMemo(() => simulateStaticBatching(LENGTHS, batchSize), [batchSize]);
   const continuousTimes = useMemo(() => simulateContinuousBatching(LENGTHS, batchSize), [batchSize]);
@@ -24,7 +27,17 @@ export default function ContinuousBatchingSimulationDiagram() {
 
   return (
     <VisualizationContainer footer={`Real discrete-step simulation: ${LENGTHS.length} real requests with real varying output lengths, batch capacity=${batchSize}. Static batching (short sequences blocked behind the batch's longest one, real makespan=${staticMakespan}) vs. continuous batching (a finished slot is refilled immediately, real makespan=${continuousMakespan}). Real average latency: static=${staticAvgLatency.toFixed(1)} steps, continuous=${continuousAvgLatency.toFixed(1)} steps -- ${((1 - continuousAvgLatency / staticAvgLatency) * 100).toFixed(0)}% real improvement, the actual mechanism behind vLLM's throughput advantage, not just the claim.`}>
-      <Slider label="batch capacity" value={batchSize} onChange={setBatchSize} min={2} max={8} step={1} />
+      <Slider
+        label="batch capacity"
+        value={batchSize}
+        onChange={(v) => {
+          stop();
+          setUserBatch(v);
+        }}
+        min={2}
+        max={8}
+        step={1}
+      />
 
       <div style={{ marginTop: 10 }}>
         <div style={{ fontSize: DIAGRAM_TYPE.caption.size, color: t.accentSecondary, marginBottom: 3 }}>Static batching (makespan {staticMakespan})</div>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import { SketchRect } from '../../components/notebook/RoughShape';
 
@@ -29,10 +29,21 @@ const WIDTH = 380;
 const HEIGHT = 130;
 const MAX_TIME = WORK_MS * N_WORKERS * 1.1;
 
+const COMBOS: { workload: Workload; model: Model }[] = [
+  { workload: 'cpu', model: 'threading' },
+  { workload: 'cpu', model: 'multiprocessing' },
+  { workload: 'io', model: 'threading' },
+  { workload: 'io', model: 'multiprocessing' },
+];
+
 export default function ThreadingVsMultiprocessingDiagram() {
   const t = useVizTokens();
-  const [workload, setWorkload] = useState<Workload>('cpu');
-  const [model, setModel] = useState<Model>('threading');
+  const { value: comboIdx, stop } = useAutoCycle(COMBOS.length, 3500, 0);
+  const [userCombo, setUserCombo] = useState<{ workload: Workload; model: Model } | null>(null);
+
+  const active = userCombo ?? COMBOS[comboIdx];
+  const workload = active.workload;
+  const model = active.model;
 
   const result = effectiveTime(workload, model);
   const color = getConceptColor(t, 'attention');
@@ -44,7 +55,11 @@ export default function ThreadingVsMultiprocessingDiagram() {
         <PillSelect<Workload>
           label="Workload type"
           value={workload}
-          onChange={setWorkload}
+          onChange={(val) => {
+            const v = typeof val === 'function' ? val(workload) : val;
+            stop();
+            setUserCombo({ workload: v, model });
+          }}
           options={[
             { value: 'cpu', label: 'CPU-bound' },
             { value: 'io', label: 'I/O-bound' },
@@ -53,7 +68,11 @@ export default function ThreadingVsMultiprocessingDiagram() {
         <PillSelect<Model>
           label="Execution model"
           value={model}
-          onChange={setModel}
+          onChange={(val) => {
+            const v = typeof val === 'function' ? val(model) : val;
+            stop();
+            setUserCombo({ workload, model: v });
+          }}
           options={[
             { value: 'threading', label: 'threading' },
             { value: 'multiprocessing', label: 'multiprocessing' },
@@ -61,7 +80,7 @@ export default function ThreadingVsMultiprocessingDiagram() {
         />
       </div>
       <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="nm-fit-svg" style={{ display: 'block' }}>
-        <rect x={10} y={20} width={barW} height={30} fill={`${color}30`} stroke="none" />
+        <rect x={10} y={20} width={barW} height={30} fill={`${color}30`} stroke="none" style={{ transition: 'width 0.35s ease' }} />
         <SketchRect x={10} y={20} width={barW} height={30} color={color} strokeWidth={2} id="tvm-bar" />
         <text x={10} y={70} fontSize={13} fontFamily="monospace" fontWeight={700} fill={color}>
           {result.time.toFixed(0)}ms

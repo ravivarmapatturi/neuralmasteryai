@@ -442,22 +442,22 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 14
 - `src/content/docs/frameworks/llm-agent-frameworks.mdx`
-  - [ ] `src/viz/diagrams/AgentControlFlowGraphDiagram.tsx`
-  - [ ] `src/viz/diagrams/AgentFrameworkAxisDiagram.tsx`
+  - [x] `src/viz/diagrams/AgentControlFlowGraphDiagram.tsx`
+  - [x] `src/viz/diagrams/AgentFrameworkAxisDiagram.tsx`
 - `src/content/docs/frameworks/serving-mlops.mdx`
-  - [ ] `src/viz/diagrams/ContinuousBatchingSimulationDiagram.tsx`
+  - [x] `src/viz/diagrams/ContinuousBatchingSimulationDiagram.tsx`
 - `src/content/docs/interview-prep/technology-comparisons.mdx`
-  - [ ] `src/viz/diagrams/TechComparisonDiagram.tsx`
+  - [x] `src/viz/diagrams/TechComparisonDiagram.tsx`
 - `src/content/docs/python-engineering/concurrency-memory-and-performance.mdx`
-  - [ ] `src/viz/diagrams/AsyncEventLoopDiagram.tsx`
-  - [ ] `src/viz/diagrams/RefCountingDiagram.tsx`
-  - [ ] `src/viz/diagrams/ThreadingVsMultiprocessingDiagram.tsx`
-  - [ ] `src/viz/diagrams/VectorizationSpeedupDiagram.tsx`
+  - [x] `src/viz/diagrams/AsyncEventLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/RefCountingDiagram.tsx`
+  - [x] `src/viz/diagrams/ThreadingVsMultiprocessingDiagram.tsx`
+  - [x] `src/viz/diagrams/VectorizationSpeedupDiagram.tsx`
 - `src/content/docs/python-engineering/language-fundamentals-and-oop.mdx`
-  - [ ] `src/viz/diagrams/ContextManagerFlowDiagram.tsx`
-  - [ ] `src/viz/diagrams/GeneratorMemoryDiagram.tsx`
+  - [x] `src/viz/diagrams/ContextManagerFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/GeneratorMemoryDiagram.tsx`
 - `src/content/docs/python-engineering/overview.mdx`
-  - [ ] `src/viz/diagrams/PythonLayerStackDiagram.tsx`
+  - [x] `src/viz/diagrams/PythonLayerStackDiagram.tsx`
 - `src/content/docs/python-engineering/packaging-testing-and-tooling.mdx`
-  - [ ] `src/viz/diagrams/LogLevelFilterDiagram.tsx`
-  - [ ] `src/viz/diagrams/VirtualEnvIsolationDiagram.tsx`
+  - [x] `src/viz/diagrams/LogLevelFilterDiagram.tsx`
+  - [x] `src/viz/diagrams/VirtualEnvIsolationDiagram.tsx`

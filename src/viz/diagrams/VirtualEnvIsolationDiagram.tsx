@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -8,7 +8,10 @@ const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 export default function VirtualEnvIsolationDiagram() {
   const t = useVizTokens();
-  const [isolated, setIsolated] = useState(true);
+  const { value: autoVal, stop } = useAutoCycle(2, 3500, 0);
+  const [userIso, setUserIso] = useState<boolean | null>(null);
+  const isolated = userIso ?? (autoVal === 0);
+
   const okColor = getConceptColor(t, 'attention');
   const errColor = t.accentDanger;
   const projA = getConceptColor(t, 'query');
@@ -23,10 +26,10 @@ export default function VirtualEnvIsolationDiagram() {
       }
     >
       <div style={{ marginBottom: 12 }}>
-        <VizButton variant={isolated ? 'primary' : 'secondary'} onClick={() => setIsolated(true)}>
+        <VizButton variant={isolated ? 'primary' : 'secondary'} onClick={() => { stop(); setUserIso(true); }}>
           Isolated venvs
         </VizButton>{' '}
-        <VizButton variant={!isolated ? 'primary' : 'secondary'} onClick={() => setIsolated(false)}>
+        <VizButton variant={!isolated ? 'primary' : 'secondary'} onClick={() => { stop(); setUserIso(false); }}>
           No isolation (global install)
         </VizButton>
       </div>

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, usePrefersReducedMotion } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 interface Step {
@@ -23,10 +23,22 @@ const WITH_EXCEPTION: Step[] = [
 
 export default function ContextManagerFlowDiagram() {
   const t = useVizTokens();
+  const prefersReduced = usePrefersReducedMotion();
   const [mode, setMode] = useState<'normal' | 'exception'>('exception');
+  const [activeStep, setActiveStep] = useState(3);
+  const [isPaused, setIsPaused] = useState(false);
+
   const steps = mode === 'normal' ? NORMAL : WITH_EXCEPTION;
   const okColor = getConceptColor(t, 'attention');
   const errColor = t.accentDanger;
+
+  useEffect(() => {
+    if (prefersReduced || isPaused) return;
+    const interval = setInterval(() => {
+      setActiveStep((prev) => (prev + 1) % steps.length);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [prefersReduced, isPaused, steps.length]);
 
   const colorFor = (o?: Step['outcome']) => (o === 'error' ? errColor : o === 'ok' ? okColor : t.textPrimary);
 
@@ -39,10 +51,10 @@ export default function ContextManagerFlowDiagram() {
       }
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <VizButton variant={mode === 'normal' ? 'primary' : 'secondary'} onClick={() => setMode('normal')}>
+        <VizButton variant={mode === 'normal' ? 'primary' : 'secondary'} onClick={() => { setIsPaused(true); setMode('normal'); setActiveStep(0); }}>
           Normal Completion
         </VizButton>
-        <VizButton variant={mode === 'exception' ? 'primary' : 'secondary'} onClick={() => setMode('exception')}>
+        <VizButton variant={mode === 'exception' ? 'primary' : 'secondary'} onClick={() => { setIsPaused(true); setMode('exception'); setActiveStep(0); }}>
           With Exception
         </VizButton>
       </div>
@@ -50,12 +62,30 @@ export default function ContextManagerFlowDiagram() {
         with resource() as r:{'\n'}    ... work with r ...
       </div>
       <div>
-        {steps.map((s, i) => (
-          <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderLeft: `2px solid ${t.border}`, paddingLeft: 12, marginLeft: 8 }}>
-            <div style={{ fontFamily: 'monospace', fontSize: 11, color: t.textMuted, minWidth: 16 }}>{i + 1}</div>
-            <div style={{ fontSize: 13, color: colorFor(s.outcome), fontWeight: s.outcome ? 700 : 400 }}>{s.label}</div>
-          </div>
-        ))}
+        {steps.map((s, i) => {
+          const isActive = activeStep === i;
+          return (
+            <div
+              key={i}
+              onClick={() => { setIsPaused(true); setActiveStep(i); }}
+              style={{
+                display: 'flex',
+                gap: 10,
+                alignItems: 'center',
+                padding: '6px 8px',
+                borderRadius: 6,
+                borderLeft: `3px solid ${isActive ? okColor : t.border}`,
+                marginLeft: 8,
+                background: isActive ? `${okColor}15` : 'transparent',
+                cursor: 'pointer',
+                transition: 'background 0.2s ease, border-color 0.2s ease',
+              }}
+            >
+              <div style={{ fontFamily: 'monospace', fontSize: 11, color: isActive ? okColor : t.textMuted, minWidth: 16 }}>{i + 1}</div>
+              <div style={{ fontSize: 13, color: colorFor(s.outcome), fontWeight: s.outcome || isActive ? 700 : 400 }}>{s.label}</div>
+            </div>
+          );
+        })}
       </div>
     </VisualizationContainer>
   );

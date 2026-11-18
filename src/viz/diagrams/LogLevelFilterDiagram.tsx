@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Level = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
@@ -16,7 +15,8 @@ const MESSAGES: { level: Level; text: string }[] = [
 
 export default function LogLevelFilterDiagram() {
   const t = useVizTokens();
-  const [threshold, setThreshold] = useState<Level>('INFO');
+  const { value: levelIdx, pick: setLevelIdx, stop } = useAutoCycle(LEVEL_ORDER.length, 3000, 1);
+  const threshold = LEVEL_ORDER[levelIdx];
   const thresholdIdx = LEVEL_ORDER.indexOf(threshold);
   const passColor = getConceptColor(t, 'attention');
 
@@ -28,14 +28,18 @@ export default function LogLevelFilterDiagram() {
       <PillSelect<Level>
         label="Minimum level"
         value={threshold}
-        onChange={setThreshold}
+        onChange={(val) => {
+          const v = typeof val === 'function' ? val(threshold) : val;
+          stop();
+          setLevelIdx(LEVEL_ORDER.indexOf(v));
+        }}
         options={LEVEL_ORDER.map((l) => ({ value: l, label: l }))}
       />
       <div style={{ marginTop: 10 }}>
         {MESSAGES.map((m, i) => {
           const passes = LEVEL_ORDER.indexOf(m.level) >= thresholdIdx;
           return (
-            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', opacity: passes ? 1 : 0.3 }}>
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', opacity: passes ? 1 : 0.3, transition: 'opacity 0.25s ease' }}>
               <div style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: levelColor(m.level), minWidth: 70 }}>{m.level}</div>
               <div style={{ fontFamily: 'monospace', fontSize: 12, color: passes ? t.textPrimary : t.textMuted, textDecoration: passes ? 'none' : 'line-through' }}>{m.text}</div>
               <div style={{ marginLeft: 'auto', color: passes ? passColor : t.textMuted, fontSize: 12, fontWeight: 700 }}>{passes ? 'emitted' : 'suppressed'}</div>

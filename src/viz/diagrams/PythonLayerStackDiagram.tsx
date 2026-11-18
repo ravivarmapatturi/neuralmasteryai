@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { getConceptColor } from './diagramSystem';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 
 interface Layer {
   name: string;
@@ -16,7 +16,9 @@ const LAYERS: Layer[] = [
 
 export default function PythonLayerStackDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(0);
+  const { value: autoIdx, pick: setAutoIdx, stop } = useAutoCycle(LAYERS.length, 2800, 0);
+  const [userSelected, setUserSelected] = useState<number | null>(null);
+  const selected = userSelected ?? autoIdx;
   const color = getConceptColor(t, 'attention');
 
   return (
@@ -25,7 +27,11 @@ export default function PythonLayerStackDiagram() {
         {LAYERS.map((layer, i) => (
           <div
             key={layer.name}
-            onClick={() => setSelected(i)}
+            onClick={() => {
+              stop();
+              setUserSelected(i);
+              setAutoIdx(i);
+            }}
             style={{
               padding: '10px 16px',
               borderRadius: 8,
@@ -37,6 +43,7 @@ export default function PythonLayerStackDiagram() {
               display: 'flex',
               alignItems: 'center',
               gap: 10,
+              transition: 'all 0.2s ease',
             }}
           >
             <span style={{ fontFamily: 'monospace', fontSize: 11, color: t.textMuted }}>{i + 1}</span>

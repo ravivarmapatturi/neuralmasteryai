@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const CATEGORIES = [
@@ -50,31 +50,36 @@ const CATEGORIES = [
 
 export default function TechComparisonDiagram() {
   const t = useVizTokens();
-  const [catId, setCatId] = useState('ragft');
-  const [optKey, setOptKey] = useState('rag');
+  const { value: catIdx, stop } = useAutoCycle(CATEGORIES.length, 3500, 1);
+  const [userCatId, setUserCatId] = useState<string | null>(null);
+  const [userOptKey, setUserOptKey] = useState<string | null>(null);
 
+  const catId = userCatId ?? CATEGORIES[catIdx].id;
   const category = CATEGORIES.find((c) => c.id === catId)!;
+  const optKey = userOptKey ?? category.options[0].key;
   const option = category.options.find((o) => o.key === optKey) ?? category.options[0];
 
   return (
     <VisualizationContainer footer={option.when}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         {CATEGORIES.map((c) => (
-          <button key={c.id} type="button" onClick={() => { setCatId(c.id); setOptKey(c.options[0].key); }} style={{
+          <button key={c.id} type="button" onClick={() => { stop(); setUserCatId(c.id); setUserOptKey(c.options[0].key); }} style={{
             padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
             border: `1px solid ${catId === c.id ? t.accentPrimary : t.border}`,
             background: catId === c.id ? t.accentPrimary : 'transparent',
             color: catId === c.id ? t.background : t.textPrimary,
+            transition: 'all 0.2s ease',
           }}>{c.label}</button>
         ))}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {category.options.map((o) => (
-          <div key={o.key} onClick={() => setOptKey(o.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOptKey(o.key); } }} style={{
+          <div key={o.key} onClick={() => { stop(); setUserOptKey(o.key); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stop(); setUserOptKey(o.key); } }} style={{
             display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '0.55rem 0.8rem', borderRadius: 8,
             background: optKey === o.key ? `${t.accentPrimary}18` : t.surfaceAlt,
             border: `1.5px solid ${optKey === o.key ? t.accentPrimary : t.border}`,
+            transition: 'background 0.2s ease, border-color 0.2s ease',
           }}>
             <div style={{ width: 130, fontSize: 13, fontWeight: 700, color: optKey === o.key ? t.accentPrimary : t.textPrimary }}>{o.label}</div>
             <div style={{ flex: 1, fontSize: 12, color: t.textSecondary }}>{o.when}</div>

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, usePrefersReducedMotion } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Scenario = 'normal' | 'cycle';
@@ -27,11 +27,21 @@ const CYCLE: Step[] = [
 
 export default function RefCountingDiagram() {
   const t = useVizTokens();
+  const prefersReduced = usePrefersReducedMotion();
   const [scenario, setScenario] = useState<Scenario>('cycle');
   const steps = scenario === 'normal' ? NORMAL : CYCLE;
-  const [stepIdx, setStepIdx] = useState(steps.length - 1);
+  const [stepIdx, setStepIdx] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
   const color = getConceptColor(t, 'attention');
   const warnColor = t.accentWarn;
+
+  useEffect(() => {
+    if (prefersReduced || isPaused) return;
+    const interval = setInterval(() => {
+      setStepIdx((prev) => (prev + 1) % steps.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [prefersReduced, isPaused, steps.length]);
 
   return (
     <VisualizationContainer
@@ -45,8 +55,9 @@ export default function RefCountingDiagram() {
         <VizButton
           variant={scenario === 'normal' ? 'primary' : 'secondary'}
           onClick={() => {
+            setIsPaused(true);
             setScenario('normal');
-            setStepIdx(NORMAL.length - 1);
+            setStepIdx(0);
           }}
         >
           Normal Reference
@@ -54,8 +65,9 @@ export default function RefCountingDiagram() {
         <VizButton
           variant={scenario === 'cycle' ? 'primary' : 'secondary'}
           onClick={() => {
+            setIsPaused(true);
             setScenario('cycle');
-            setStepIdx(CYCLE.length - 1);
+            setStepIdx(0);
           }}
         >
           Reference Cycle
@@ -65,7 +77,10 @@ export default function RefCountingDiagram() {
         {steps.map((s, i) => (
           <div
             key={i}
-            onClick={() => setStepIdx(i)}
+            onClick={() => {
+              setIsPaused(true);
+              setStepIdx(i);
+            }}
             style={{
               display: 'flex',
               gap: 10,
@@ -74,6 +89,8 @@ export default function RefCountingDiagram() {
               borderRadius: 6,
               cursor: 'pointer',
               background: stepIdx === i ? `${color}18` : 'transparent',
+              border: `1px solid ${stepIdx === i ? `${color}40` : 'transparent'}`,
+              transition: 'background 0.2s ease, border-color 0.2s ease',
             }}
           >
             <div style={{ fontFamily: 'monospace', fontSize: 12, color: t.textSecondary, flex: 1 }}>{s.label}</div>

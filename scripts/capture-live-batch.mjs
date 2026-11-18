@@ -863,6 +863,56 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  14: [
+    {
+      route: '/docs/frameworks/llm-agent-frameworks',
+      diagrams: [
+        { name: 'AgentControlFlowGraphDiagram', match: 'Confidence threshold' },
+        { name: 'AgentFrameworkAxisDiagram', match: 'Code-as-action' },
+      ],
+    },
+    {
+      route: '/docs/frameworks/serving-mlops',
+      diagrams: [
+        { name: 'ContinuousBatchingSimulationDiagram', match: 'Batch capacity' },
+      ],
+    },
+    {
+      route: '/docs/interview-prep/technology-comparisons',
+      diagrams: [
+        { name: 'TechComparisonDiagram', match: 'Inference engine' },
+      ],
+    },
+    {
+      route: '/docs/python-engineering/concurrency-memory-and-performance',
+      diagrams: [
+        { name: 'AsyncEventLoopDiagram', match: 'Concurrent requests' },
+        { name: 'RefCountingDiagram', match: 'Normal Reference' },
+        { name: 'ThreadingVsMultiprocessingDiagram', match: 'Workload type' },
+        { name: 'VectorizationSpeedupDiagram', match: 'Array size (n)' },
+      ],
+    },
+    {
+      route: '/docs/python-engineering/language-fundamentals-and-oop',
+      diagrams: [
+        { name: 'ContextManagerFlowDiagram', match: 'Normal Completion' },
+        { name: 'GeneratorMemoryDiagram', match: 'Dataset size' },
+      ],
+    },
+    {
+      route: '/docs/python-engineering/overview',
+      diagrams: [
+        { name: 'PythonLayerStackDiagram', match: 'Python (this section)' },
+      ],
+    },
+    {
+      route: '/docs/python-engineering/packaging-testing-and-tooling',
+      diagrams: [
+        { name: 'LogLevelFilterDiagram', match: 'Minimum level' },
+        { name: 'VirtualEnvIsolationDiagram', match: 'Isolated venvs' },
+      ],
+    },
+  ],
 };
 
 async function main() {
