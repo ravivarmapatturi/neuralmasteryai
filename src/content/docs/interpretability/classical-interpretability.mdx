@@ -4,7 +4,6 @@ sidebar_position: 3
 description: "SHAP, LIME, and tree feature importance -- global vs. local explanations, and model-agnostic vs. model-specific, for any classical ML model."
 ---
 
-
 import TreeImportanceDiagram from '../../../viz/diagrams/TreeImportanceDiagram';
 import PermutationImportanceDiagram from '../../../viz/diagrams/PermutationImportanceDiagram';
 import ShapleyCoalitionDiagram from '../../../viz/diagrams/ShapleyCoalitionDiagram';
@@ -13,7 +12,17 @@ import LimeLocalApproxDiagram from '../../../viz/diagrams/LimeLocalApproxDiagram
 import LimeStabilityDiagram from '../../../viz/diagrams/LimeStabilityDiagram';
 import InterpretabilityMethodChoiceDiagram from '../../../viz/diagrams/InterpretabilityMethodChoiceDiagram';
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Classical Interpretability: Feature Importance, SHAP & LIME
+
+<ELI5>
+
+A feature can matter across all predictions or explain one particular output. Classical interpretability methods answer these different questions with varying model assumptions and stability.
+
+</ELI5>
 
 Every method on this page answers the same question — "why did the model predict this" — for models where you either have direct access to internal structure (a tree) or don't need any at all (fully model-agnostic, black-box methods). The deep-learning-specific tools (attention, activations, circuits) come next, in [Deep Learning & LLM Interpretability](/docs/interpretability/deep-learning-and-llm-interpretability).
 
@@ -121,5 +130,38 @@ explainer = shap.TreeExplainer(model)
 shap_values = explainer.shap_values(X_test)
 shap.plots.waterfall(explainer(X_test)[0])  # the exact plot style shown above, for a real instance
 ```
+
+## Why it exists
+
+A feature can matter across all predictions or explain one particular output. Classical interpretability methods answer these different questions with varying model assumptions and stability.
+
+## The big picture
+
+<PenFlow ariaLabel="interpretability/classical-interpretability overview" rows={[{ steps: { title: 'Global question', lines: ['feature importance over a dataset'], tone: 'blue' } }, { steps: { title: 'Local question', lines: ['attribution for one prediction'], tone: 'purple' } }, { steps: { title: 'Choose method', lines: ['permutation, SHAP or LIME'], tone: 'orange' } }, { steps: { title: 'Check reliability', lines: ['repeat, compare and validate'], tone: 'green' } }]} caption="feature importance over a dataset." />
+
+<Worksheet title="SHAP coalition count" ariaLabel="SHAP coalition count" stages={[{ tag: "Inputs", color: "yellow", note: "The page’s toy model has three features, so it has 3! = 6 feature orderings; contributions are averaged across all six.", grid: { head: ['', 'count'], rows: [{ label: 'features', cells: ['3'] }, { label: 'orderings', cells: ['3!'] }, { label: 'permutations', cells: ['6'] }] } }]} />
+
+## Worked example
+
+For the three-feature toy model, SHAP averages each feature’s marginal contribution across 3! = 6 orderings. This removes dependence on one arbitrary feature order.
+
+## Try it yourself
+
+# Try it: SHAP’s coalition average gives order-independent feature attributions for this toy prediction.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Reading tree importance as causal effect | Split gains describe model use, not intervention outcomes | Use a causal design for causal claims |
+| Reporting one permutation shuffle | Random variation can distort the score | Average across multiple shuffles |
+| Trusting one LIME run | Perturbation samples change local coefficients | Check stability across runs |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The model is not a black box and internal cause is required | Use a suitable mechanistic or causal method |
+| The model has no meaningful features | Attributions may not answer the real question |
 
 Next: [Deep Learning & LLM Interpretability](/docs/interpretability/deep-learning-and-llm-interpretability) — the tools built specifically for looking inside a neural network, rather than treating it as a black box.

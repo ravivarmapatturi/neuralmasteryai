@@ -4,7 +4,6 @@ sidebar_position: 3
 description: "The graph-ML task taxonomy, GIN, node2vec-style embeddings, and knowledge graphs -- all shaped by graphs having no canonical node ordering at all."
 ---
 
-
 import GraphRepresentationDiagram from '../../../viz/diagrams/GraphRepresentationDiagram';
 import GraphTaskTaxonomyDiagram from '../../../viz/diagrams/GraphTaskTaxonomyDiagram';
 import GinExpressivenessDiagram from '../../../viz/diagrams/GinExpressivenessDiagram';
@@ -12,7 +11,17 @@ import RandomWalkEmbeddingDiagram from '../../../viz/diagrams/RandomWalkEmbeddin
 import TransEDiagram from '../../../viz/diagrams/TransEDiagram';
 import GraphRagDiagram from '../../../viz/diagrams/GraphRagDiagram';
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Graph ML Fundamentals
+
+<ELI5>
+
+A graph’s node identifiers are arbitrary, so a model must produce the same answer after a consistent relabeling. This constraint shapes graph representations, GNN aggregation and node embeddings.
+
+</ELI5>
 
 [Advanced Architectures — GNNs](/docs/deep-learning/advanced-architectures#graph-neural-networks-gnns) covered message passing and the GCN/GraphSAGE/GAT lineage. This page covers the rest: what graph ML tasks actually look like, one more architecture (GIN) built specifically to fix a real expressiveness gap in that lineage, the embedding methods that predate GNNs, knowledge graphs, and where graph structure shows up directly in modern LLM systems.
 
@@ -104,3 +113,36 @@ model = Node2Vec(edge_index, embedding_dim=64, walk_length=20,
 ```
 
 Graph ML section complete. Next: [AI for Science](/docs/ai-for-science/roadmap) — where graph representations (molecules, protein structures) become one of several scientific-domain applications of ML.
+
+## Why it exists
+
+A graph’s node identifiers are arbitrary, so a model must produce the same answer after a consistent relabeling. This constraint shapes graph representations, GNN aggregation and node embeddings.
+
+## The big picture
+
+<PenFlow ariaLabel="graph-ml/graph-ml-fundamentals overview" rows={[{ steps: { title: 'Build graph', lines: ['nodes and adjacency'], tone: 'blue' } }, { steps: { title: 'Choose task', lines: ['node, link or graph label'], tone: 'purple' } }, { steps: { title: 'Aggregate neighbors', lines: ['sum features with permutation invariance'], tone: 'orange' } }, { steps: { title: 'Use learned structure', lines: ['embeddings, knowledge graphs and Graph RAG'], tone: 'green' } }]} caption="nodes and adjacency." />
+
+<Worksheet title="GIN aggregation intuition" ariaLabel="GIN aggregation intuition" stages={[{ tag: "Inputs", color: "yellow", note: "Mean aggregation loses multiplicity: neighbor sets (1,1) and (1,1,1) both have mean 1, while their sums are 2 and 3.", grid: { head: ['', 'result'], rows: [{ label: 'neighbors A', cells: ['(1, 1)'] }, { label: 'mean A', cells: ['1'] }, { label: 'neighbors B', cells: ['(1, 1, 1)'] }, { label: 'mean B', cells: ['1'] }, { label: 'sum A / sum B', cells: ['2 / 3'] }] } }]} />
+
+## Worked example
+
+The page’s GIN example contrasts two neighbor sets whose means are both 1, while their sums differ (2 versus 3). The sum retains the count signal that a mean discards.
+
+## Try it yourself
+
+# Try it: GIN’s sum aggregation preserves multiplicity and can distinguish these neighborhood patterns.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Using mean when multiplicity matters | Different neighborhoods can share a mean | Use sum aggregation or richer features |
+| Breaking permutation invariance | Results depend on arbitrary node ordering | Use symmetric aggregation |
+| Treating link prediction as node classification | The target is an edge between nodes | Score candidate pairs |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| There are no relational edges | Use a tabular or sequence model |
+| The graph fits simple deterministic traversal | Use direct graph algorithms |

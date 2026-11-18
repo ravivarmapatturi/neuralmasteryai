@@ -4,8 +4,16 @@ sidebar_position: 1
 description: "SHAP and LIME for any black-box model, extended all the way to mechanistic interpretability -- sparse autoencoders, circuits, and reading an LLM's computation."
 ---
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Interpretability — Overview
+
+<ELI5>
+
+A model’s score does not explain what evidence drove it. Interpretability methods make model behavior easier to inspect, but their explanations vary in scope and strength.
+
+</ELI5>
 
 [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) mentioned explainability in one bullet: SHAP, LIME, and tree feature importance. This section is the real depth behind that bullet, extended from classical ML all the way to mechanistic interpretability of LLMs — the tools for answering "why did the model predict this" at increasing levels of rigor, from a post-hoc approximation to actually reading the computation a model performed.
 
@@ -23,3 +31,34 @@ This isn't just "nice to understand" — interpretability is load-bearing for se
 - **Regulatory and trust requirements**: some domains (healthcare, finance, hiring) require an explanation for an automated decision as a matter of policy or law, not just engineering preference — see [Legal/Licensing/Governance](/docs/mlops/roadmap) for where this becomes a compliance requirement, not just a technical nicety.
 
 See the [roadmap](/docs/interpretability/roadmap) for the full ordered path.
+
+## Why it exists
+
+A model’s score does not explain what evidence drove it. Interpretability methods make model behavior easier to inspect, but their explanations vary in scope and strength.
+
+## The big picture
+
+<PenFlow ariaLabel="interpretability/overview overview" rows={[{ steps: { title: 'Global question', lines: ['what matters across predictions?'], tone: 'blue' } }, { steps: { title: 'Local question', lines: ['why this particular prediction?'], tone: 'purple' } }, { steps: { title: 'Pick method', lines: ['built-in, permutation, SHAP or circuits'], tone: 'orange' } }, { steps: { title: 'Test explanation', lines: ['stability and causal evidence'], tone: 'green' } }]} caption="what matters across predictions?." />
+
+## Worked example
+
+The section separates classical feature explanations from methods that inspect neural-network internals.
+
+## Try it yourself
+
+# Try it: First choose whether the question is global or about one prediction, then choose a method and test its limits.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Treating an explanation as proof | Attribution can be correlational | Validate with interventions where possible |
+| Confusing global and local scope | Averages can hide one case’s behavior | State the scope of every explanation |
+| Ignoring method assumptions | Different tools answer different questions | Choose from the method’s supported scope |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| You only need predictive performance | Use evaluation metrics |
+| You need a causal guarantee from correlation alone | Use a causal design or intervention |

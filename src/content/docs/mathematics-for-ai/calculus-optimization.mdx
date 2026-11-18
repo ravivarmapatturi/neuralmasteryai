@@ -4,7 +4,6 @@ sidebar_position: 4
 description: "Gradients, backpropagation, and Adam derived from scratch -- how a training run actually walks downhill through a model's high-dimensional loss landscape."
 ---
 
-
 import GradientDirectionDiagram from '../../../viz/diagrams/GradientDirectionDiagram';
 import HessianCurvatureDiagram from '../../../viz/diagrams/HessianCurvatureDiagram';
 import NewtonVsGradientDescentDiagram from '../../../viz/diagrams/NewtonVsGradientDescentDiagram';
@@ -14,6 +13,9 @@ import GradientDescentExplorer from '../../../viz/GradientDescentExplorer';
 import LrScheduleDiagram from '../../../viz/diagrams/LrScheduleDiagram';
 import LagrangeKktDiagram from '../../../viz/diagrams/LagrangeKktDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Calculus & Optimization for AI
 
@@ -208,5 +210,38 @@ def newtons_method(grad_fn, hessian_fn, x0: np.ndarray, steps: int = 10) -> np.n
 | Adam optimizer | Default optimizer for Transformers, LLMs |
 | Convexity | Why classical ML (SVM, logistic regression) has guarantees deep learning doesn't |
 | Lagrange multipliers / KKT | SVM margin maximization (support vectors), constrained RL |
+
+## Why it exists
+
+Training changes model parameters to reduce a loss. The gradient gives a local downhill direction; curvature and constraints explain when that step is safe or useful.
+
+## The big picture
+
+<PenFlow ariaLabel="mathematics-for-ai/calculus-optimization overview" rows={[{ steps: { title: 'Measure slope', lines: ['gradient of the loss'], tone: 'blue' } }, { steps: { title: 'Choose a step', lines: ['SGD or an adaptive optimizer'], tone: 'purple' } }, { steps: { title: 'Track curvature', lines: ['Hessian and convexity'], tone: 'orange' } }, { steps: { title: 'Respect constraints', lines: ['KKT conditions when needed'], tone: 'green' } }]} caption="gradient of the loss." />
+
+<Worksheet title="One gradient step" ariaLabel="One gradient step" stages={[{ tag: "Inputs", color: "yellow", note: "For f(w)=w² at w=3, gradient is 6. With learning rate 0.1, w becomes 3 - 0.1×6 = 2.4.", grid: { head: ['', 'value'], rows: [{ label: 'starting w', cells: ['3'] }, { label: 'gradient 2w', cells: ['6'] }, { label: 'learning rate', cells: ['0.1'] }, { label: 'updated w', cells: ['2.4'] }] } }]} />
+
+## Worked example
+
+The page code implements Newton updates by solving HΔ=g. For the scalar quadratic f(w)=w² at w=3, a gradient step with rate 0.1 moves to 2.4; Newton’s step would reach the minimum at 0 in one update.
+
+## Try it yourself
+
+# Try it: The gradient uses local slope; Newton’s method also uses curvature, which can accelerate a step but requires solving with the Hessian.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Using a large fixed learning rate | Updates can overshoot or diverge | Inspect the loss curve and use a schedule |
+| Treating a zero gradient as a minimum | Saddle points also have zero gradient | Check curvature or use optimization diagnostics |
+| Forming H inverse explicitly | It is expensive and unstable | Solve the linear system directly, as the code does |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The objective is not differentiable | Use methods designed for discrete or nonsmooth optimization |
+| The parameter count makes second-order solves impractical | Use first-order methods such as SGD or Adam |
 
 Next: [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics) — the math of uncertainty, which underlies loss functions, evaluation, and how LLMs generate text token by token.

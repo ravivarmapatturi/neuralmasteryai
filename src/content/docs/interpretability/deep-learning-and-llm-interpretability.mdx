@@ -4,7 +4,6 @@ sidebar_position: 4
 description: "A rigor ladder from cheap correlational saliency maps up to verified causal circuits -- interpretability tools built for gradient-accessible networks."
 ---
 
-
 import SaliencyMapDiagram from '../../../viz/diagrams/SaliencyMapDiagram';
 import ActivationMaximizationDiagram from '../../../viz/diagrams/ActivationMaximizationDiagram';
 import AttentionHeadPatternDiagram from '../../../viz/diagrams/AttentionHeadPatternDiagram';
@@ -13,7 +12,17 @@ import SuperpositionDiagram from '../../../viz/diagrams/SuperpositionDiagram';
 import CircuitDiagram from '../../../viz/diagrams/CircuitDiagram';
 import InterpretabilityRigorLadderDiagram from '../../../viz/diagrams/InterpretabilityRigorLadderDiagram';
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Deep Learning & LLM Interpretability
+
+<ELI5>
+
+Neural-network explanations range from input correlations to tested causal mechanisms. The method choice should match the strength of claim: a saliency map is not a circuit-level explanation.
+
+</ELI5>
 
 [Classical Interpretability](/docs/interpretability/classical-interpretability) treats a model as a black box (or, at most, a tree structure) and explains its *outputs*. This page goes a level deeper: tools built specifically for a differentiable, gradient-accessible neural network, from a single gradient-based heatmap up through the current frontier of mechanistic interpretability research.
 
@@ -86,3 +95,36 @@ Finding and verifying a circuit means being able to point to the *actual mechani
 The overarching research program the last several tools serve: reverse-engineering a neural network's learned computation into human-understandable algorithms — treating a trained model less like a black-box statistical function and more like compiled code to be decompiled, with sparse autoencoders providing cleaner interpretable units and circuit analysis providing the causal story of how those units combine to produce behavior. It's the most rigorous, and most labor-intensive, tier of the ladder at the top of this page — genuinely explaining *how* a specific capability works mechanistically, rather than *what* correlates with it — and directly the tool [AI Safety — Scalable Oversight](/docs/ai-safety/scalable-oversight-and-frontier-safety#interpretabilitys-role-in-safety) points to for inspecting a model's actual computation rather than trusting its self-reported reasoning.
 
 Interpretability section complete. Next: [Reinforcement Learning](/docs/reinforcement-learning/roadmap) — a separate track with its own theoretical foundation underlying RLHF, agents, and game-playing systems.
+
+## Why it exists
+
+Neural-network explanations range from input correlations to tested causal mechanisms. The method choice should match the strength of claim: a saliency map is not a circuit-level explanation.
+
+## The big picture
+
+<PenFlow ariaLabel="interpretability/deep-learning-and-llm-interpretability overview" rows={[{ steps: { title: 'Input attribution', lines: ['saliency or activation'], tone: 'blue' } }, { steps: { title: 'Representation probe', lines: ['test encoded information'], tone: 'purple' } }, { steps: { title: 'Feature mechanisms', lines: ['sparse autoencoders and superposition'], tone: 'orange' } }, { steps: { title: 'Causal account', lines: ['circuits plus interventions'], tone: 'green' } }]} caption="saliency or activation." />
+
+<Worksheet title="Interpretability rigor ladder" ariaLabel="Interpretability rigor ladder" stages={[{ tag: "Inputs", color: "yellow", note: "The page orders evidence from correlational saliency to verified causal circuits; these are distinct levels of claim.", grid: { head: ['', 'claim strength'], rows: [{ label: 'saliency', cells: ['correlation'] }, { label: 'probing', cells: ['encoded information'] }, { label: 'circuit intervention', cells: ['causal mechanism'] }] } }]} />
+
+## Worked example
+
+A saliency map shows which inputs correlate with the output; a verified circuit requires causal intervention evidence. Treating those as equivalent overstates the first method.
+
+## Try it yourself
+
+# Try it: The rigor ladder separates correlation from a causal explanation.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Treating attention weights as explanations | Weights alone do not establish causal importance | Test interventions and alternative mechanisms |
+| Assuming probe accuracy means model use | Information can be present but unused | Run causal interventions |
+| Claiming a circuit from one example | A single case may not generalize | Replicate and test boundaries |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| You need only feature ranking for a tabular model | Use classical interpretability |
+| You cannot access model activations or gradients | Choose a method compatible with the available interface |

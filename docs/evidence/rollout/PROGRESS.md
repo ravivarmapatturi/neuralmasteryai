@@ -275,3 +275,9 @@ Static checks passed: notebook (24 changed pages/0 violations), math, MDX (2,019
 Standardized CS Fundamentals overview and Software Engineering Practice; RL Environment & Reward Engineering and Advanced RL; Mathematics overview, roadmap, Linear Algebra, and Probability & Statistics. Worksheets and worked examples use page-stated values, including the 20-call RL environment, TD3 smoothing settings, vector norm arithmetic, and bootstrap settings. Added page-specific PenFlows, concrete `# Try it:` edits, Common mistakes, and When not to use it.
 
 Static checks passed: notebook (8 changed pages/0 violations), math, MDX (2,019/2,019), links (2,147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Browser checks, full Vitest, and build deferred under the low-memory rule. See `rest-4/scorecard.md`. No push.
+
+## Rest batch 5 — nine pages
+
+Standardized Calculus & Optimization, Algorithms & Data Structures, Graph ML overview/roadmap/fundamentals, and Interpretability overview/roadmap/classical/deep-learning pages. Numeric worksheets use directly stated examples: a gradient step, quadratic attention pair counts, GIN neighborhood sums, and three-feature SHAP permutations. Added page-specific PenFlows, concrete `# Try it:` edits, Common mistakes and When not to use it.
+
+Static checks passed: notebook (17 changed pages/0 violations), math, MDX (2,019/2,019), links (2,147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Browser checks, full Vitest and build deferred under low-memory constraints. See `rest-5/scorecard.md`. No push.

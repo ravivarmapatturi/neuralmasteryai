@@ -4,14 +4,23 @@ sidebar_position: 6
 description: "Big-O as a real budget, not academic notation -- why O(n) vs O(n^2) is the difference between a system that scales and one that can't ship."
 ---
 
-
 import BigOGrowthDiagram from '../../../viz/diagrams/BigOGrowthDiagram';
 import HashMapVsArrayDiagram from '../../../viz/diagrams/HashMapVsArrayDiagram';
 import BeamSearchHeapDiagram from '../../../viz/diagrams/BeamSearchHeapDiagram';
 import AttentionComplexityDiagram from '../../../viz/diagrams/AttentionComplexityDiagram';
 import SortingComplexityDiagram from '../../../viz/diagrams/SortingComplexityDiagram';
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Algorithms & Data Structures for AI
+
+<ELI5>
+
+The cost of an algorithm grows with input size, and that growth can decide whether an AI system fits its latency and memory budget. Big-O and core data structures let us estimate that cost before scaling.
+
+</ELI5>
 
 Not "pure math," but every AI/ML interview loop tests this alongside the theory — and understanding complexity is what lets you reason about whether an ML system will actually scale.
 
@@ -93,3 +102,36 @@ def beam_search(model, start_token: str, beam_width: int, num_steps: int):
 Interviewers (and real jobs) expect ML engineers to be comfortable with general software engineering fundamentals, not just theory — see [Interview Prep](/docs/interview-prep/roadmap) for how this gets tested directly. But it also isn't separable from the math: understanding *why* attention is expensive, *why* vector search needs approximate algorithms, and *why* certain training loops scale better than others all comes back to Big-O reasoning applied to the linear algebra operations covered on the [Linear Algebra](/docs/mathematics-for-ai/linear-algebra) page.
 
 Mathematics for AI complete. Next: [Machine Learning](/docs/machine-learning/roadmap) — where this math turns into working algorithms.
+
+## Why it exists
+
+The cost of an algorithm grows with input size, and that growth can decide whether an AI system fits its latency and memory budget. Big-O and core data structures let us estimate that cost before scaling.
+
+## The big picture
+
+<PenFlow ariaLabel="mathematics-for-ai/algorithms-data-structures overview" rows={[{ steps: { title: 'Measure input size', lines: ['sequence length n'], tone: 'blue' } }, { steps: { title: 'Estimate growth', lines: ['O(n), O(n log n), O(n²)'], tone: 'purple' } }, { steps: { title: 'Choose structure', lines: ['arrays, maps, heaps and trees'], tone: 'orange' } }, { steps: { title: 'Budget resources', lines: ['time and memory at production scale'], tone: 'green' } }]} caption="sequence length n." />
+
+<Worksheet title="Attention pair count" ariaLabel="Attention pair count" stages={[{ tag: "Inputs", color: "yellow", note: "Full pairwise attention scales with n². At n=1,000 it has 1,000,000 token pairs; doubling to 2,000 gives 4,000,000.", grid: { head: ['', 'count'], rows: [{ label: 'sequence length', cells: ['1,000'] }, { label: 'pairs n²', cells: ['1,000,000'] }, { label: 'doubled length', cells: ['2,000'] }, { label: 'pairs after doubling', cells: ['4,000,000'] }] } }]} />
+
+## Worked example
+
+Doubling sequence length from 1,000 to 2,000 multiplies full pairwise attention work by four, from 1,000,000 to 4,000,000 pair interactions.
+
+## Try it yourself
+
+# Try it: Quadratic work becomes expensive quickly as sequence length grows.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Choosing an algorithm from small inputs only | Costs can change sharply at scale | Estimate using production-sized n |
+| Using a list for repeated membership checks | A scan costs O(n) each time | Use a hash set or map when appropriate |
+| Ignoring memory complexity | An algorithm can be too large even when it is fast | Track both time and space |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| Data is tiny and the simple implementation is clear | Prefer the simplest correct option |
+| You need measured runtime for a specific machine | Benchmark instead of relying only on asymptotic bounds |
