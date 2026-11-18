@@ -4,10 +4,22 @@ sidebar_position: 3
 description: "Clinical NLP, medical imaging, EHR data, medical RAG, and clinical evaluation -- the AI toolkit applied where a hallucination can directly harm a patient."
 ---
 
-
 import CostWeightedThresholdDiagram from '../../../viz/diagrams/CostWeightedThresholdDiagram';
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Healthcare AI
+
+## Why it exists
+
+Clinical systems work with sensitive records and decisions where errors can affect patients. A useful model must fit clinical workflows, privacy constraints, expert review and evaluation beyond a single accuracy score.
+
+<ELI5>
+
+Clinical systems work with sensitive records and decisions where errors can affect patients. A useful model must fit clinical workflows, privacy constraints, expert review and evaluation beyond a single accuracy score.
+
+</ELI5>
 
 The domain where the general AI toolkit's stakes are highest — a hallucinated RAG answer in a customer-support bot is an annoyance; a hallucinated answer in a clinical decision-support tool can directly harm a patient. Every technique below is the same general-purpose toolkit from the rest of this site, with the domain-specific constraints that actually matter for deploying it safely made explicit.
 
@@ -40,5 +52,32 @@ Structured, longitudinal patient data (lab results, vitals, diagnoses, medicatio
 ## Clinical Evaluation and Hallucination Risk
 
 Standard [AI Evaluation](/docs/ai-evaluation/roadmap) methodology needs real reinforcement here: evaluation sets should be reviewed by qualified clinicians, not just data scientists (the "domain-expert rater" point from [Human Evaluation Methodology](/docs/ai-evaluation/human-and-adversarial-evaluation#human-evaluation-methodology) applies with unusual force), and hallucination — a model confidently stating an incorrect clinical fact — is the single most consequential failure mode to actively evaluate against and guard against in deployment, not an occasional inconvenience. The general principle from [RAG evaluation](/docs/llms-genai/rag#evaluating-rag) (faithfulness, groundedness) becomes closer to a deployment gate than a nice-to-have metric in this domain.
+
+## The big picture
+
+<PenFlow ariaLabel="domain-applications/healthcare-ai overview" rows={[{ steps: { title: 'Clinical data', lines: ['text, images, EHR records'], tone: 'blue' } }, { steps: { title: 'Model task', lines: ['NLP, imaging or retrieval'], tone: 'purple' } }, { steps: { title: 'Human oversight', lines: ['review high-impact outputs'], tone: 'orange' } }, { steps: { title: 'Clinical evaluation', lines: ['measure safety and outcomes'], tone: 'green' } }]} caption="text, images, EHR records." />
+
+## Worked example
+
+The page covers clinical NLP, imaging, EHR data, Medical RAG, agents, privacy and clinical evaluation.
+
+## Try it yourself
+
+# Try it: Healthcare AI requires workflow and risk constraints alongside model quality.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Treating a benchmark as clinical evidence | The test may not match patient populations | Validate on representative data and workflows |
+| Exposing identifiable records | Clinical data is sensitive | Apply access controls and privacy protections |
+| Automating high-impact decisions without review | Errors can affect care | Keep qualified humans in the decision loop |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The task has no clinical value or safe validation path | Do not deploy a model into care |
+| A general text model lacks domain validation | Use a clinically validated workflow |
 
 Next: [Other Domain Applications](/docs/domain-applications/other-domain-applications) — the same general-toolkit-meets-domain-constraints lens applied to finance, semiconductor, cybersecurity, robotics, and manufacturing.

@@ -281,3 +281,9 @@ Static checks passed: notebook (8 changed pages/0 violations), math, MDX (2,019/
 Standardized Calculus & Optimization, Algorithms & Data Structures, Graph ML overview/roadmap/fundamentals, and Interpretability overview/roadmap/classical/deep-learning pages. Numeric worksheets use directly stated examples: a gradient step, quadratic attention pair counts, GIN neighborhood sums, and three-feature SHAP permutations. Added page-specific PenFlows, concrete `# Try it:` edits, Common mistakes and When not to use it.
 
 Static checks passed: notebook (17 changed pages/0 violations), math, MDX (2,019/2,019), links (2,147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Browser checks, full Vitest and build deferred under low-memory constraints. See `rest-5/scorecard.md`. No push.
+
+## Rest batch 6 — nine content pages
+
+Standardized Domain AI overview/roadmap/Healthcare/Other Domains; Speech & Audio overview/roadmap/Fundamentals/Tasks; and the five Atlas pages (agent architecture, protocols, inference, models, training). Audio worksheets use actual source outputs: Whisper's 480,000 samples/3,000 frames/40 Hz bins, calculated mel widths, CTC output and the four verified WER values. Atlas and landing pages use page-specific concept paths.
+
+Static checks passed: notebook (30 current changed pages/0 violations), math, MDX (2,019/2,019), links (2,147 valid routes/0 broken anchors), typecheck, tracker, diff check. Browser checks, full Vitest and build deferred under low-memory constraints. See `rest-6/scorecard.md`. No push.

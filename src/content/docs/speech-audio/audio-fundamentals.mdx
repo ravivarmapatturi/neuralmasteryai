@@ -16,6 +16,9 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Audio Fundamentals
 
 <ELI5>
@@ -24,7 +27,7 @@ A microphone turns sound into a wiggly line. A computer can only store that line
 
 </ELI5>
 
-## Why This Exists
+## Why it exists
 
 Every audio task (recognising speech, classifying a sound, synthesising a voice) starts with the same problem. Raw audio is a long one-dimensional signal: 16,000 numbers per second for speech, 44,100 for music. The information a model needs, such as which vowel is being spoken, is not in any single number. It is in how the signal oscillates over a few tens of milliseconds. This page follows the standard path from microphone to model input: sampling, then the Fourier transform, then the spectrogram, then the mel scale. At the end you will be able to say exactly what shape of array Whisper reads, and why.
 
@@ -150,7 +153,7 @@ It can be done: wav2vec 2.0 learns directly from waveforms with a stack of 1D co
 Most audio-model bugs are not in the model. A 44.1 kHz file read as 16 kHz plays almost three times too slowly in the model's eyes, and every pitch is wrong. Resample explicitly when you load, and assert the rate before computing features.
 </NotebookCallout>
 
-## Common Problems & Fixes
+## Common mistakes
 
 | Problem | Cause | Fix |
 | --- | --- | --- |
@@ -160,7 +163,7 @@ Most audio-model bugs are not in the model. A 44.1 kHz file read as 16 kHz plays
 | Training is unstable on log-mels | Log of near-zero energies | Add a small floor before the log; normalise per feature |
 | Clicks and harsh artefacts in synthesis | Phase is discarded by the magnitude spectrogram | A neural vocoder (HiFi-GAN) instead of Griffin-Lim reconstruction |
 
-## When *Not* to Use It
+## When not to use it
 
 | Situation | Better choice |
 | --- | --- |
@@ -168,6 +171,35 @@ Most audio-model bugs are not in the model. A 44.1 kHz file read as 16 kHz plays
 | Phase matters, such as source separation | Complex STFT or waveform models, not magnitude-only mel |
 | Music transcription needing exact pitches | Constant-Q transform, whose bins follow musical notes |
 | Tiny on-device keyword spotting | MFCCs with a small CNN, cheaper than a full mel pipeline |
+
+## The big picture
+
+<PenFlow ariaLabel="speech-audio/audio-fundamentals overview" rows={[{ steps: { title: 'Sample waveform', lines: ['16 kHz gives 16,000 values per second'], tone: 'blue' } }, { steps: { title: 'Check Nyquist', lines: ['representable frequency is fs/2'], tone: 'purple' } }, { steps: { title: 'Transform windows', lines: ['STFT gives local frequency content'], tone: 'orange' } }, { steps: { title: 'Compress perceptually', lines: ['80 mel bands form model input'], tone: 'green' } }]} caption="16 kHz gives 16,000 values per second." />
+
+<Worksheet title="Whisper front-end values" ariaLabel="Whisper front-end values" stages={[{ tag: "Inputs", color: "yellow", note: "The code prints 480,000 samples for 30 seconds at 16 kHz, 3,000 frames, and 40 Hz STFT-bin spacing.", grid: { head: ['', 'printed value'], rows: [{ label: '30 seconds at 16 kHz', cells: ['480,000 samples'] }, { label: 'window / hop', cells: ['400 / 160 samples'] }, { label: 'frames × mel bins', cells: ['3,000 × 80'] }, { label: 'STFT spacing', cells: ['40 Hz'] }, { label: 'mel-band widths', cells: ['22 / 266 Hz'] }] } }]} />
+
+## Worked example
+
+At 16 kHz, 30 seconds contains 480,000 samples. A 160-sample hop gives 3,000 frames; 400 samples per FFT yields 40 Hz spacing. The mel bands range from about 22 Hz wide at the bottom to 266 Hz at the top.
+
+## Try it yourself
+
+# Try it: The window controls frequency resolution while the hop controls frame spacing.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Sampling below Nyquist | Higher tones fold into false lower tones | Filter before sampling or raise the rate |
+| Changing sample-rate metadata only | The waveform values are not resampled | Use an actual resampler |
+| Choosing a long window without considering timing | Fine frequency detail blurs speech events | Balance window length against latency |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| Phase must be preserved | Use a complex STFT or waveform model |
+| A tiny device only needs a wake word | Use MFCCs and a small keyword spotter |
 
 ## Remember
 

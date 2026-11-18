@@ -8,7 +8,13 @@ import { ELI5 } from '../../../components/content/ExpandableDepth';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import InferenceAtlas from '../../../components/atlas/inference/InferenceAtlas';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Inference Technique Atlas
+
+## Why it exists
+
+Inference choices interact across model format, hardware, serving runtime, batching and caching. The Atlas places techniques in that stack so a tool is chosen for the bottleneck it addresses.
 
 Inference did not improve through one line of tricks. Each era changed the object engineers had to manage: first a probability distribution, then a portable model artifact, then the memory traffic inside a transformer, and finally a fleet of requests sharing accelerators. This atlas keeps those layers separate while showing how one limit created the next technique.
 
@@ -42,3 +48,29 @@ A schema-constrained decoder can guarantee valid JSON syntax, but it cannot redu
 
 The practical sequence is diagnostic. Measure first, identify the constrained resource, then choose the earliest technique in the atlas that removes that exact limit without introducing a worse one. Continue with [Roofline and KV Cache](/docs/inference-engineering/roofline-and-kv-cache) when the profile points to data movement, or [Continuous Batching and Speculative Decoding](/docs/inference-engineering/continuous-batching-and-speculative-decoding) when the scheduler or sequential decode dominates.
 
+## The big picture
+
+<PenFlow ariaLabel="atlas/inference overview" rows={[{ steps: { title: 'Model representation', lines: ['weights and quantization'], tone: 'blue' } }, { steps: { title: 'Hardware', lines: ['memory and compute'], tone: 'purple' } }, { steps: { title: 'Serving runtime', lines: ['kernels and batching'], tone: 'orange' } }, { steps: { title: 'Request path', lines: ['cache and scheduling'], tone: 'green' } }]} caption="weights and quantization." />
+
+## Worked example
+
+The Atlas emphasizes reading the full inference stack before choosing an optimization.
+
+## Try it yourself
+
+# Try it: Each layer changes the constraints seen by the next one.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Optimizing only model size | Latency may be dominated elsewhere | Profile end-to-end |
+| Combining incompatible optimizations | Some choices depend on runtime or hardware | Check system constraints |
+| Using a benchmark without workload details | Results may not transfer | Match batch, sequence and concurrency |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| No inference workload exists yet | Establish a baseline first |
+| The bottleneck is outside inference | Optimize the measured stage |

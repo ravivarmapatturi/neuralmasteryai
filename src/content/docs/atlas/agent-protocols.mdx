@@ -8,7 +8,13 @@ import { ELI5 } from '../../../components/content/ExpandableDepth';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import AgentProtocolsAtlas from '../../../components/atlas/protocols/AgentProtocolsAtlas';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Agent Protocols Atlas
+
+## Why it exists
+
+Agent protocols define how agents and tools exchange capabilities and results. The protocol choice affects discovery, security and interoperability.
 
 An agent calling a tool looks new, but much of it is old. A generated stub from 1984, a JSON message, a schema and an OAuth token are all still in that call. What is new is who decides to make it: a model, working from a description, at runtime. This atlas follows that story in date order, so you can see which problem each layer solved.
 
@@ -39,3 +45,30 @@ Open an entry and read it in order: the limit it answered, what changed, then th
 These entries did not replace each other. A single MCP tool call can use a schema to describe the tool, JSON-RPC for the message, HTTP to carry it, OAuth to authorize it, and a REST API behind the server. When a call fails, work through those layers one at a time.
 
 Protocols in the last era are still changing, so check the current specification before you build on the details here.
+
+## The big picture
+
+<PenFlow ariaLabel="atlas/agent-protocols overview" rows={[{ steps: { title: 'Discover', lines: ['identify available tools'], tone: 'blue' } }, { steps: { title: 'Request', lines: ['send structured input'], tone: 'purple' } }, { steps: { title: 'Authorize', lines: ['scope the capability'], tone: 'orange' } }, { steps: { title: 'Return', lines: ['validate and record result'], tone: 'green' } }]} caption="identify available tools." />
+
+## Worked example
+
+The protocols Atlas organizes agent communication into layers and roles.
+
+## Try it yourself
+
+# Try it: Layer boundaries clarify discovery, authorization and execution responsibilities.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Trusting tool metadata blindly | Descriptions can be misleading | Validate schemas and permissions |
+| Ignoring authorization boundaries | A protocol does not make actions safe | Apply least privilege |
+| Mixing transport and task semantics | Debugging becomes unclear | Keep interface, transport and policy distinct |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| No external tools are needed | Use a direct model call |
+| A protocol cannot meet the security model | Use a controlled internal interface |

@@ -8,7 +8,13 @@ import { ELI5 } from '../../../components/content/ExpandableDepth';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import AgentArchitectureAtlas from '../../../components/atlas/agents/AgentArchitectureAtlas';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Agent Architecture Atlas
+
+## Why it exists
+
+Agent behavior depends on the surrounding system: tools, memory, control flow and permissions determine what the model can do. Comparing architectures by these boundaries makes design choices clearer.
 
 A capable model does not determine whether an agent finishes a long task. The surrounding control flow decides what the model sees, which actions it may take, how failures change the next attempt and what survives when one context window ends. This atlas follows the architectures that made those decisions explicit, in date order.
 
@@ -39,3 +45,30 @@ Open an entry and read it in order: the limit it answered, what changed, then th
 These entries did not replace one another. A production research agent can route the request, ask an orchestrator to create parallel searches, run each worker as a ReAct loop, compact the findings into a smaller context and store a cited report for the next session. The architecture is the set of choices that connects those parts and limits their behavior.
 
 The diagrams show control flow, not model internals. When a system fails, identify which layer made the decision: the model, the tool interface, the router, the memory policy, the graph transition or the durable harness.
+
+## The big picture
+
+<PenFlow ariaLabel="atlas/agent-architecture overview" rows={[{ steps: { title: 'Model', lines: ['reasoning and action choice'], tone: 'blue' } }, { steps: { title: 'Tools', lines: ['available capabilities'], tone: 'purple' } }, { steps: { title: 'Control flow', lines: ['loop, graph or handoff'], tone: 'orange' } }, { steps: { title: 'Guardrails', lines: ['permissions and state'], tone: 'green' } }]} caption="reasoning and action choice." />
+
+## Worked example
+
+The Atlas compares agent architecture choices by the system surrounding the model.
+
+## Try it yourself
+
+# Try it: The architecture boundary determines both capabilities and failure modes.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Selecting a model before tools and task | The system requirement is underspecified | Map inputs, actions and success first |
+| Giving broad tool access | The agent can take unintended actions | Scope permissions |
+| Ignoring state and recovery | Long tasks can lose context | Define memory and failure handling |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| A single model response is sufficient | Use a direct model call |
+| Actions are unsafe and cannot be contained | Do not enable autonomous execution |

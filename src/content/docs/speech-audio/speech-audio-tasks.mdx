@@ -14,6 +14,9 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Speech & Audio Tasks
 
 <ELI5>
@@ -22,7 +25,7 @@ There are a handful of jobs we give a computer that listens. Write down what was
 
 </ELI5>
 
-## Why This Exists
+## Why it exists
 
 [Audio Fundamentals](/docs/speech-audio/audio-fundamentals) turned a waveform into a log-mel spectrogram: about 100 frames per second, each a vector of 80 numbers. Every task on this page starts there and reuses the sequence-modelling and attention machinery from [Deep Learning](/docs/deep-learning/roadmap). What differs is the shape of the output. Speech recognition must turn 100 frames per second into a few words per second without knowing which frames belong to which word. Synthesis runs the other way and must invent detail the text does not contain. Verification must turn a whole clip into one point in an embedding space. Most of the engineering is about those mismatches, and about measuring the result correctly.
 
@@ -170,7 +173,7 @@ Enhancement removes noise or isolates one voice. Models are trained on pairs mad
 
 Audio-language models extend the [VLM design](/docs/computer-vision/modern-vision-and-multimodal#vision-language-models-and-image-text-alignment) to sound: an audio encoder feeds projected features into an LLM, the same encoder, projector and LLM layout as in [Multimodal & Generative Models](/docs/llms-genai/multimodal-generative-models). Voice assistants are moving from a cascade (ASR, then an LLM, then TTS) to such models. A cascade adds the latency of three stages and throws away tone, emphasis and pauses when it reduces speech to text; a speech-native model keeps them and can start answering sooner.
 
-## Common Problems & Fixes
+## Common mistakes
 
 | Problem | Cause | Fix |
 | --- | --- | --- |
@@ -180,7 +183,7 @@ Audio-language models extend the [VLM design](/docs/computer-vision/modern-visio
 | Verification works in the lab, fails on phones | Channel mismatch between enrolment and test | Enrol on the same channel; augment with codecs and noise |
 | Diarization merges two similar voices | Embeddings too close; overlap | Tune the clustering threshold; an overlap-aware model |
 
-## When *Not* to Use It
+## When not to use it
 
 | Situation | Better choice |
 | --- | --- |
@@ -188,6 +191,35 @@ Audio-language models extend the [VLM design](/docs/computer-vision/modern-visio
 | Live captions with under 300 ms of delay | Streaming CTC or transducer models, not a 30-second-window encoder-decoder |
 | High-security authentication | Voice as one factor with others; cloned voices defeat voice alone |
 | Transcribing one clear speaker offline | Plain ASR; skip diarization |
+
+## The big picture
+
+<PenFlow ariaLabel="speech-audio/speech-audio-tasks overview" rows={[{ steps: { title: 'Input frames', lines: ['about 100 frames per second'], tone: 'blue' } }, { steps: { title: 'Choose task', lines: ['ASR, TTS, verification or diarization'], tone: 'purple' } }, { steps: { title: 'Produce output', lines: ['text, waveform, identity or timeline'], tone: 'orange' } }, { steps: { title: 'Measure task fit', lines: ['WER, MOS, EER or DER'], tone: 'green' } }]} caption="about 100 frames per second." />
+
+<Worksheet title="CTC decoding and WER" ariaLabel="CTC decoding and WER" stages={[{ tag: "Inputs", color: "yellow", note: "The printed alignment collapses to hello. Against the five-word reference, the page’s hypotheses have WER 0.00, 0.20, 0.40 and 1.00.", grid: { head: ['', 'WER'], rows: [{ label: 'exact reference', cells: ['0.00'] }, { label: 'one substitution', cells: ['0.20'] }, { label: 'one deletion + substitution', cells: ['0.40'] }, { label: 'five insertions', cells: ['1.00'] }] } }]} />
+
+## Worked example
+
+The CTC frame sequence decodes to “hello” because a blank separates repeated letters. In the WER examples, the five inserted words produce 5/5 = 1.00 even though all reference words remain in order.
+
+## Try it yourself
+
+# Try it: WER counts substitutions, deletions and insertions against the reference-word count.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Dropping CTC blanks before repeat merging | Repeated letters collapse incorrectly | Merge adjacent repeats, then remove blanks |
+| Ignoring text normalization | Punctuation and case inflate WER | Normalize both reference and hypothesis |
+| Using one threshold for all speakers | False accepts and rejects trade off | Choose an operating point for the risk |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| Only fixed wake words are needed | Use keyword spotting |
+| High-security identity relies on voice alone | Use multiple authentication factors |
 
 ## Remember
 
