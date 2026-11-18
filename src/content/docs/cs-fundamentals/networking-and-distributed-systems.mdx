@@ -11,9 +11,24 @@ import LoadBalancingDiagram from '../../../viz/diagrams/LoadBalancingDiagram';
 import CapTheoremDiagram from '../../../viz/diagrams/CapTheoremDiagram';
 import ConsensusQuorumDiagram from '../../../viz/diagrams/ConsensusQuorumDiagram';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
+
+
+## Why it exists
+
+A networked service cannot assume one machine, one clock, or one request path. Latency, failure, retries, and partial results shape the behavior of every distributed system.
 # Networking & Distributed Systems
 
 Every inference API call, every distributed training run, every RAG system's vector DB query crosses a network — and networks fail in ways local function calls never do: partially, slowly, and unpredictably.
+
+
+## The big picture
+
+<PenFlow title="Trace a distributed request" ariaLabel="Trace a distributed request" rows={[{ steps: { title: 'Send request', lines: ['Client crosses a network boundary'], tone: 'blue' } }, { steps: { title: 'Handle delay or loss', lines: ['Timeout does not prove failure'], tone: 'purple' } }, { steps: { title: 'Retry safely', lines: ['Use idempotency and bounded backoff'], tone: 'orange' } }, { steps: { title: 'Observe result', lines: ['Trace service and request identity'], tone: 'green' } }]} caption="A retry can duplicate a completed action unless the operation is idempotent." />
+
+<Worksheet title="Request failure questions" ariaLabel="Request failure questions" stages={[{ tag: 'Distributed-systems trace', color: 'yellow', note: 'Use the concepts named in this chapter.', grid: { head: ['', 'Question'], rows: [{ label: 'Client times out', cells: ['Did the server finish before the response was lost?'] }, { label: 'Client retries', cells: ['Can the operation safely repeat?'] }, { label: 'Multiple services', cells: ['Which trace id links the request path?'] }, { label: 'Recovery', cells: ['What bounded retry or fallback applies?'] }] } }]} />
 
 ## HTTP Basics
 
@@ -99,4 +114,28 @@ Everything above compounds once you have many machines doing one job together:
 - **Stragglers**: in synchronous distributed training (see [Distributed AI](/docs/mlops/gpu-and-distributed-training)'s data/tensor/pipeline parallelism), every worker must finish a step before any can proceed to the next — one slow worker (a flaky GPU, a network hiccup) slows down the entire job, not just its own share of the work.
 - **Network partitions**: a group of nodes losing connectivity to the rest doesn't look like a clean failure — it looks like both sides being unable to tell whether the other side crashed or is just unreachable, which is exactly the scenario the CAP theorem above is about.
 
+## Worked example
+
+A client timeout leaves two possible states: the server never completed the action, or it completed and the response was lost. A retry must therefore carry an idempotency key or use an operation that is safe to repeat; tracing identifies where the request stopped.
+
+## Try it yourself
+
+Choose a payment or job-submission request. Write the timeout, retry, idempotency, and trace behavior the client and server must agree on.
+
+```python
+# Try it: Choose a payment or job-submission request. Write the timeout, retry, idempotency, and trace behavior the client and server must agree on.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat timeout as proof the server did nothing | The response can be lost after commit | Use idempotency keys and queryable operation state |
+| Retry indefinitely | Persistent failure can amplify load | Bound attempts and use backoff |
+| Assume clocks are synchronized | Distributed timestamps can disagree | Use explicit ordering, IDs, and causal evidence |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
 Next: [Linux, Git & Developer Tooling](/docs/cs-fundamentals/linux-git-and-tooling) — the daily tools every AI engineering job assumes fluency in.

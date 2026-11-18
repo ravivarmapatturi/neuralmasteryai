@@ -8,6 +8,9 @@ description: "Real adversarial tools (PyRIT, Promptfoo) for systematically testi
 import AgenticTop10CoverageDiagram from '../../../viz/diagrams/AgenticTop10CoverageDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # AI Red Teaming & Adversarial Testing
 
 [OWASP LLM Top 10 & Prompt Attacks](/docs/ai-security/owasp-llm-top-10-and-prompt-attacks) and [Model & Data Attacks](/docs/ai-security/model-and-data-attacks) taught the *attacks*. This page is the missing other half: how you actually go find out, systematically and repeatably, whether a specific system you built is vulnerable to any of them — not by reading a taxonomy and hoping, but by running real adversarial tools against it.
@@ -17,6 +20,18 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 Knowing the theory of lock-picking doesn't tell you whether *your specific* front door is actually pickable — you have to try picking it, with real tools, and see what happens. Red-teaming is that for an AI system: instead of just listing "prompt injection is a risk" and hoping your system handles it, you run real adversarial tools that actually try to trick your agent — feed it disguised instructions, push it to overstep its permissions, see if it leaks what tools it has — and see what actually gets through versus what your defenses actually stop.
 
 </ELI5>
+
+## Why it exists
+
+Red teaming tests how attacks combine across a deployed model, data sources, and tools. Frameworks provide structured test categories; a gateway and runtime guard must enforce the controls that a test plan discovers are missing.
+
+
+
+## The big picture
+
+<PenFlow title="Turn a red-team finding into a regression test" ariaLabel="Turn a red-team finding into a regression test" rows={[{ steps: { title: 'Map the system', lines: ['Prompts, tools, data, and permissions'], tone: 'blue' } }, { steps: { title: 'Select attack path', lines: ['Use a framework category'], tone: 'purple' } }, { steps: { title: 'Exercise runtime', lines: ['Trace actions through the gateway'], tone: 'orange' } }, { steps: { title: 'Record and retest', lines: ['Add a repeatable regression case'], tone: 'green' } }]} caption="A finding becomes useful when the defense can reproduce and block it." />
+
+<Worksheet title="Red-team finding record" ariaLabel="Red-team finding record" stages={[{ tag: 'Framework-to-control trace', color: 'yellow', note: 'Categories and runtime concepts from this page.', grid: { head: ['', 'Record'], rows: [{ label: 'Attack surface', cells: ['Prompt, tool, memory, or external service'] }, { label: 'Framework mapping', cells: ['OWASP agent risk and MITRE ATLAS technique'] }, { label: 'Observed action', cells: ['Gateway trace and affected permission'] }, { label: 'Regression case', cells: ['Input, expected block, and evidence'] }] } }]} />
 
 ## A Second Top 10, Specifically for Agents
 
@@ -69,4 +84,28 @@ Once a red-team run produces findings, map them to a shared taxonomy rather than
 
 Red-teaming and runtime defense are meant to compose, not stand alone. [Agent Security Gateway](https://github.com/ravivarmapatturi/Agent_Security_Gateway) is a concrete, complete example: an OPA/Rego policy engine gates every tool call the demo agent proposes (deny-by-default, human-approval-only for high-risk actions — see [Agent Architectures](/docs/agents/agent-architectures)), Agent Memory Guard screens what gets written to memory, and the Promptfoo config above is what actually tries to break both, so the finding isn't "we think this is safe" but "here's what we tried, and here's what got through vs. what didn't."
 
-AI Security section complete. Next: [AI Safety & Alignment](/docs/ai-safety/roadmap) — a related but distinct discipline: security defends against adversaries, safety is about a well-intentioned system still behaving badly on its own.
+AI Security section complete. ## Worked example
+
+A red-team exercise maps a tool-abuse attempt to a framework category, observes whether the gateway allows the action, and records the trace. The team then adds the input and expected block to a regression set and reruns it after changing the control.
+
+## Try it yourself
+
+Choose one tool permission and create a test case with attacker-controlled content, expected gateway decision, and a trace field that proves the result.
+
+```python
+# Try it: Choose one tool permission and create a test case with attacker-controlled content, expected gateway decision, and a trace field that proves the result.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Stop at a successful exploit demo | A demo does not show whether a fix persists | Add a regression case and rerun it |
+| Test only isolated prompts | Real failures often chain retrieval and tools | Exercise the integrated workflow |
+| Record findings without owners | Mitigations can remain unimplemented | Assign an owner, deadline, and retest evidence |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+Next: [AI Safety & Alignment](/docs/ai-safety/roadmap) — a related but distinct discipline: security defends against adversaries, safety is about a well-intentioned system still behaving badly on its own.

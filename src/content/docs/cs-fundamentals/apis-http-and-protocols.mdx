@@ -16,6 +16,14 @@ import PatternComparisonMatrixDiagram from '../../../viz/diagrams/PatternCompari
 import FastApiRequestFlowDiagram from '../../../viz/diagrams/FastApiRequestFlowDiagram';
 import DependencyInjectionDiagram from '../../../viz/diagrams/DependencyInjectionDiagram';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
+
+
+## Why it exists
+
+An API is a contract for resource identity, request shape, status, and compatibility. Protocol choices determine how clients retry, stream, authenticate, and evolve without silently changing behavior.
 # APIs, HTTP & Communication Patterns
 
 An **API** (Application Programming Interface) is a contract: a defined way for one piece of software to ask another for something, without needing to know how the other side is implemented internally. That definition sounds abstract until you notice how much of modern AI engineering *is* API calls, end to end:
@@ -26,6 +34,13 @@ An **API** (Application Programming Interface) is a contract: a defined way for 
 - A model-serving endpoint you deploy (see [Model Serving](/docs/mlops/model-serving)) is a web API you write, and the framework you write it in is almost certainly the one covered at the end of this page.
 
 This page is the foundation those four things build on: how HTTP actually works, how REST structures an API around it, how authentication and authorization work, the handful of communication patterns that cover *every* way two systems exchange data over a network, and FastAPI — the framework you'll actually use to build one of these.
+
+
+## The big picture
+
+<PenFlow title="Follow a versioned API request" ariaLabel="Follow a versioned API request" rows={[{ steps: { title: 'Define contract', lines: ['Method, path, schema, and status'], tone: 'blue' } }, { steps: { title: 'Validate request', lines: ['Reject malformed or unauthorized input'], tone: 'purple' } }, { steps: { title: 'Return result', lines: ['Use stable error and response shapes'], tone: 'orange' } }, { steps: { title: 'Evolve safely', lines: ['Preserve compatibility or version changes'], tone: 'green' } }]} caption="A protocol contract includes errors and evolution, not only successful responses." />
+
+<Worksheet title="API contract checklist" ariaLabel="API contract checklist" stages={[{ tag: 'Contract fields', color: 'yellow', note: 'The worksheet follows the chapter’s protocol design topics.', grid: { head: ['', 'Decision'], rows: [{ label: 'Resource', cells: ['What identifier and method address it?'] }, { label: 'Input', cells: ['What schema and validation apply?'] }, { label: 'Failure', cells: ['Which status and error shape does the client receive?'] }, { label: 'Evolution', cells: ['How do old clients remain compatible?'] }] } }]} />
 
 ## The Request/Response Cycle
 
@@ -204,4 +219,28 @@ async def generate(req: GenerateRequest, user_id: str = Depends(get_current_user
 - [Model Serving](/docs/mlops/model-serving) covers what sits *behind* the API you now understand the shape of: batching, autoscaling, and the infrastructure serving these endpoints at scale.
 - [LLM Inference Optimization](/docs/mlops/llm-inference-optimization) covers TTFT (time-to-first-token) and inter-token latency — metrics that only make sense once you know these are being measured over a streaming SSE connection, not a single request/response round trip.
 
+## Worked example
+
+For a resource update, a client sends a defined method and schema. The server validates authorization and input, then returns a stable success or error shape. A later schema change needs a compatibility rule or explicit version boundary.
+
+## Try it yourself
+
+Pick one endpoint from a project and write its success, validation failure, authorization failure, and compatibility behavior.
+
+```python
+# Try it: Pick one endpoint from a project and write its success, validation failure, authorization failure, and compatibility behavior.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Document only the happy path | Clients need deterministic error handling | Specify errors, retries, and status codes |
+| Change response fields without a policy | Existing clients can break silently | Preserve compatibility or version the contract |
+| Treat authentication as authorization | A valid identity may lack access to the resource | Check permission for every operation |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
 Next: [Linux, Git & Developer Tooling](/docs/cs-fundamentals/linux-git-and-tooling) — the daily tools every AI engineering job assumes fluency in.

@@ -11,9 +11,24 @@ import GilReleaseDiagram from '../../../viz/diagrams/GilReleaseDiagram';
 import CpuCacheLatencyDiagram from '../../../viz/diagrams/CpuCacheLatencyDiagram';
 import SequentialVsRandomIoDiagram from '../../../viz/diagrams/SequentialVsRandomIoDiagram';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
+
+
+## Why it exists
+
+Concurrency changes how work is scheduled and isolated. In CPython, threads can overlap I/O but the GIL limits CPU-bound Python bytecode; processes provide parallel execution at higher coordination cost.
 # Operating Systems & Concurrency
 
 Every "why is my training script slow" and "why did two processes corrupt each other's state" question eventually traces back to something in this page.
+
+
+## The big picture
+
+<PenFlow title="Choose threads or processes" ariaLabel="Choose threads or processes" rows={[{ steps: { title: 'Classify work', lines: ['CPU-bound or I/O-bound?'], tone: 'blue' } }, { steps: { title: 'Choose execution', lines: ['Threads for shared I/O waits'], tone: 'purple' } }, { steps: { title: 'Parallelize CPU work', lines: ['Use processes when isolation is acceptable'], tone: 'orange' } }, { steps: { title: 'Measure overhead', lines: ['Include startup and data transfer'], tone: 'green' } }]} caption="The GIL and process boundaries change the cost of parallel work." />
+
+<Worksheet title="Concurrency example comparison" ariaLabel="Concurrency example comparison" stages={[{ tag: 'Recorded comparison', color: 'yellow', note: 'The page compares four-worker execution on a multi-core machine.', grid: { head: ['', 'Expected relationship'], rows: [{ label: '4 threads', cells: ['Approximately the time for 1 thread; GIL serializes CPU work'] }, { label: '4 processes', cells: ['Approximately one quarter the threaded time on 4+ cores'] }] } }]} />
 
 ## Processes vs. Threads
 
@@ -95,4 +110,28 @@ with open("weights.safetensors", "rb") as f:
     tensor_bytes = mm[1024:2048]  # only these pages actually get read from disk, lazily
 ```
 
+## Worked example
+
+For the page’s CPU-bound example, four threads take approximately the time of one thread because the GIL serializes Python bytecode. Four processes can approach one-quarter of the threaded time on a machine with at least four cores, before process overhead.
+
+## Try it yourself
+
+Change the workload to include a blocking network wait. Predict whether threads or processes are the simpler fit, then measure on your runtime.
+
+```python
+# Try it: Change the workload to include a blocking network wait. Predict whether threads or processes are the simpler fit, then measure on your runtime.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Use threads for CPU parallelism in CPython | The GIL serializes bytecode execution | Use processes or native code when CPU parallelism matters |
+| Spawn processes for tiny tasks | Startup and serialization can dominate | Measure end-to-end overhead |
+| Share mutable state without a protocol | Concurrent updates race | Use locks, queues, or immutable messages |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
 Next: [Networking & Distributed Systems](/docs/cs-fundamentals/networking-and-distributed-systems) — the same concurrency/isolation tradeoffs above, at the scale of multiple machines instead of multiple processes on one.

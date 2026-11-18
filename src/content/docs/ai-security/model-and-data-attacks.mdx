@@ -10,9 +10,24 @@ import ModelExtractionDiagram from '../../../viz/diagrams/ModelExtractionDiagram
 import AdversarialPerturbationDiagram from '../../../viz/diagrams/AdversarialPerturbationDiagram';
 import BackdoorTriggerDiagram from '../../../viz/diagrams/BackdoorTriggerDiagram';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
+
+
+## Why it exists
+
+Some attacks target what the model contains or how it was trained, not merely what it is instructed to do. The watermarking example shows how text edits weaken a statistical detection signal; membership inference estimates whether a record was in training.
 # Model & Data Attacks
 
 A separate attack family from [prompt-based attacks](/docs/ai-security/owasp-llm-top-10-and-prompt-attacks): these target the model artifact, its training data, or the broader supply chain that produced it — attacks that don't go through the model's normal input/output interface at all, or that corrupt what the model learns in the first place.
+
+
+## The big picture
+
+<PenFlow title="Assess model and data exposure" ariaLabel="Assess model and data exposure" rows={[{ steps: { title: 'Name the asset', lines: ['Weights, training data, or provenance'], tone: 'blue' } }, { steps: { title: 'Choose attack', lines: ['Extraction, inference, poisoning, or backdoor'], tone: 'purple' } }, { steps: { title: 'Measure signal', lines: ['Compare confidence or watermark z-score'], tone: 'orange' } }, { steps: { title: 'Mitigate', lines: ['Limit access and validate provenance'], tone: 'green' } }]} caption="The attack method depends on whether the target is data, model behavior, or provenance." />
+
+<Worksheet title="Watermark editing results" ariaLabel="Watermark editing results" stages={[{ tag: 'Printed z-score samples', color: 'yellow', note: 'The four-seed outputs are copied from the page.', grid: { head: ['', 'Observed z-scores'], rows: [{ label: '25% tokens edited', cells: ['7.2, 10.3, 7.0, 8.3'] }, { label: '50% tokens edited', cells: ['3.8, 4.4, 4.4, 1.6'] }] } }]} />
 
 ## Intuition: Attacking What the Model *Is*, Not What It's *Told*
 
@@ -117,7 +132,7 @@ for fraction in (0.25, 0.5):
     print(f"{fraction:.0%} of tokens edited", [round(z_score(edit(generate(200, True, s), fraction, s)), 1) for s in range(4)])
 ```
 
-```text
+```output
 plain text       [-0.3, -0.2, -0.3, 0.3]
 watermarked      [15.7, 17.5, 13.9, 14.4]
 25% of tokens edited [7.2, 10.3, 7.0, 8.3]
@@ -156,4 +171,28 @@ gap = np.mean(train_confidences) - np.mean(heldout_confidences)
 print(f"Real confidence gap (bigger = more vulnerable to membership inference): {gap:.3f}")
 ```
 
+## Worked example
+
+When 25% of tokens are edited, the four printed watermark z-scores are 7.2, 10.3, 7.0, and 8.3. At 50% edits, they fall to 3.8, 4.4, 4.4, and 1.6. Editing weakens the detection signal, so a watermark is provenance evidence with limits, not proof by itself.
+
+## Try it yourself
+
+Compare the two edit rates. Identify which scores remain separated from ordinary noise and what additional provenance evidence you would preserve.
+
+```python
+# Try it: Compare the two edit rates. Identify which scores remain separated from ordinary noise and what additional provenance evidence you would preserve.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat a watermark as proof of authorship | Editing and paraphrase can weaken the signal | Combine watermark checks with other provenance controls |
+| Use confidence alone to infer membership | Model confidence has task and calibration effects | Compare held-out and known-training samples carefully |
+| Train on unvetted data | Poisoned examples can create persistent behavior | Track sources and inspect anomalous clusters |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
 Next: [AI Red Teaming & Adversarial Testing](/docs/ai-security/ai-red-teaming) — how you systematically test a real system for everything covered on this page and the last one, rather than just knowing the taxonomy.

@@ -10,9 +10,24 @@ import DirectVsIndirectInjectionDiagram from '../../../viz/diagrams/DirectVsIndi
 import DefenseInDepthDiagram from '../../../viz/diagrams/DefenseInDepthDiagram';
 import ExcessiveAgencyDiagram from '../../../viz/diagrams/ExcessiveAgencyDiagram';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
+
+
+## Why it exists
+
+Prompt injection, insecure outputs, excessive agency, and tool abuse arise because untrusted content and instructions share a model context while tools can have real permissions. Defense requires controls at the input, output, and action boundaries.
 # OWASP LLM Top 10 & Prompt Attacks
 
 The standard reference taxonomy for LLM application vulnerabilities, and the attack family that's genuinely new relative to classical application security: attacks that work entirely through natural-language input, with no code injection or exploit in the traditional sense at all.
+
+
+## The big picture
+
+<PenFlow title="Place controls around a model action" ariaLabel="Place controls around a model action" rows={[{ steps: { title: 'Mark untrusted input', lines: ['Separate user task from retrieved text'], tone: 'blue' } }, { steps: { title: 'Constrain output', lines: ['Validate structure and content'], tone: 'purple' } }, { steps: { title: 'Scope tools', lines: ['Allow only required actions'], tone: 'orange' } }, { steps: { title: 'Gate side effects', lines: ['Confirm sensitive operations'], tone: 'green' } }]} caption="A prompt defense alone cannot constrain a tool’s real-world permissions." />
+
+<Worksheet title="Trace an indirect-injection path" ariaLabel="Trace an indirect-injection path" stages={[{ tag: 'Attack chain', color: 'yellow', note: 'Risk labels and controls match the page’s examples.', grid: { head: ['', 'Boundary'], rows: [{ label: 'Retrieved page contains instructions', cells: ['Indirect prompt injection'] }, { label: 'Model forms a tool call', cells: ['Tool abuse / excessive agency'] }, { label: 'Tool can send private data', cells: ['Data exfiltration risk'] }, { label: 'Controls', cells: ['Treat content as data; scope tools; confirm writes'] }] } }]} />
 
 ## Intuition: One Structural Gap, Many Named Vulnerabilities
 
@@ -84,4 +99,28 @@ def validate_tool_call(tool_name: str, args: dict) -> bool:
     return True
 ```
 
+## Worked example
+
+A retrieved page can carry an instruction that conflicts with the user’s task. If the model can call a broad send tool, the page may steer it toward data exfiltration. Separating retrieved text from policy, narrowing tool permissions, and confirming sensitive actions interrupt different links in the chain.
+
+## Try it yourself
+
+Write a test where a retrieved document asks the model to invoke a tool outside the user’s task. State which input, tool, and approval controls should block it.
+
+```python
+# Try it: Write a test where a retrieved document asks the model to invoke a tool outside the user’s task. State which input, tool, and approval controls should block it.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Rely on a system prompt to reject every injection | The model still reads hostile content in context | Treat external text as data and enforce permissions in code |
+| Validate JSON shape only | Valid structure can carry unsafe intent | Check tool names, arguments, and policy before execution |
+| Give the model broad write tools | Excessive agency expands impact | Scope tools and require confirmation for side effects |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
 Next: [Model & Data Attacks](/docs/ai-security/model-and-data-attacks) — attacks that target the model artifact and training data directly, rather than working through the model's normal input/output interface.

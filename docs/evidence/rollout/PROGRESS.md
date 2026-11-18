@@ -257,3 +257,9 @@ The updated local notebook import guard exposed that Agent Architectures rendere
 Finished the Search & Recommendation overview, Harness Engineering overview/roadmap, MLOps overview/roadmap, and AI Evaluation overview/roadmap/fundamentals. Worksheets use the search funnel's stated scale, harness ablation/context figures and AST output, linked chapter routes, and the evaluation simulator default contamination calculation (62% true capability, 15% contamination → 67.7% reported). Scorecard: `rest-1/scorecard.md`.
 
 Static gates passed on the combined worktree: notebook (8 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser captures, and build remain deferred under low-memory constraints. No push.
+
+## Rest batch 2 — eight pages
+
+Standardized the five AI Security overview/roadmap/attack/red-team pages plus CS Fundamentals' Operating Systems, Networking, and API/HTTP chapters. Worksheets preserve watermark z-scores at two edit rates, the Python threads/processes comparison, and the attack/request paths. The prose and output blocks remain intact; printed outputs are labeled `output`. Scorecard: `rest-2/scorecard.md`.
+
+Static gates passed on the combined worktree: notebook (16 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under low-memory constraints. No push.

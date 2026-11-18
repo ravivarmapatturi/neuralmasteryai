@@ -5,11 +5,26 @@ description: "Real attack surfaces unique to AI systems: prompt injection, model
 ---
 
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
+
+
+## Why it exists
+
+AI security protects models, data, tools, and users from adversarial inputs and compromised components. The section links attacks on prompts and interfaces to attacks on training data and model artifacts, then to systematic red teaming.
 # AI Security — Overview
 
 [Security & Reproducibility](/docs/mlops/security-and-reproducibility) covers the operational security checklist every production system needs (IAM, secrets, TLS, dependency scanning) plus a brief LLM-specific list. This section goes deep on the part that's genuinely different from ordinary application security: **AI systems have attack surfaces that don't exist in traditional software at all** — a model can be attacked through its inputs, its training data, or the model artifact itself, in ways a REST API with a SQL database simply isn't exposed to.
 
 This should be treated as mandatory, not optional reading, for anyone shipping an LLM-based or ML-based system to real users — the failure modes here aren't hypothetical; they're actively exploited in production systems today.
+
+
+## The big picture
+
+<PenFlow title="Map the AI security boundary" ariaLabel="Map the AI security boundary" rows={[{ steps: { title: 'Protect inputs', lines: ['Prompt attacks and injection'], tone: 'blue' } }, { steps: { title: 'Protect artifacts', lines: ['Data, models, and supply chain'], tone: 'purple' } }, { steps: { title: 'Probe behavior', lines: ['Red-team system paths'], tone: 'orange' } }, { steps: { title: 'Reduce exposure', lines: ['Scope tools and validate output'], tone: 'green' } }]} caption="The security boundary spans prompt, model, data, tools, and deployment." />
+
+<Worksheet title="Choose the security chapter" ariaLabel="Choose the security chapter" stages={[{ tag: 'Section route', color: 'yellow', note: 'Existing pages are grouped by attack surface.', grid: { head: ['', 'Read'], rows: [{ label: 'Attacks through prompts and outputs', cells: ['OWASP LLM Top 10 & Prompt Attacks'] }, { label: 'Attacks on model or training data', cells: ['Model & Data Attacks'] }, { label: 'How to test an integrated system', cells: ['AI Red Teaming & Adversarial Testing'] }] } }]} />
 
 ## What's in this section
 
@@ -22,3 +37,27 @@ This should be treated as mandatory, not optional reading, for anyone shipping a
 Traditional application security assumes a clear boundary between *code* (trusted, written by your team) and *data* (untrusted, comes from users). LLM systems blur that boundary specifically: the model's behavior is steered by *natural language in its input*, and there's no hard, reliable mechanical separation between "instructions" and "data" the way there is between SQL code and a SQL parameter. Nearly every vulnerability category in this section is a variation on that same blurred boundary — treat it as the unifying idea, not 15 unrelated attack types to memorize separately.
 
 See the [roadmap](/docs/ai-security/roadmap) for the full ordered path.
+## Worked example
+
+A team reviewing a tool-using assistant first checks prompt and output handling, then the integrity of the model and training data, and finally probes the integrated system with a red-team plan.
+
+## Try it yourself
+
+Pick a deployed feature and list one prompt-surface risk, one model/data risk, and one red-team test for it.
+
+```python
+# Try it: Pick a deployed feature and list one prompt-surface risk, one model/data risk, and one red-team test for it.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Focus only on prompts | Model artifacts, data, tools, and supply chain add attack paths | Review the full system boundary |
+| Treat a single fix as complete security | Each defense covers only some failure modes | Layer permissions, validation, monitoring, and response |
+| Skip adversarial testing | Happy-path tests miss attacker behavior | Add a repeatable red-team plan |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
