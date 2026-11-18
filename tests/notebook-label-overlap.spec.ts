@@ -24,6 +24,9 @@ const ROUTES = [
   'docs/llms-genai/prompt-engineering',
   'docs/llms-genai/rag',
   'docs/mlops/llm-inference-optimization',
+  'docs/mlops/overview',
+  'docs/mlops/roadmap',
+  'docs/mlops/experiment-tracking',
   // Keep the already-approved pilot last so the Vite dev server has warmed its
   // route modules before this large lazy-loaded page is checked.
   'docs/search-ranking-recommendations/tf-idf',

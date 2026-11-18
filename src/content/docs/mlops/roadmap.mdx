@@ -3,168 +3,39 @@ title: "MLOps — Roadmap"
 sidebar_position: 2
 description: "Everything between a notebook model and one that reliably serves production traffic -- data pipelines, containers, K8s, CI/CD, monitoring, LLM serving."
 ---
+import PenFlow from '../../../components/notebook/PenFlow';
+import { ELI5 } from '../../../components/content/ExpandableDepth';
 
+# MLOps Roadmap
 
-# MLOps — Roadmap
+<ELI5>
 
-Everything between "a model that works in a notebook" and "a model that reliably serves real traffic, gets monitored, and retrains itself." Assumes [Machine Learning](/docs/machine-learning/roadmap) and [Deep Learning](/docs/deep-learning/roadmap) — this section is about running models in production, not training them.
+Training a model is like preparing one meal. MLOps is the kitchen process that makes the meal safely and consistently for every customer: ingredients are checked, the recipe is recorded, the kitchen is monitored, and a bad batch can be traced and replaced. These chapters build that process from data to production feedback.
 
-## 0. Prerequisites
-- [x] Python: OOP, type hints, virtual environments, `pip`/`uv`, `pyproject.toml`, logging, exceptions, `pytest`, async basics
-- [x] Linux: filesystem, processes, permissions, env vars, SSH, bash, `grep`/`awk`/`sed`/`curl`, `systemd`, cron, basic networking
-- [x] Git: branching, merge/rebase, pull requests, hooks, GitHub Actions, semantic versioning
+</ELI5>
 
-## 1. [Engineering Foundations for ML](/docs/mlops/engineering-foundations)
-- [x] Clean code, SOLID principles, modular architecture, config/dependency management, API design
-- [x] Unit, integration, end-to-end, regression, data validation, model, API, and load testing
-- [x] `pytest`, `unittest`, `mock`, Locust, Postman
+## What you will learn
 
-## 2. [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)
-- [x] The data pipeline: source → ingestion → validation → transformation → storage → feature engineering → training
-- [x] SQL (Postgres/MySQL), Redis, MongoDB basics; Pandas/NumPy/Polars/PySpark
-- [x] Data versioning, lineage, reproducibility — DVC, LakeFS, Delta Lake, Apache Iceberg
-- [x] Data contracts and schema evolution
+Follow one model from a reproducible training run through serving, monitoring, and a safe update. Each chapter adds one control that helps the team explain and operate the system.
 
-## 3. [Experiment Tracking](/docs/mlops/experiment-tracking)
-- [x] What every experiment needs to answer: code, data, model, params, metrics, environment, result
-- [x] MLflow (Tracking, Projects, Models, Model Registry) — the must-know tool
-- [x] Alternatives: Weights & Biases, Neptune, Comet
+<PenFlow ariaLabel="MLOps learning path from engineering and data through training, deployment, and operations" rows={[
+  { steps: { title: 'Prepare', lines: ['Code, data, and dependencies'], tone: 'blue' } },
+  { steps: [{ title: 'Train', lines: ['Track runs and artifacts'], tone: 'purple' }, { title: 'Validate', lines: ['Test model and data'], tone: 'green' }] },
+  { steps: { title: 'Deploy', lines: ['Package and serve safely'], tone: 'orange' } },
+  { steps: { title: 'Operate', lines: ['Observe, learn, update'], tone: 'red' } },
+]} caption="Notice that production operation feeds evidence back into the next training run." />
 
-## 4. [Pipeline Orchestration](/docs/mlops/pipeline-orchestration)
-- [x] The ML lifecycle as a pipeline: validation → preprocessing → feature engineering → training → evaluation → registry → deployment → monitoring → retraining
-- [x] DAGs, task dependencies, scheduling, retries, caching, backfilling
-- [x] Airflow (DAG/Task/Operator/Scheduler/Executor/Sensor/XCom), Prefect, Dagster
+## The chapters
 
-## 5. [Containers](/docs/mlops/containers)
-- [x] Docker: images, containers, Dockerfile, Compose, volumes, networks, multi-stage builds, image optimization, container security
-- [x] Registries: Docker Hub, ECR, GCP Artifact Registry, Azure Container Registry
+- [Engineering Foundations for ML](/docs/mlops/engineering-foundations) — package, configure, test, and load-test a model service.
+- [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning) — validate data, build pipelines, and preserve lineage.
+- [Experiment Tracking](/docs/mlops/experiment-tracking) — record each run so its model and metrics can be reproduced.
+- [Pipeline Orchestration](/docs/mlops/pipeline-orchestration) — schedule and recover multi-step workflows.
+- [Containers](/docs/mlops/containers) — package the code and its runtime together.
+- [APIs & Model Serving](/docs/mlops/model-serving) — expose predictions with a stable interface.
+- [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift) — detect service failures and changing model inputs.
+- [Security & Reproducibility](/docs/mlops/security-and-reproducibility) — protect credentials and preserve the evidence needed to rebuild.
 
-## 6. [APIs & Model Serving](/docs/mlops/model-serving)
-- [x] FastAPI/Flask, REST, auth, validation, serialization, async APIs, versioning, rate limiting
-- [x] Batch, online, and streaming inference architectures
-- [x] Serving tools: FastAPI, MLflow serving, BentoML, TorchServe, NVIDIA Triton, Ray Serve, KServe
+## Start here
 
-## 7. [Cloud Computing for ML](/docs/mlops/cloud-computing)
-- [x] Pick one cloud and go deep — AWS as the reference: EC2/ECS/EKS/Lambda, S3/EBS, RDS/DynamoDB, SageMaker, VPC/ALB/API Gateway, IAM/Secrets Manager/KMS, ECR
-- [x] GCP equivalents: GCE/GKE/Vertex AI/BigQuery/Cloud Storage
-- [x] Azure equivalents: AKS/Azure ML/Azure OpenAI/Blob Storage
-- [x] Cloud-neutral patterns: why containers/Kubernetes/Terraform keep architecture portable across all three
-
-## 7.5. [Deploying Models on AWS & Azure](/docs/mlops/cloud-model-deployment)
-- [x] AWS: SageMaker real-time endpoints, Serverless Inference, Async Inference, Batch Transform, multi-model/multi-container endpoints
-- [x] AWS container-native: ECS, EKS, Lambda; Bedrock for managed LLMs
-- [x] Azure ML: managed online endpoints, batch endpoints
-- [x] Azure container-native: AKS, Container Apps, Container Instances; Azure OpenAI Service for managed LLMs
-
-## 8. [Kubernetes](/docs/mlops/kubernetes)
-- [x] Fundamentals: Pod, Deployment, Service, Namespace, ConfigMap, Secret, Volume/PV/PVC, Ingress, Job/CronJob
-- [x] Advanced: Helm, StatefulSets, DaemonSets, HPA, resource requests/limits, RBAC, network policies, Operators
-
-## 9. [Infrastructure as Code](/docs/mlops/infrastructure-as-code)
-- [x] Terraform: providers, resources, variables, outputs, modules, state, remote state, workspaces
-- [x] Immutable infrastructure vs configuration management; Ansible/Pulumi as alternatives
-
-## 10. [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd)
-- [x] CI (test/build/lint/scan) vs CD (deploy/test/production); GitHub Actions + Argo CD
-- [x] Why ML CI/CD needs data + model validation on top of code: drift checks, model regression testing, automated retraining
-
-## 11. [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry)
-- [x] Online vs offline features, feature freshness, training-serving skew; Feast
-- [x] Model versions/stages/lineage/promotion workflow; MLflow Model Registry, SageMaker Model Registry
-
-## 12. [Deployment Strategies](/docs/mlops/deployment-strategies)
-- [x] Blue-Green, Canary (gradual traffic shift), Shadow deployment, A/B testing
-
-## 13. [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift)
-- [x] Infrastructure, application, and ML-specific monitoring
-- [x] Data drift math: PSI, KL divergence, JS divergence, KS test, Chi-square, Wasserstein distance
-- [x] Data drift vs concept drift; Evidently, WhyLabs, Arize
-
-## 14. [Observability](/docs/mlops/observability)
-- [x] The three pillars: structured/centralized logs (ELK/OpenSearch/Loki), metrics (Prometheus/Grafana), traces (OpenTelemetry/Jaeger)
-
-## 15. [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training)
-- [x] CUDA, VRAM, CUDA cores vs Tensor cores, GPU utilization, memory bandwidth
-- [x] The CUDA programming model: SMs, warps, blocks, kernels, warp divergence, the memory hierarchy
-- [x] Occupancy, CUDA streams, CUDA graphs
-- [x] Profiling: Nsight Systems, Nsight Compute
-- [x] NVIDIA stack: CUDA, cuDNN, TensorRT, Triton, NCCL
-- [x] Data/model/pipeline/tensor/expert parallelism, FSDP, DeepSpeed, gradient accumulation, mixed precision
-- [x] 3D and 4D parallelism: how the strategies combine at frontier scale
-- [x] Elastic training and fault tolerance: checkpointing, failure recovery, dynamic worker scaling
-
-## 15.5. [Federated Learning](/docs/mlops/federated-learning)
-- [x] FedAvg: the round cycle (distribute, local train, upload, weighted aggregate), and the C/E/B hyperparameters
-- [x] Non-IID, unbalanced, massively-distributed, limited-communication -- why this isn't just "distributed training but slower"
-- [x] Differential privacy (central vs. local) and gradient clipping; secure aggregation
-- [x] Federated fine-tuning of LLMs with LoRA/PEFT updates instead of full weights
-- [x] Flower (`flwr`): ClientApp/ServerApp, the FedAvg strategy, `flwr run`
-
-## 16. [LLM Inference Engines](/docs/mlops/llm-inference-engines)
-- [x] The inference stack: API gateway → serving framework → inference engine → model runtime → GPU/CUDA
-- [x] Engine vs framework vs platform: inference engine *executes* the model, serving framework *exposes* it as an API, hosting platform *provides* the infrastructure, fine-tuning framework *trains/adapts* it (not the same job as an inference engine)
-- [x] Tier 1: vLLM, SGLang, llama.cpp, TensorRT-LLM, Hugging Face TGI, ONNX Runtime, OpenVINO
-- [x] Tier 2: NVIDIA Triton (general-purpose multi-framework serving, distinct from LLM-specific engines), DeepSpeed-Inference, ExecuTorch, MLX, MLC-LLM, Apache TVM, Ray Serve
-
-## 17. [LLM Inference Optimization](/docs/mlops/llm-inference-optimization)
-- [x] Quantization: FP32/FP16/BF16/FP8/INT8/INT4, PTQ vs QAT, GPTQ/AWQ/SmoothQuant/BitsAndBytes/HQQ/AQLM
-- [x] GGUF ecosystem: GGML, quantization levels (Q4_K_M, Q5_K_M, Q6_K, Q8_0), model formats (Safetensors/ONNX/TensorRT engine/GGUF/OpenVINO IR)
-- [x] KV cache, Paged Attention, prefix caching, KV cache quantization/sharing
-- [x] Attention variants: MHA vs MQA vs GQA vs MLA, and why they trade KV cache size differently
-- [x] FlashAttention (1/2/3), FlashInfer — IO-aware attention computation
-- [x] Speculative decoding: draft model, target model, acceptance rate
-- [x] Batching: static → dynamic → continuous; tensor/pipeline/data/expert parallelism
-- [x] Prefill vs decode (compute-bound vs memory-bandwidth-bound); TTFT, TPOT, P50/P95/P99 latency, tokens/sec, cost/1M tokens
-
-## 18. [LLM Hosting, Serving Patterns & LLMOps Monitoring](/docs/mlops/llm-hosting-and-serving-patterns)
-- [x] Cloud GPU hosting (AWS/GCP/Azure, RunPod, Modal, Together AI, Groq, Fireworks, HF Inference Endpoints) — the model→container→GPU VM→inference engine→load balancer→API stack
-- [x] Local hosting: Ollama, LM Studio, llama.cpp server, self-hosted vLLM
-- [x] Fine-tuning → inference handoff: where Unsloth (LoRA/QLoRA training) fits *before* a separate inference runtime (vLLM/llama.cpp/SGLang/TensorRT-LLM/Ollama) — not itself an inference engine
-- [x] Multi-LoRA serving: one base model, many swappable adapters
-- [x] Multimodal/VLM inference (image → vision encoder → projector → LLM) and serving it
-- [x] Embedding & reranker serving for RAG (TEI, vLLM-supported embeddings, Triton, FastAPI)
-- [x] LLMOps monitoring: token usage, cost, hallucination rate — the operational layer on top of the inference metrics above
-
-## 19. [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops)
-- [x] Traditional metrics (BLEU/ROUGE/F1) vs LLM-as-judge (faithfulness, relevance, groundedness)
-- [x] Ragas, DeepEval, LangSmith, Arize Phoenix
-- [x] RAG pipeline monitoring: chunk quality, retrieval latency, Recall@K/Precision@K/MRR/NDCG, hallucination
-
-## 20. [Security & Reproducibility](/docs/mlops/security-and-reproducibility)
-- [x] IAM, secrets management, API auth/RBAC, TLS, container/dependency scanning
-- [x] LLM-specific: prompt injection, data leakage, jailbreaks, excessive agency, PII protection (see [AI Security](/docs/ai-security/roadmap) for the full depth)
-- [x] Reproducibility checklist: code, data, model, params, environment, seeds, hardware
-
-## 20.1. [ML & LLM Testing](/docs/mlops/ml-and-llm-testing)
-- [x] Statistical tests, schema tests, model behavior tests, regression tests
-- [x] LLM-specific: prompt tests, golden datasets, hallucination/jailbreak/tool-call/structured-output tests, agent trajectory tests
-
-## 20.2. [Production Reliability](/docs/mlops/production-reliability)
-- [x] Retries, timeouts, circuit breakers
-- [x] Fallback models, graceful degradation
-- [x] Rate limits, backpressure, queues
-- [x] Idempotency, distributed locks
-- [x] Disaster recovery, rollback
-
-## 20.3. [AI Cost Engineering](/docs/mlops/ai-cost-engineering)
-- [x] Training cost, inference cost (cost per 1M tokens)
-- [x] GPU/memory utilization, caching, batching, quantization
-- [x] Model routing, distillation, prompt/context compression
-- [x] The quality vs. latency vs. cost tradeoff
-
-## 20.35. [Caching Strategies & Redis Patterns](/docs/mlops/caching-strategies)
-- [x] Cache-aside (lazy loading) reads, write-through vs. write-behind writes
-- [x] TTL and LRU eviction
-- [x] Cache invalidation, stampede/thundering herd mitigation
-
-## 20.4. [Legal, Licensing & Governance](/docs/mlops/legal-licensing-and-governance)
-- [x] Model licenses, dataset licenses, copyright
-- [x] Privacy: PII, GDPR, HIPAA
-- [x] AI governance, model cards, data cards, audit trails
-
-## 21. [The Full MLOps Architecture, Priority Stack & Learning Path](/docs/mlops/mlops-architecture-and-roadmap)
-- [x] The complete end-to-end architecture, source data to monitored production
-- [x] A prioritized tool stack (don't learn 30 tools at once) and an 8-phase learning order
-- [x] 5 capstone projects, from a production churn model to a full LLM serving platform
-
-See [ML System Design](/docs/ml-system-design/roadmap) for the *design* side of production ML systems (the 9-step framework, case studies) — this section is the *operational* side: how those designs actually get built, deployed, and kept running.
+Begin with [Engineering Foundations for ML](/docs/mlops/engineering-foundations), then follow the data, training, deployment, and operation chapters in order.
