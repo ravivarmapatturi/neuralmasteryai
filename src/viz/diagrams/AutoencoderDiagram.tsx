@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VizButton, VisualizationMath, FlowDots, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 /** The funnel shape IS the mechanism: information is forced through a
@@ -9,7 +8,9 @@ import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
  * a usable latent space: a single point z becomes a sampled distribution. */
 export default function AutoencoderDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'ae' | 'vae'>('ae');
+  const cycle = useAutoCycle(2, 3200);
+  const mode = cycle.value === 0 ? 'ae' : 'vae';
+  const setMode = (value: 'ae' | 'vae') => cycle.pick(value === 'ae' ? 0 : 1);
   const encColor = getConceptColor(t, 'embedding');
   const decColor = getConceptColor(t, 'attention');
   const zColor = t.accentWarn;
@@ -41,8 +42,8 @@ export default function AutoencoderDiagram() {
           const isEnc = i < 2;
           const color = isEnc ? encColor : decColor;
           return (
+            <g key={`l${i}`}>
             <line
-              key={`l${i}`}
               x1={x + 12}
               y1={midY}
               x2={layerXs[i + 1] - 14}
@@ -52,6 +53,8 @@ export default function AutoencoderDiagram() {
               markerEnd="url(#ae-arrow)"
               opacity={0.7}
             />
+            <FlowDots d={line(x + 12, midY, layerXs[i + 1] - 14, midY)} color={color} count={1} dur={1.8} delay={i * 0.3} />
+            </g>
           );
         })}
 

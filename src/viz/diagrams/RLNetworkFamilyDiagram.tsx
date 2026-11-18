@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const METHODS = [
@@ -14,7 +13,9 @@ const METHODS = [
  * before -- click through the lineage. */
 export default function RLNetworkFamilyDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('ppo');
+  const cycle = useAutoCycle(METHODS.length, 2600, METHODS.length - 1);
+  const active = METHODS[cycle.value].key;
+  const setActive = (key: string) => cycle.pick(METHODS.findIndex((method) => method.key === key));
   const color = getConceptColor(t, 'attention');
   const m = METHODS.find((x) => x.key === active)!;
 

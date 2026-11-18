@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 function sigmoid(x: number) {
@@ -66,7 +65,8 @@ function MiniPlot({ name, fn, yMin, yMax, color }: { name: string; fn: (x: numbe
  * overlay chart here. */
 export default function ActivationFunctionsDiagram() {
   const t = useVizTokens();
-  const [hovered, setHovered] = useState<string | null>(null);
+  const cycle = useAutoCycle(FUNCTIONS.length, 1800);
+  const hovered = FUNCTIONS[cycle.value].name;
   const color = getConceptColor(t, 'attention');
 
   return (
@@ -75,8 +75,8 @@ export default function ActivationFunctionsDiagram() {
         {FUNCTIONS.map((f) => (
           <div
             key={f.name}
-            onMouseEnter={() => setHovered(f.name)}
-            onMouseLeave={() => setHovered(null)}
+            onPointerDown={() => cycle.pick(FUNCTIONS.indexOf(f))}
+            onMouseEnter={() => { if (!cycle.auto) cycle.pick(FUNCTIONS.indexOf(f)); }}
             style={{ background: t.surfaceAlt, borderRadius: 8, border: `1.5px solid ${hovered === f.name ? color : t.border}`, padding: 4 }}
           >
             <MiniPlot name={f.name} fn={f.fn} yMin={f.yMin} yMax={f.yMax} color={hovered === f.name ? color : t.accentSecondary} />
@@ -84,7 +84,7 @@ export default function ActivationFunctionsDiagram() {
         ))}
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 8 }}>
-        {hovered ?? 'hover a function'}
+        {hovered}{cycle.auto ? ' · tracing each family automatically' : ''}
       </div>
     </VisualizationContainer>
   );

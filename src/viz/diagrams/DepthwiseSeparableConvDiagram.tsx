@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 /** A standard convolution vs. its depthwise-separable factorization
@@ -8,7 +7,9 @@ import { getConceptColor } from './diagramSystem';
  * shape. */
 export default function DepthwiseSeparableConvDiagram() {
   const t = useVizTokens();
-  const [separable, setSeparable] = useState(true);
+  const cycle = useAutoCycle(2, 2600, 1);
+  const separable = cycle.value === 1;
+  const setSeparable = (value: boolean) => cycle.pick(value ? 1 : 0);
   const color = getConceptColor(t, 'attention');
 
   const inCh = 32, outCh = 64, k = 3, hw = 112 * 112;

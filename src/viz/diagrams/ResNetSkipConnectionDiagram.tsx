@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, FlowDots, line, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 /** A plain block versus a residual block -- click to see why
@@ -8,7 +7,9 @@ import { getConceptColor } from './diagramSystem';
  * added depth isn't helping, solving the degradation problem. */
 export default function ResNetSkipConnectionDiagram() {
   const t = useVizTokens();
-  const [residual, setResidual] = useState(true);
+  const cycle = useAutoCycle(2, 2800, 1);
+  const residual = cycle.value === 1;
+  const setResidual = (value: boolean) => cycle.pick(value ? 1 : 0);
   const color = getConceptColor(t, 'attention');
   const okColor = t.accentPrimary;
   const badColor = t.accentDanger;
@@ -39,6 +40,7 @@ export default function ResNetSkipConnectionDiagram() {
 
         {/* Arrow x -> F(x) */}
         <line x1={80} y1={60} x2={113} y2={60} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#rnarrow)" />
+        <FlowDots d={line(80, 60, 113, 60)} color={color} count={1} dur={1.8} />
 
         {/* F(x) transformation block */}
         <rect x={115} y={46} width={65} height={28} rx={6} fill={`${color}18`} stroke={color} strokeWidth={1.5} />
@@ -46,11 +48,13 @@ export default function ResNetSkipConnectionDiagram() {
 
         {/* Arrow F(x) -> output */}
         <line x1={180} y1={60} x2={213} y2={60} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#rnarrow)" />
+        <FlowDots d={line(180, 60, 213, 60)} color={color} count={1} dur={1.8} delay={0.7} />
 
         {/* Residual skip connection */}
         {residual && (
           <g>
             <path d="M 47.5,46 C 47.5,18 253,18 253,38" fill="none" stroke={okColor} strokeWidth={1.5} markerEnd="url(#rnarrow-green)" />
+            <FlowDots d="M 47.5,46 C 47.5,18 253,18 253,38" color={okColor} count={1} dur={1.8} />
             <rect x={110} y={9} width={80} height={14} rx={3} fill={t.surface} />
             <text x={150} y={19} textAnchor="middle" fontSize={8} fontWeight={600} fill={okColor}>shortcut (+ x)</text>
           </g>

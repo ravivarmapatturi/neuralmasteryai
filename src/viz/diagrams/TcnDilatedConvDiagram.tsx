@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const T = 16;
@@ -10,7 +9,9 @@ const T = 16;
  * only ever looks backward in time. */
 export default function TcnDilatedConvDiagram() {
   const t = useVizTokens();
-  const [layer, setLayer] = useState(2);
+  const cycle = useAutoCycle(3, 1900, 1);
+  const layer = cycle.value + 1;
+  const setLayer = (value: number) => cycle.pick(value - 1);
   const color = getConceptColor(t, 'attention');
   const cell = 18;
   const target = T - 1;

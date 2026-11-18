@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 /** How far apart two patches can "talk" at layer 1 -- click to
@@ -8,7 +7,9 @@ import { getConceptColor } from './diagramSystem';
  * self-attention from the very first layer. */
 export default function CnnVsVitDiagram() {
   const t = useVizTokens();
-  const [vit, setVit] = useState(true);
+  const cycle = useAutoCycle(2, 2500, 1);
+  const vit = cycle.value === 1;
+  const setVit = (value: boolean) => cycle.pick(value ? 1 : 0);
   const color = getConceptColor(t, 'attention');
   const grid = 6;
   const cell = 30;

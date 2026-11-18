@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { toySignal, fixedNoise, alphaBarSchedule, forwardDiffuse } from '../lib/generativeModels';
 
@@ -14,7 +14,9 @@ const T = 100;
  * visibly dissolves into the same fixed noise draw as t increases. */
 export default function DiffusionForwardProcessDiagram() {
   const t = useVizTokens();
-  const [step, setStep] = useState(1);
+  const cycle = useAutoCycle(T, 80);
+  const step = cycle.value + 1;
+  const setStep = (value: number) => cycle.pick(value - 1);
 
   const x0 = useMemo(() => toySignal(N), []);
   const noise = useMemo(() => fixedNoise(N), []);

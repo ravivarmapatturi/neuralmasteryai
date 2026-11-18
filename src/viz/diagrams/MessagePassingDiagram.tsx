@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, FlowDots, line, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const NODES = [
@@ -35,7 +34,9 @@ function hopDistance(from: number): Map<number, number> {
  * graph analog of a CNN's receptive field. */
 export default function MessagePassingDiagram() {
   const t = useVizTokens();
-  const [k, setK] = useState(1);
+  const cycle = useAutoCycle(3, 1800);
+  const k = cycle.value + 1;
+  const setK = (value: number) => cycle.pick(value - 1);
   const color = getConceptColor(t, 'attention');
   const dist = hopDistance(0);
 
@@ -51,7 +52,7 @@ export default function MessagePassingDiagram() {
       <svg width="100%" viewBox="0 0 300 170" style={{ display: 'block' }}>
         {EDGES.map(([a, b], i) => {
           const na = NODES[a], nb = NODES[b];
-          return <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y} stroke={t.border} strokeWidth={1.5} />;
+          return <g key={i}><line x1={na.x} y1={na.y} x2={nb.x} y2={nb.y} stroke={t.border} strokeWidth={1.5} />{Math.min(dist.get(a) ?? 9, dist.get(b) ?? 9) < k && <FlowDots d={line(na.x, na.y, nb.x, nb.y)} color={color} count={1} dur={1.8} delay={Math.min(dist.get(a) ?? 0, dist.get(b) ?? 0) * 0.45} />}</g>;
         })}
         {NODES.map((n) => {
           const d = dist.get(n.id) ?? Infinity;

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { ewcForgettingTrace, naiveForgettingTrace, STEPS_PER_PHASE, TOTAL_STEPS } from '../lib/continualLearning';
 
 export default function CatastrophicForgettingDiagram() {
@@ -12,6 +12,7 @@ export default function CatastrophicForgettingDiagram() {
 
   const naive = useMemo(() => naiveForgettingTrace(), []);
   const ewc = useMemo(() => ewcForgettingTrace(), []);
+  const cycle = useAutoCycle(TOTAL_STEPS, 80);
   const line = (series: number[]) => series.map((v, i) => `${px(i)},${py(v)}`).join(' ');
 
   return (
@@ -27,6 +28,9 @@ export default function CatastrophicForgettingDiagram() {
 
         <polyline points={line(ewc)} fill="none" stroke={t.accentPrimary} strokeWidth={2} />
         <polyline points={line(naive)} fill="none" stroke={t.accentDanger} strokeWidth={2.5} />
+        <line x1={px(cycle.value)} y1={10} x2={px(cycle.value)} y2={196} stroke={t.textMuted} strokeWidth={1.5} strokeDasharray="3 3" />
+        <circle cx={px(cycle.value)} cy={py(naive[cycle.value])} r={4} fill={t.accentDanger} />
+        <circle cx={px(cycle.value)} cy={py(ewc[cycle.value])} r={4} fill={t.accentPrimary} />
       </svg>
       <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 4, fontSize: 11 }}>
         <span style={{ color: t.accentDanger, fontWeight: 700 }}>— Naive sequential fine-tuning</span>

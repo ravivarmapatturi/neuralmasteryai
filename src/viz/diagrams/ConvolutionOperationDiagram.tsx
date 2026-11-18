@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const IMG = [
@@ -21,7 +20,9 @@ const FILTER = [
  * (translation invariance). */
 export default function ConvolutionOperationDiagram() {
   const t = useVizTokens();
-  const [pos, setPos] = useState({ r: 1, c: 1 });
+  const cycle = useAutoCycle(9, 1300, 4);
+  const pos = { r: Math.floor(cycle.value / 3), c: cycle.value % 3 };
+  const setPos = (value: { r: number; c: number }) => cycle.pick(value.r * 3 + value.c);
   const color = getConceptColor(t, 'attention');
   const cell = 32;
 

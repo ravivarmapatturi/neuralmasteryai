@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const ARCHS = [
@@ -20,7 +19,9 @@ const ARCHS = [
  * limitation of the one before -- click through the lineage. */
 export default function CnnArchitectureLineageDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('resnet');
+  const cycle = useAutoCycle(ARCHS.length, 2200, 5);
+  const active = ARCHS[cycle.value].key;
+  const setActive = (key: string) => cycle.pick(ARCHS.findIndex((arch) => arch.key === key));
   const color = getConceptColor(t, 'attention');
   const a = ARCHS.find((x) => x.key === active)!;
 

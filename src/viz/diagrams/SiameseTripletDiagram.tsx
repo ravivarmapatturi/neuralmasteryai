@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 /** Anchor, positive, negative in embedding space -- click "train" to
@@ -8,7 +7,8 @@ import { getConceptColor } from './diagramSystem';
  * further, by at least a margin. */
 export default function SiameseTripletDiagram() {
   const t = useVizTokens();
-  const [trained, setTrained] = useState(false);
+  const cycle = useAutoCycle(2, 2400);
+  const trained = cycle.value === 1;
   const color = getConceptColor(t, 'attention');
   const okColor = t.accentPrimary;
   const badColor = t.accentDanger;
@@ -19,7 +19,7 @@ export default function SiameseTripletDiagram() {
 
   return (
     <VisualizationContainer footer={trained ? 'Triplet loss pushed anchor-positive distance below anchor-negative distance by at least a margin -- "same identity" pairs cluster, "different identity" pairs separate, without ever training on fixed class labels.' : 'Before training: the positive (same identity, different photo) and negative (different identity) start at similar, unhelpful distances from the anchor.'}>
-      <button type="button" onClick={() => setTrained((v) => !v)} style={{ marginBottom: 10, padding: '6px 12px', borderRadius: 6, border: `1px solid ${color}`, background: trained ? `${color}15` : 'transparent', color, cursor: 'pointer', fontSize: 11.5, fontWeight: 700 }}>
+      <button type="button" onClick={() => cycle.pick(trained ? 0 : 1)} style={{ marginBottom: 10, padding: '6px 12px', borderRadius: 6, border: `1px solid ${color}`, background: trained ? `${color}15` : 'transparent', color, cursor: 'pointer', fontSize: 11.5, fontWeight: 700 }}>
         {trained ? 'Reset' : 'Train with triplet loss'}
       </button>
       <svg width="100%" viewBox="0 0 300 140" style={{ display: 'block' }}>

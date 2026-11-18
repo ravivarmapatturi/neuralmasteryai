@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const LAYERS = [1, 2, 3, 4];
@@ -10,7 +9,9 @@ const GRID = 9;
  * field of one output neuron grow, and what it's abstracted into. */
 export default function ReceptiveFieldGrowthDiagram() {
   const t = useVizTokens();
-  const [layers, setLayers] = useState(2);
+  const cycle = useAutoCycle(LAYERS.length, 1800, 1);
+  const layers = LAYERS[cycle.value];
+  const setLayers = (value: number) => cycle.pick(LAYERS.indexOf(value));
   const color = getConceptColor(t, 'attention');
   const cell = 24;
   const rf = 1 + layers * 2;

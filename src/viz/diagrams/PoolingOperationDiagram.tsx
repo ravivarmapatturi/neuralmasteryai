@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const IMG = [
@@ -14,7 +13,9 @@ const IMG = [
  * quadrant to see which value survives, and the resulting 2×2 output. */
 export default function PoolingOperationDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState(0);
+  const cycle = useAutoCycle(4, 1500);
+  const active = cycle.value;
+  const setActive = cycle.pick;
   const color = getConceptColor(t, 'attention');
   const okColor = t.accentPrimary;
   const cell = 34;

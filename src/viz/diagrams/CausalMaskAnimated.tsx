@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath, VizButton } from '../primitives';
+import { VisualizationContainer, VisualizationMath, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_ANIMATION, getConceptColor, valueColor } from './diagramSystem';
 import { SketchRect } from '../../components/notebook/RoughShape';
 
@@ -22,7 +21,10 @@ type Stage = 'scores' | 'masked' | 'softmax';
 
 export default function CausalMaskAnimated() {
   const t = useVizTokens();
-  const [stage, setStage] = useState<Stage>('softmax');
+  const stages: Stage[] = ['scores', 'masked', 'softmax'];
+  const cycle = useAutoCycle(stages.length, 2200, 2);
+  const stage = stages[cycle.value];
+  const setStage = (value: Stage) => cycle.pick(stages.indexOf(value));
   const cellSize = 52;
   const n = TOKENS.length;
   const labelW = 64;

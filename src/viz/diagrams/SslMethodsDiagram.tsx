@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 /** Two SSL strategies for constructing a training signal with no
@@ -8,7 +7,9 @@ import { getConceptColor } from './diagramSystem';
  * masked-portion prediction. */
 export default function SslMethodsDiagram() {
   const t = useVizTokens();
-  const [masked, setMasked] = useState(false);
+  const cycle = useAutoCycle(2, 2600);
+  const masked = cycle.value === 1;
+  const setMasked = (value: boolean) => cycle.pick(value ? 1 : 0);
   const color = getConceptColor(t, 'attention');
 
   return (

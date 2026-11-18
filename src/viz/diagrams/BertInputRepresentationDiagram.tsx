@@ -1,5 +1,5 @@
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, PulseRect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const TOKENS = ['[CLS]', 'The', 'bank', '[MASK]', 'money', '[SEP]'];
@@ -16,6 +16,7 @@ const MASK_INDEX = 3;
  * hidden here. */
 export default function BertInputRepresentationDiagram() {
   const t = useVizTokens();
+  const cycle = useAutoCycle(TOKENS.length, 1200, MASK_INDEX);
   const tokenColor = getConceptColor(t, 'embedding');
   const segmentColor = getConceptColor(t, 'key');
   const positionColor = getConceptColor(t, 'value');
@@ -47,6 +48,7 @@ export default function BertInputRepresentationDiagram() {
           const isMasked = i === MASK_INDEX;
           return (
             <g key={i}>
+              {i === cycle.value && <PulseRect x={x - 3} y={tokenY - 3} w={colW + 6} h={sumY + rowH + 6 - tokenY} color={isMasked ? maskColor : sumColor} dur={1.4} />}
               {isMasked && (
                 <rect
                   x={x - 4}

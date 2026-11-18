@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { ganRealPdf, ganGenPdf, discriminatorCurve } from '../lib/generativeModels';
 
@@ -15,7 +15,9 @@ const SAMPLES = 80;
  * a coin flip). */
 export default function GanMinimaxDiagram() {
   const t = useVizTokens();
-  const [progress, setProgress] = useState(0);
+  const cycle = useAutoCycle(51, 100);
+  const progress = cycle.value / 50;
+  const setProgress = (value: number) => cycle.pick(Math.round(value * 50));
 
   const xs = useMemo(() => Array.from({ length: SAMPLES }, (_, i) => XMIN + (i / (SAMPLES - 1)) * (XMAX - XMIN)), []);
   const realPdf = useMemo(() => xs.map(ganRealPdf), [xs]);
