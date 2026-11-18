@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton, ControlRow } from '../primitives';
+import { VisualizationContainer, VizButton, ControlRow, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS, getConceptColor } from './diagramSystem';
 
 type Phase = 'plan' | 'execute' | 'replan' | 'execute2' | 'done';
@@ -57,13 +56,15 @@ const FRAMES: Frame[] = [
 
 export default function PlanExecuteReplanDiagram() {
   const t = useVizTokens();
-  const [i, setI] = useState(0);
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(FRAMES.length, 3000);
+  const i = cyc.value;
   const color = getConceptColor(t, 'attention');
   const warn = t.accentWarn;
   const frame = FRAMES[i];
 
-  const next = () => setI((v) => Math.min(v + 1, FRAMES.length - 1));
-  const reset = () => setI(0);
+  const next = () => cyc.pick(Math.min(i + 1, FRAMES.length - 1));
+  const reset = () => cyc.pick(0);
 
   return (
     <VisualizationContainer footer={frame.note}>
@@ -83,6 +84,12 @@ export default function PlanExecuteReplanDiagram() {
           const isDone = frame.completed.includes(idx);
           const isFailedStep = step.includes('404');
           const isRevised = idx === 2 && frame.phase !== 'plan' && frame.phase !== 'execute' && !frame.plan[2].includes('404') && frame.completed.includes(2);
+          const isCurrentAction =
+            (frame.phase === 'plan' && idx === 0) ||
+            (frame.phase === 'execute' && idx === frame.completed.length - 1) ||
+            (frame.phase === 'replan' && idx === 2) ||
+            (frame.phase === 'execute2' && idx === 2) ||
+            (frame.phase === 'done' && idx === 3);
           const rowColor = isFailedStep ? warn : isDone ? color : t.textMuted;
           return (
             <div
@@ -96,6 +103,9 @@ export default function PlanExecuteReplanDiagram() {
                 borderRadius: DIAGRAM_RADIUS.node,
                 background: isDone ? `${color}12` : t.surfaceAlt,
                 border: `1px solid ${isFailedStep ? warn : isDone ? color : t.border}`,
+                boxShadow: isCurrentAction && !reducedMotion ? `0 0 6px ${isFailedStep ? warn : color}33` : 'none',
+                transform: isCurrentAction && !reducedMotion ? 'translateX(2px)' : 'none',
+                transition: 'all 0.2s ease',
               }}
             >
               <span style={{ fontSize: 10, fontWeight: 700, color: rowColor, minWidth: 14 }}>{idx + 1}.</span>

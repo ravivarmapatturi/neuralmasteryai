@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
+import { FlowDots, Pulse } from '../primitives/LiveFlow';
 import { getConceptColor } from './diagramSystem';
 
 const STAGES = [
@@ -15,7 +15,9 @@ const STAGES = [
  * until reasoning decides the task is done. */
 export default function PerceiveReasonActLoopDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<'perceive' | 'reason' | 'act'>('reason');
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(STAGES.length, 2500);
+  const active = STAGES[cyc.value].key;
   const color = getConceptColor(t, 'attention');
   const width = 320;
   const height = 260;
@@ -43,23 +45,37 @@ export default function PerceiveReasonActLoopDiagram() {
           const p2 = pos(endAngle);
           const midAngle = (startAngle + endAngle) / 2;
           const arcMid = pos(midAngle);
+          const isEdgeActive = cyc.value === i;
           return (
-            <path
-              key={s.key}
-              d={`M ${p1.x},${p1.y} Q ${arcMid.x},${arcMid.y} ${p2.x},${p2.y}`}
-              fill="none"
-              stroke={t.textMuted}
-              strokeWidth={1.5}
-              markerEnd="url(#pra-arrow)"
-              opacity={0.8}
-            />
+            <g key={s.key}>
+              <path
+                d={`M ${p1.x},${p1.y} Q ${arcMid.x},${arcMid.y} ${p2.x},${p2.y}`}
+                fill="none"
+                stroke={isEdgeActive ? color : t.textMuted}
+                strokeWidth={isEdgeActive ? 2 : 1.5}
+                markerEnd="url(#pra-arrow)"
+                opacity={isEdgeActive ? 1 : 0.6}
+              />
+              {isEdgeActive && !reducedMotion && (
+                <FlowDots
+                  d={`M ${p1.x},${p1.y} Q ${arcMid.x},${arcMid.y} ${p2.x},${p2.y}`}
+                  color={color}
+                  count={2}
+                  dur={2.2}
+                  r={3.5}
+                />
+              )}
+            </g>
           );
         })}
-        {STAGES.map((s) => {
+        {STAGES.map((s, i) => {
           const p = pos(s.angle);
           const isActive = active === s.key;
           return (
-            <g key={s.key} onClick={() => setActive(s.key)} onMouseEnter={() => setActive(s.key)} style={{ cursor: 'pointer' }}>
+            <g key={s.key} onClick={() => cyc.pick(i)} onMouseEnter={() => cyc.pick(i)} style={{ cursor: 'pointer' }}>
+              {isActive && !reducedMotion && (
+                <Pulse cx={p.x} cy={p.y} r={44} color={color} />
+              )}
               <circle cx={p.x} cy={p.y} r={38} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
               <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill={color}>{s.label}</text>
             </g>

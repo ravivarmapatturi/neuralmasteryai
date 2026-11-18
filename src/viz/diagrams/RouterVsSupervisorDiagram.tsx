@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton, ControlRow, PillSelect } from '../primitives';
+import { VisualizationContainer, VizButton, ControlRow, PillSelect, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -41,16 +41,35 @@ const SUPERVISOR_STEPS: Step[] = [
  * of one. */
 export default function RouterVsSupervisorDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('router');
-  const [step, setStep] = useState(0);
-  const color = getConceptColor(t, 'attention');
+  const reducedMotion = usePrefersReducedMotion();
+  const [manualMode, setManualMode] = useState<Mode | null>(null);
+  const [manualStep, setManualStep] = useState<number | null>(null);
 
+  const totalCycles = ROUTER_STEPS.length + SUPERVISOR_STEPS.length;
+  const cyc = useAutoCycle(totalCycles, 3200);
+
+  const autoIsRouter = cyc.value < ROUTER_STEPS.length;
+  const mode = manualMode ?? (autoIsRouter ? 'router' : 'supervisor');
   const steps = mode === 'router' ? ROUTER_STEPS : SUPERVISOR_STEPS;
+  const autoStep = autoIsRouter ? cyc.value : cyc.value - ROUTER_STEPS.length;
+  const step = manualStep !== null ? Math.min(manualStep, steps.length - 1) : Math.min(autoStep, steps.length - 1);
+
+  const color = getConceptColor(t, 'attention');
   const atEnd = step === steps.length - 1;
 
   const setModeAndReset = (m: Mode) => {
-    setMode(m);
-    setStep(0);
+    setManualMode(m);
+    setManualStep(0);
+  };
+
+  const stepForward = () => {
+    setManualStep((s) => Math.min((s ?? step) + 1, steps.length - 1));
+  };
+
+  const reset = () => {
+    setManualMode(null);
+    setManualStep(null);
+    cyc.pick(0);
   };
 
   return (
@@ -65,15 +84,24 @@ export default function RouterVsSupervisorDiagram() {
             { value: 'supervisor', label: 'Supervisor' },
           ]}
         />
-        <VizButton onClick={() => setStep((s) => Math.min(s + 1, steps.length - 1))} disabled={atEnd}>Step</VizButton>
-        <VizButton variant="secondary" onClick={() => setStep(0)}>Reset</VizButton>
+        <VizButton onClick={stepForward} disabled={atEnd}>Step</VizButton>
+        <VizButton variant="secondary" onClick={reset}>Reset</VizButton>
       </ControlRow>
 
       <div style={{ marginTop: 10, fontSize: 12.5, color: t.textSecondary, fontStyle: 'italic' }}>{REQUEST}</div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
         {steps.map((s, i) => (
-          <SketchBox key={i} color={i === step ? color : t.border} strokeWidth={i === step ? 2 : 1.3} style={{ opacity: i <= step ? 1 : 0.45 }}>
+          <SketchBox
+            key={i}
+            color={i === step ? color : t.border}
+            strokeWidth={i === step ? 2 : 1.3}
+            style={{
+              opacity: i <= step ? 1 : 0.45,
+              transform: i === step && !reducedMotion ? 'scale(1.01)' : 'scale(1)',
+              transition: 'all 0.2s ease',
+            }}
+          >
             <div
               style={{
                 padding: '7px 10px',
@@ -82,6 +110,7 @@ export default function RouterVsSupervisorDiagram() {
                 background: i === step ? `${color}20` : i < step ? t.surfaceAlt : t.surface,
                 fontWeight: i === step ? 700 : 500,
                 fontFamily: HAND_FONT,
+                boxShadow: i === step && !reducedMotion ? `0 0 8px ${color}33` : 'none',
               }}
             >
               {i + 1}. {s.actor}

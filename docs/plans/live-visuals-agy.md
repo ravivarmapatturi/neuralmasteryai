@@ -38,32 +38,32 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 2
 - `src/content/docs/agents/mcp/overview.mdx`
-  - [ ] `src/viz/diagrams/McpArchitectureDiagram.tsx`
-  - [ ] `src/viz/diagrams/McpCapabilityTypesDiagram.tsx`
-  - [ ] `src/viz/diagrams/McpInAgentLoopDiagram.tsx`
-  - [ ] `src/viz/diagrams/McpLocalVsRemoteDiagram.tsx`
-  - [ ] `src/viz/diagrams/MxNIntegrationProblemDiagram.tsx`
-  - [ ] `src/viz/diagrams/TransportComparisonDiagram.tsx`
+  - [x] `src/viz/diagrams/McpArchitectureDiagram.tsx`
+  - [x] `src/viz/diagrams/McpCapabilityTypesDiagram.tsx`
+  - [x] `src/viz/diagrams/McpInAgentLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/McpLocalVsRemoteDiagram.tsx`
+  - [x] `src/viz/diagrams/MxNIntegrationProblemDiagram.tsx`
+  - [x] `src/viz/diagrams/TransportComparisonDiagram.tsx`
 - `src/content/docs/agents/mcp/protocol-deep-dive.mdx`
-  - [ ] `src/viz/diagrams/OAuthAuthorizationFlowDiagram.tsx`
-  - [ ] `src/viz/diagrams/TokenAudienceBindingDiagram.tsx`
-  - [ ] `src/viz/diagrams/ToolCallFlowDiagram.tsx`
-  - [ ] `src/viz/diagrams/ToolErrorTypesDiagram.tsx`
+  - [x] `src/viz/diagrams/OAuthAuthorizationFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/TokenAudienceBindingDiagram.tsx`
+  - [x] `src/viz/diagrams/ToolCallFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/ToolErrorTypesDiagram.tsx`
 - `src/content/docs/agents/multi-agent-systems.mdx`
-  - [ ] `src/viz/diagrams/ParallelAgentSpeedupDiagram.tsx`
+  - [x] `src/viz/diagrams/ParallelAgentSpeedupDiagram.tsx`
 - `src/content/docs/agents/no-code-automation.mdx`
-  - [ ] `src/viz/diagrams/ClusterNodeAssemblyDiagram.tsx`
+  - [x] `src/viz/diagrams/ClusterNodeAssemblyDiagram.tsx`
 - `src/content/docs/agents/overview.mdx`
-  - [ ] `src/viz/diagrams/AgentFailureModesDiagram.tsx`
-  - [ ] `src/viz/diagrams/ArchitectureSpectrumDiagram.tsx`
-  - [ ] `src/viz/diagrams/AutonomySpectrumDiagram.tsx`
-  - [ ] `src/viz/diagrams/PerceiveReasonActLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/AgentFailureModesDiagram.tsx`
+  - [x] `src/viz/diagrams/ArchitectureSpectrumDiagram.tsx`
+  - [x] `src/viz/diagrams/AutonomySpectrumDiagram.tsx`
+  - [x] `src/viz/diagrams/PerceiveReasonActLoopDiagram.tsx`
 - `src/content/docs/agents/plan-and-execute.mdx`
-  - [ ] `src/viz/diagrams/PlanExecuteReplanDiagram.tsx`
+  - [x] `src/viz/diagrams/PlanExecuteReplanDiagram.tsx`
 - `src/content/docs/agents/reflection-self-critique.mdx`
-  - [ ] `src/viz/diagrams/ReflexionLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/ReflexionLoopDiagram.tsx`
 - `src/content/docs/agents/routing-and-supervisor.mdx`
-  - [ ] `src/viz/diagrams/RouterVsSupervisorDiagram.tsx`
+  - [x] `src/viz/diagrams/RouterVsSupervisorDiagram.tsx`
 
 ## Batch 3
 - `src/content/docs/agents/single-vs-multi-agent.mdx`

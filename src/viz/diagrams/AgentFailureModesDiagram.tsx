@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const MODES = [
@@ -15,7 +14,9 @@ const MODES = [
  * problem, they're four separate problems with four separate fixes. */
 export default function AgentFailureModesDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState(0);
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(MODES.length, 3000);
+  const active = cyc.value;
   const color = t.accentDanger;
   const width = 520;
 
@@ -27,15 +28,24 @@ export default function AgentFailureModesDiagram() {
           return (
             <div
               key={m.label}
-              onClick={() => setActive(i)}
-              onMouseEnter={() => setActive(i)}
+              onClick={() => cyc.pick(i)}
+              onMouseEnter={() => cyc.pick(i)}
               style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: 6, cursor: 'pointer',
-                background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '8px 12px',
+                borderRadius: 6,
+                cursor: 'pointer',
+                background: isActive ? `${color}18` : t.surfaceAlt,
+                border: `1.5px solid ${isActive ? color : t.border}`,
+                boxShadow: isActive && !reducedMotion ? `0 0 8px ${color}33` : 'none',
+                transform: isActive && !reducedMotion ? 'translateX(3px)' : 'none',
+                transition: 'all 0.2s ease',
               }}
             >
               <span style={{ fontSize: 12, fontWeight: 700, color: isActive ? color : t.textSecondary }}>{m.label}</span>
-              <span style={{ fontSize: 10, fontFamily: 'monospace', color: t.textMuted }}>→ {m.layer}</span>
+              <span style={{ fontSize: 10, fontFamily: 'monospace', color: isActive ? color : t.textMuted }}>→ {m.layer}</span>
             </div>
           );
         })}

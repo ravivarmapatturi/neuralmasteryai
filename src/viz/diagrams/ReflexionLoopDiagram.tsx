@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton, ControlRow } from '../primitives';
+import { VisualizationContainer, VizButton, ControlRow, useAutoCycle, usePrefersReducedMotion } from '../primitives';
+import { FlowDots, PulseRect, line } from '../primitives/LiveFlow';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -39,13 +39,15 @@ const LABEL: Record<NodeId, string> = {
 
 export default function ReflexionLoopDiagram() {
   const t = useVizTokens();
-  const [i, setI] = useState(0);
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(FRAMES.length, 3200);
+  const i = cyc.value;
   const color = getConceptColor(t, 'attention');
   const warn = t.accentWarn;
   const frame = FRAMES[i];
 
-  const next = () => setI((v) => Math.min(v + 1, FRAMES.length - 1));
-  const reset = () => setI(0);
+  const next = () => cyc.pick(Math.min(i + 1, FRAMES.length - 1));
+  const reset = () => cyc.pick(0);
 
   const edges: [NodeId, NodeId][] = [
     ['actor', 'evaluator'],
@@ -76,10 +78,20 @@ export default function ReflexionLoopDiagram() {
       <svg width="100%" viewBox="0 0 380 260" style={{ marginTop: 10 }}>
         {edges.map(([a, b], idx) => {
           const active = idx <= activeEdgeIndex;
+          const isLatestEdge = idx === activeEdgeIndex;
           const points = EDGE_POINTS[`${a}-${b}`];
           return (
             <g key={`${a}-${b}`} opacity={active ? 1 : 0.5}>
               <SketchArrow points={points} color={active ? color : t.border} strokeWidth={active ? 2.5 : 1.5} id={`rfx-edge-${idx}`} />
+              {isLatestEdge && !reducedMotion && (
+                <FlowDots
+                  d={line(points[0][0], points[0][1], points[1][0], points[1][1])}
+                  color={color}
+                  count={2}
+                  dur={2}
+                  r={3}
+                />
+              )}
             </g>
           );
         })}
@@ -99,6 +111,15 @@ export default function ReflexionLoopDiagram() {
                 fill={isCurrent ? `${isFailNode ? warn : color}25` : t.surfaceAlt}
                 stroke="none"
               />
+              {isCurrent && !reducedMotion && (
+                <PulseRect
+                  x={p.x - 60}
+                  y={p.y - 18}
+                  w={120}
+                  h={36}
+                  color={isFailNode ? warn : color}
+                />
+              )}
               <SketchRect x={p.x - 60} y={p.y - 18} width={120} height={36} color={nodeColor} strokeWidth={isCurrent ? 2.5 : 1.5} id={`rfx-node-${id}`} />
               <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={DIAGRAM_TYPE.secondaryLabel.size} fontWeight={isCurrent ? 700 : 500} fontFamily={HAND_FONT} fill={isCurrent ? (isFailNode ? warn : color) : t.textPrimary}>
                 {LABEL[id]}

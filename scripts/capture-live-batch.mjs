@@ -75,6 +75,67 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  2: [
+    {
+      route: '/docs/agents/mcp/overview',
+      diagrams: [
+        { name: 'McpArchitectureDiagram', match: 'Filesystem server' },
+        { name: 'McpCapabilityTypesDiagram', match: 'Functions the model can call' },
+        { name: 'McpInAgentLoopDiagram', match: 'MCP: standardized tools/call' },
+        { name: 'McpLocalVsRemoteDiagram', match: 'Local (stdio)' },
+        { name: 'MxNIntegrationProblemDiagram', match: 'Custom integrations' },
+        { name: 'TransportComparisonDiagram', match: 'Streamable HTTP' },
+      ],
+    },
+    {
+      route: '/docs/agents/mcp/protocol-deep-dive',
+      diagrams: [
+        { name: 'OAuthAuthorizationFlowDiagram', match: 'Client → MCP server' },
+        { name: 'TokenAudienceBindingDiagram', match: 'Token passthrough' },
+        { name: 'ToolCallFlowDiagram', match: 'Client → tools/list' },
+        { name: 'ToolErrorTypesDiagram', match: 'Protocol error' },
+      ],
+    },
+    {
+      route: '/docs/agents/multi-agent-systems',
+      diagrams: [
+        { name: 'ParallelAgentSpeedupDiagram', match: 'concurrent slots' },
+      ],
+    },
+    {
+      route: '/docs/agents/no-code-automation',
+      diagrams: [
+        { name: 'ClusterNodeAssemblyDiagram', match: 'AI Agent' },
+      ],
+    },
+    {
+      route: '/docs/agents/overview',
+      diagrams: [
+        { name: 'AgentFailureModesDiagram', match: 'Tool misuse' },
+        { name: 'ArchitectureSpectrumDiagram', match: 'cost/latency' },
+        { name: 'AutonomySpectrumDiagram', match: 'Autonomy level' },
+        { name: 'PerceiveReasonActLoopDiagram', match: 'Perceive' },
+      ],
+    },
+    {
+      route: '/docs/agents/plan-and-execute',
+      diagrams: [
+        { name: 'PlanExecuteReplanDiagram', match: 'Search Company A pricing page' },
+      ],
+    },
+    {
+      route: '/docs/agents/reflection-self-critique',
+      diagrams: [
+        { name: 'ReflexionLoopDiagram', match: 'episodic memory buffer' },
+      ],
+    },
+    {
+      route: '/docs/agents/routing-and-supervisor',
+      diagrams: [
+        { name: 'RouterVsSupervisorDiagram', match: 'weather_agent' },
+      ],
+    },
+  ],
 };
 
 async function main() {

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -10,7 +9,9 @@ import SketchBox from '../../components/notebook/SketchBox';
  * result). */
 export default function ToolErrorTypesDiagram() {
   const t = useVizTokens();
-  const [execError, setExecError] = useState(true);
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(2, 3800);
+  const execError = cyc.value === 1;
   const color = getConceptColor(t, 'attention');
 
   const protocolJson = '{"error":{"code":-32602,"message":"Unknown tool: invalid_tool_name"}}';
@@ -19,10 +20,42 @@ export default function ToolErrorTypesDiagram() {
   return (
     <VisualizationContainer footer={execError ? 'A tool that RAN but failed at the business-logic/API level -- this is a normal JSON-RPC success response, just with isError:true. The client can feed this back to the LLM so it can self-correct.' : 'The tools/call request itself is malformed -- unknown tool name, invalid arguments, server-side failure -- reported as a standard JSON-RPC error object, same as any other protocol-level failure.'}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <button type="button" onClick={() => setExecError(false)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10, fontWeight: !execError ? 700 : 500, background: !execError ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${!execError ? color : t.border}`, color: !execError ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button
+          type="button"
+          onClick={() => cyc.pick(0)}
+          style={{
+            flex: 1,
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 10,
+            fontWeight: !execError ? 700 : 500,
+            background: !execError ? `${color}20` : t.surfaceAlt,
+            border: `1.25px solid ${!execError ? color : t.border}`,
+            color: !execError ? color : t.textSecondary,
+            boxShadow: !execError && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
           Protocol error
         </button>
-        <button type="button" onClick={() => setExecError(true)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10, fontWeight: execError ? 700 : 500, background: execError ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${execError ? color : t.border}`, color: execError ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button
+          type="button"
+          onClick={() => cyc.pick(1)}
+          style={{
+            flex: 1,
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 10,
+            fontWeight: execError ? 700 : 500,
+            background: execError ? `${color}20` : t.surfaceAlt,
+            border: `1.25px solid ${execError ? color : t.border}`,
+            color: execError ? color : t.textSecondary,
+            boxShadow: execError && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
           Tool execution error
         </button>
       </div>

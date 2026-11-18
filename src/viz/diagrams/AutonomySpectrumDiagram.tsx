@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle, usePrefersReducedMotion } from '../primitives';
+import { Pulse } from '../primitives/LiveFlow';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const LEVELS = [
@@ -15,20 +15,52 @@ const LEVELS = [
  * design decision as which architecture it runs. */
 export default function AutonomySpectrumDiagram() {
   const t = useVizTokens();
-  const [level, setLevel] = useState(2);
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(LEVELS.length, 3000);
+  const level = cyc.value;
   const color = getConceptColor(t, level === 3 ? 'masked' : 'attention');
   const width = 480;
 
   return (
     <VisualizationContainer footer={LEVELS[level].desc}>
-      <Slider label={`Autonomy level: ${LEVELS[level].label}`} min={0} max={3} step={1} value={level} onChange={setLevel} />
-      <svg width="100%" viewBox={`0 0 ${width} 50`} style={{ display: 'block', marginTop: 10 }}>
+      <Slider
+        label={`Autonomy level: ${LEVELS[level].label}`}
+        min={0}
+        max={3}
+        step={1}
+        value={level}
+        onChange={(v) => cyc.pick(v)}
+      />
+      <svg width="100%" viewBox={`0 0 ${width} 50`} style={{ display: 'block' }}>
         <line x1={20} y1={25} x2={width - 20} y2={25} stroke={t.border} strokeWidth={4} strokeLinecap="round" />
-        <line x1={20} y1={25} x2={20 + (level / 3) * (width - 40)} y2={25} stroke={color} strokeWidth={4} strokeLinecap="round" />
+        <line
+          x1={20}
+          y1={25}
+          x2={20 + (level / 3) * (width - 40)}
+          y2={25}
+          stroke={color}
+          strokeWidth={4}
+          strokeLinecap="round"
+          style={{ transition: reducedMotion ? 'none' : 'x2 0.3s ease' }}
+        />
         {LEVELS.map((_, i) => {
           const x = 20 + (i / 3) * (width - 40);
           const isActive = level === i;
-          return <circle key={i} cx={x} cy={25} r={isActive ? 9 : 6} fill={isActive ? color : t.surfaceAlt} stroke={color} strokeWidth={1.5} />;
+          return (
+            <g key={i}>
+              {isActive && !reducedMotion && <Pulse cx={x} cy={25} r={14} color={color} />}
+              <circle
+                cx={x}
+                cy={25}
+                r={isActive ? 9 : 6}
+                fill={isActive ? color : t.surfaceAlt}
+                stroke={color}
+                strokeWidth={1.5}
+                style={{ cursor: 'pointer' }}
+                onClick={() => cyc.pick(i)}
+              />
+            </g>
+          );
         })}
       </svg>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 4 }}>

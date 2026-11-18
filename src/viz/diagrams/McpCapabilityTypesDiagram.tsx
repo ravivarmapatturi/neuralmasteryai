@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const TYPES = [
@@ -14,17 +13,41 @@ const TYPES = [
  * two. */
 export default function McpCapabilityTypesDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('tools');
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(TYPES.length, 3500);
   const color = getConceptColor(t, 'attention');
-  const x = TYPES.find((y) => y.key === active)!;
+  const x = TYPES[cyc.value];
 
   return (
     <VisualizationContainer footer={x.desc}>
       <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
-        {TYPES.map((y) => {
-          const isActive = active === y.key;
+        {TYPES.map((y, i) => {
+          const isActive = cyc.value === i;
           return (
-            <div key={y.key} onClick={() => setActive(y.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(y.key); } }} onMouseEnter={() => setActive(y.key)} style={{ cursor: 'pointer', flex: 1, textAlign: 'center', padding: '0.5rem 0.5rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
+            <div
+              key={y.key}
+              onClick={() => cyc.pick(i)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  cyc.pick(i);
+                }
+              }}
+              onMouseEnter={() => cyc.pick(i)}
+              style={{
+                cursor: 'pointer',
+                flex: 1,
+                textAlign: 'center',
+                padding: '0.5rem 0.5rem',
+                borderRadius: 7,
+                background: isActive ? `${color}18` : t.surfaceAlt,
+                border: `1.5px solid ${isActive ? color : t.border}`,
+                boxShadow: isActive && !reducedMotion ? `0 0 8px ${color}33` : 'none',
+                transition: 'all 0.2s ease',
+              }}
+            >
               <span style={{ fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{y.label}</span>
             </div>
           );
