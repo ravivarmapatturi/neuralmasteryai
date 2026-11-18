@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchRect } from '../../components/notebook/RoughShape';
 
@@ -39,7 +38,10 @@ const DESCRIPTIONS: Record<Strategy, string> = {
  * mid-sentence cut that the other strategies avoid. */
 export default function ChunkingStrategiesDiagram() {
   const t = useVizTokens();
-  const [strategy, setStrategy] = useState<Strategy>('semantic');
+  const strategies: Strategy[] = ['fixed', 'semantic', 'recursive', 'parent-child'];
+  const cycle = useAutoCycle(strategies.length, 3200, 1);
+  const strategy = strategies[cycle.value];
+  const setStrategy = (next: Strategy) => cycle.pick(strategies.indexOf(next));
   const chunkColor = getConceptColor(t, 'embedding');
   const width = 600;
   const unitW = (width - 20) / UNITS.length;

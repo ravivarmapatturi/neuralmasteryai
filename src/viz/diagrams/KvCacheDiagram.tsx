@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect, Slider } from '../primitives';
+import { VisualizationContainer, PillSelect, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchRect } from '../../components/notebook/RoughShape';
 
@@ -12,8 +11,13 @@ const STEPS = 5;
  * caching, linear with it. */
 export default function KvCacheDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'naive' | 'cached'>('cached');
-  const [visibleSteps, setVisibleSteps] = useState(STEPS);
+  const modes = ['naive', 'cached'] as const;
+  const modeCycle = useAutoCycle(modes.length, 8000, 1);
+  const mode = modes[modeCycle.value];
+  const setMode = (next: (typeof modes)[number]) => modeCycle.pick(modes.indexOf(next));
+  const stepCycle = useAutoCycle(STEPS, 900, STEPS - 1);
+  const visibleSteps = stepCycle.value + 1;
+  const setVisibleSteps = (next: number) => stepCycle.pick(next - 1);
   const cachedColor = getConceptColor(t, 'key');
   const recomputeColor = t.accentDanger;
 

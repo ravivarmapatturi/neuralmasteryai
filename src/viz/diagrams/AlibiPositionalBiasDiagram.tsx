@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, VisualizationMath } from '../primitives';
+import { VisualizationContainer, Slider, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const SEQ_LEN = 10;
@@ -11,7 +11,9 @@ const SEQ_LEN = 10;
  * exactly which keys get penalized and by how much. */
 export default function AlibiPositionalBiasDiagram() {
   const t = useVizTokens();
-  const [queryPos, setQueryPos] = useState(6);
+  const queryCycle = useAutoCycle(SEQ_LEN, 650, 6);
+  const queryPos = queryCycle.value;
+  const setQueryPos = queryCycle.pick;
   const [slope, setSlope] = useState(0.5);
   const color = getConceptColor(t, 'query');
   const penaltyColor = t.accentDanger;

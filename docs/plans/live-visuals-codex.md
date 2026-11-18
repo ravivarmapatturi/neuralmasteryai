@@ -70,62 +70,63 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
   - [x] `src/viz/diagrams/SpeculativeDecodingDiagram.tsx`
 
 
+## Batch 3
 - `src/content/docs/llms-genai/foundation-model-internals.mdx`
-  - [ ] `src/viz/InferenceFlowVisualizer.tsx`
-  - [ ] `src/viz/diagrams/AlibiPositionalBiasDiagram.tsx`
-  - [ ] `src/viz/diagrams/ArchitectureFamiliesDiagram.tsx`
-  - [ ] `src/viz/diagrams/AttentionVariantsKvCacheDiagram.tsx`
-  - [ ] `src/viz/diagrams/BpeTokenizationDiagram.tsx`
-  - [ ] `src/viz/diagrams/ContextWindowScalingDiagram.tsx`
-  - [ ] `src/viz/diagrams/KvCacheDiagram.tsx`
-  - [ ] `src/viz/diagrams/MoeRoutingDiagram.tsx`
-  - [ ] `src/viz/diagrams/SamplingStrategiesDiagram.tsx`
-  - [ ] `src/viz/diagrams/SlidingWindowAttentionDiagram.tsx`
-  - [ ] `src/viz/diagrams/SwiGluGatingDiagram.tsx`
+  - [x] `src/viz/InferenceFlowVisualizer.tsx`
+  - [x] `src/viz/diagrams/AlibiPositionalBiasDiagram.tsx`
+  - [x] `src/viz/diagrams/ArchitectureFamiliesDiagram.tsx`
+  - [x] `src/viz/diagrams/AttentionVariantsKvCacheDiagram.tsx`
+  - [x] `src/viz/diagrams/BpeTokenizationDiagram.tsx`
+  - [x] `src/viz/diagrams/ContextWindowScalingDiagram.tsx`
+  - [x] `src/viz/diagrams/KvCacheDiagram.tsx`
+  - [x] `src/viz/diagrams/MoeRoutingDiagram.tsx`
+  - [x] `src/viz/diagrams/SamplingStrategiesDiagram.tsx`
+  - [x] `src/viz/diagrams/SlidingWindowAttentionDiagram.tsx`
+  - [x] `src/viz/diagrams/SwiGluGatingDiagram.tsx`
 - `src/content/docs/llms-genai/multimodal-generative-models.mdx`
-  - [ ] `src/viz/diagrams/AutoregressiveVsDiffusionGenerationDiagram.tsx`
-  - [ ] `src/viz/diagrams/VlmArchitectureDiagram.tsx`
+  - [x] `src/viz/diagrams/AutoregressiveVsDiffusionGenerationDiagram.tsx`
+  - [x] `src/viz/diagrams/VlmArchitectureDiagram.tsx`
 - `src/content/docs/llms-genai/overview.mdx`
-  - [ ] `src/viz/diagrams/AlignmentPipelineDiagram.tsx`
-  - [ ] `src/viz/diagrams/CapabilityCostLatencyTradeoffDiagram.tsx`
-  - [ ] `src/viz/diagrams/FrozenWeightsVsFineTuningDiagram.tsx`
-  - [ ] `src/viz/diagrams/GenAiPipelineOverviewDiagram.tsx`
-  - [ ] `src/viz/diagrams/ScalingLawsGlanceDiagram.tsx`
+  - [x] `src/viz/diagrams/AlignmentPipelineDiagram.tsx`
+  - [x] `src/viz/diagrams/CapabilityCostLatencyTradeoffDiagram.tsx`
+  - [x] `src/viz/diagrams/FrozenWeightsVsFineTuningDiagram.tsx`
+  - [x] `src/viz/diagrams/GenAiPipelineOverviewDiagram.tsx`
+  - [x] `src/viz/diagrams/ScalingLawsGlanceDiagram.tsx`
 - `src/content/docs/llms-genai/prompt-engineering.mdx`
-  - [ ] `src/viz/diagrams/LostInTheMiddleDiagram.tsx`
-  - [ ] `src/viz/diagrams/PromptInjectionFlowDiagram.tsx`
-  - [ ] `src/viz/diagrams/SelfConsistencyVotingDiagram.tsx`
-  - [ ] `src/viz/diagrams/TestTimeComputeScalingDiagram.tsx`
+  - [x] `src/viz/diagrams/LostInTheMiddleDiagram.tsx`
+  - [x] `src/viz/diagrams/PromptInjectionFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/SelfConsistencyVotingDiagram.tsx`
+  - [x] `src/viz/diagrams/TestTimeComputeScalingDiagram.tsx`
 - `src/content/docs/llms-genai/rag.mdx`
-  - [ ] `src/viz/EmbeddingSpaceExplorer.tsx`
-  - [ ] `src/viz/RagPipelineSimulator.tsx`
-  - [ ] `src/viz/diagrams/AdvancedRagArchitecturesDiagram.tsx`
-  - [ ] `src/viz/diagrams/BiEncoderVsCrossEncoderDiagram.tsx`
-  - [ ] `src/viz/diagrams/Bm25ScoringDiagram.tsx`
-  - [ ] `src/viz/diagrams/ChunkingStrategiesDiagram.tsx`
-  - [ ] `src/viz/diagrams/DenseVsSparseRetrievalDiagram.tsx`
-  - [ ] `src/viz/diagrams/GraphRagDiagram.tsx`
-  - [ ] `src/viz/diagrams/HybridSearchFusionDiagram.tsx`
-  - [ ] `src/viz/diagrams/QueryTransformationDiagram.tsx`
-  - [ ] `src/viz/diagrams/RagEvalMetricsDiagram.tsx`
+  - [x] `src/viz/EmbeddingSpaceExplorer.tsx`
+  - [x] `src/viz/RagPipelineSimulator.tsx`
+  - [x] `src/viz/diagrams/AdvancedRagArchitecturesDiagram.tsx`
+  - [x] `src/viz/diagrams/BiEncoderVsCrossEncoderDiagram.tsx`
+  - [x] `src/viz/diagrams/Bm25ScoringDiagram.tsx`
+  - [x] `src/viz/diagrams/ChunkingStrategiesDiagram.tsx`
+  - [x] `src/viz/diagrams/DenseVsSparseRetrievalDiagram.tsx`
+  - [x] `src/viz/diagrams/GraphRagDiagram.tsx`
+  - [x] `src/viz/diagrams/HybridSearchFusionDiagram.tsx`
+  - [x] `src/viz/diagrams/QueryTransformationDiagram.tsx`
+  - [x] `src/viz/diagrams/RagEvalMetricsDiagram.tsx`
 - `src/content/docs/llms-genai/retrieval-and-reranking-architectures.mdx`
-  - [ ] `src/viz/diagrams/RetrievalFunnelMissDiagram.tsx`
-  - [ ] `src/viz/diagrams/ThreeWayRetrievalArchitecturesDiagram.tsx`
+  - [x] `src/viz/diagrams/RetrievalFunnelMissDiagram.tsx`
+  - [x] `src/viz/diagrams/ThreeWayRetrievalArchitecturesDiagram.tsx`
 - `src/content/docs/llms-genai/training-pipeline.mdx`
-  - [ ] `src/viz/diagrams/DataPipelineStagesDiagram.tsx`
-  - [ ] `src/viz/diagrams/DistillationDiagram.tsx`
-  - [ ] `src/viz/diagrams/DpoVsRlhfDiagram.tsx`
-  - [ ] `src/viz/diagrams/GrpoVsPpoDiagram.tsx`
-  - [ ] `src/viz/diagrams/LoraMechanicsDiagram.tsx`
-  - [ ] `src/viz/diagrams/PeftMethodsComparisonDiagram.tsx`
-  - [ ] `src/viz/diagrams/PreferenceOptimizationFamilyDiagram.tsx`
-  - [ ] `src/viz/diagrams/PretrainingObjectiveDiagram.tsx`
-  - [ ] `src/viz/diagrams/QuantizationBitDepthDiagram.tsx`
-  - [ ] `src/viz/diagrams/RlhfPipelineDiagram.tsx`
-  - [ ] `src/viz/diagrams/ScalingLawsChinchillaDiagram.tsx`
-  - [ ] `src/viz/diagrams/SftBeforeAfterDiagram.tsx`
+  - [x] `src/viz/diagrams/DataPipelineStagesDiagram.tsx`
+  - [x] `src/viz/diagrams/DistillationDiagram.tsx`
+  - [x] `src/viz/diagrams/DpoVsRlhfDiagram.tsx`
+  - [x] `src/viz/diagrams/GrpoVsPpoDiagram.tsx`
+  - [x] `src/viz/diagrams/LoraMechanicsDiagram.tsx`
+  - [x] `src/viz/diagrams/PeftMethodsComparisonDiagram.tsx`
+  - [x] `src/viz/diagrams/PreferenceOptimizationFamilyDiagram.tsx`
+  - [x] `src/viz/diagrams/PretrainingObjectiveDiagram.tsx`
+  - [x] `src/viz/diagrams/QuantizationBitDepthDiagram.tsx`
+  - [x] `src/viz/diagrams/RlhfPipelineDiagram.tsx`
+  - [x] `src/viz/diagrams/ScalingLawsChinchillaDiagram.tsx`
+  - [x] `src/viz/diagrams/SftBeforeAfterDiagram.tsx`
 - `src/content/docs/machine-learning/anomaly-detection.mdx`
-  - [ ] `src/viz/diagrams/IsolationPathLengthDiagram.tsx`
+  - [x] `src/viz/diagrams/IsolationPathLengthDiagram.tsx`
 
 ## Batch 4
 - `src/content/docs/machine-learning/association-rules.mdx`

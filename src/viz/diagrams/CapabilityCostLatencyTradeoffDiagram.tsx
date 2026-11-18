@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const MODELS = [
@@ -14,7 +13,9 @@ const MODELS = [
  * than just asserting "bigger is slower and pricier." */
 export default function CapabilityCostLatencyTradeoffDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(1);
+  const cycle = useAutoCycle(MODELS.length, 3000, 1);
+  const selected = cycle.value;
+  const setSelected = cycle.pick;
   const color = t.accentPrimary;
   const width = 460;
   const height = 200;

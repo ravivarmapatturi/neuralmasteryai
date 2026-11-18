@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const LICENSES = [
@@ -15,18 +14,18 @@ const LICENSES = [
  * text for the specific model version before commercial deployment. */
 export default function ModelLicenseSpectrumDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('threshold');
+  const { value: activeIndex, pick } = useAutoCycle(LICENSES.length, 2600, 1);
   const color = getConceptColor(t, 'attention');
-  const l = LICENSES.find((x) => x.key === active)!;
+  const l = LICENSES[activeIndex];
 
   return (
     <VisualizationContainer footer={l.desc}>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        {LICENSES.map((x) => {
-          const isActive = active === x.key;
+        {LICENSES.map((x, idx) => {
+          const isActive = activeIndex === idx;
           return (
-            <div key={x.key} onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.7rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
-              <span style={{ fontSize: 10, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{x.label}</span>
+            <div key={x.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer', padding: '0.5rem 0.7rem', borderRadius: 7, background: isActive ? `${color}20` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, transition: 'all 200ms ease' }}>
+              <span style={{ fontSize: 10, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{isActive ? `▶ ${x.label}` : x.label}</span>
             </div>
           );
         })}

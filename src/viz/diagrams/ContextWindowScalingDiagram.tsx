@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 /** Attention cost is O(n^2) in sequence length -- drag context length and
@@ -8,7 +7,9 @@ import { getConceptColor } from './diagramSystem';
  * attention's linear growth, made concrete with an actual multiplier. */
 export default function ContextWindowScalingDiagram() {
   const t = useVizTokens();
-  const [n, setN] = useState(8000);
+  const contextCycle = useAutoCycle(64, 180, 15);
+  const n = (contextCycle.value + 1) * 500;
+  const setN = (next: number) => contextCycle.pick(Math.max(0, Math.round(next / 500) - 1));
   const fullColor = t.accentDanger;
   const sparseColor = getConceptColor(t, 'attention');
   const maxN = 32000;

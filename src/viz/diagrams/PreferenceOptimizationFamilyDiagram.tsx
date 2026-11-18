@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Method = 'ipo' | 'kto' | 'orpo' | 'rloo';
@@ -17,7 +16,10 @@ const METHODS: Record<Method, { label: string; base: string; changes: string; da
  * differentiator between these methods). */
 export default function PreferenceOptimizationFamilyDiagram() {
   const t = useVizTokens();
-  const [method, setMethod] = useState<Method>('kto');
+  const methods = Object.keys(METHODS) as Method[];
+  const cycle = useAutoCycle(methods.length, 3200, 1);
+  const method = methods[cycle.value];
+  const setMethod = (next: Method) => cycle.pick(methods.indexOf(next));
   const color = getConceptColor(t, 'attention');
   const active = METHODS[method];
 

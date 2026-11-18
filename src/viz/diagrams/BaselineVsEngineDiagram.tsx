@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const PROBLEMS = [
@@ -14,17 +13,17 @@ const PROBLEMS = [
  * side, instead of just being told "engines are faster." */
 export default function BaselineVsEngineDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('kv');
+  const { value: selectedIdx, pick } = useAutoCycle(PROBLEMS.length, 2800, 1);
   const baselineColor = t.textMuted;
   const engineColor = getConceptColor(t, 'attention');
-  const active = PROBLEMS.find((p) => p.key === selected)!;
+  const active = PROBLEMS[selectedIdx];
 
   return (
     <VisualizationContainer footer="Naming which problem you actually have is worth doing before reaching for a heavier tool to fix it -- low-traffic prototyping genuinely doesn't need any of this yet.">
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-        {PROBLEMS.map((p) => (
-          <div key={p.key} onClick={() => setSelected(p.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(p.key); } }} style={{ cursor: 'pointer', padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: selected === p.key ? 700 : 500, background: selected === p.key ? `${engineColor}25` : t.surfaceAlt, border: `1.25px solid ${selected === p.key ? engineColor : t.border}`, color: selected === p.key ? engineColor : t.textSecondary }}>
-            {p.label}
+        {PROBLEMS.map((p, idx) => (
+          <div key={p.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} style={{ cursor: 'pointer', padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: selectedIdx === idx ? 700 : 500, background: selectedIdx === idx ? `${engineColor}25` : t.surfaceAlt, border: `1.25px solid ${selectedIdx === idx ? engineColor : t.border}`, color: selectedIdx === idx ? engineColor : t.textSecondary, transition: 'all 200ms ease' }}>
+            {selectedIdx === idx ? `▶ ${p.label}` : p.label}
           </div>
         ))}
       </div>
@@ -33,9 +32,9 @@ export default function BaselineVsEngineDiagram() {
           <div style={{ fontSize: 10.5, fontWeight: 700, color: baselineColor, marginBottom: 4 }}>Plain PyTorch</div>
           <div style={{ fontSize: 11, color: t.textSecondary }}>{active.baseline}</div>
         </div>
-        <div style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: 8, background: `${engineColor}12`, border: `1.5px solid ${engineColor}` }}>
+        <div style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: 8, background: `${engineColor}12`, border: `1.5px solid ${engineColor}`, transition: 'all 250ms ease' }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: engineColor, marginBottom: 4 }}>Dedicated engine</div>
-          <div style={{ fontSize: 11, color: t.textSecondary }}>{active.engine}</div>
+          <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 500 }}>{active.engine}</div>
         </div>
       </div>
     </VisualizationContainer>

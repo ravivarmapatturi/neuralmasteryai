@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type KeyMode = 'random' | 'byUser';
+const MODES: KeyMode[] = ['random', 'byUser'];
 
 // Each event: (id, user). Producer emits them in this exact order.
 const EVENTS = [
@@ -28,7 +29,8 @@ const PAD_TOP = 30;
 
 export default function PartitionOrderingDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<KeyMode>('random');
+  const { value: modeIdx, pick } = useAutoCycle(MODES.length, 3500, 1);
+  const mode = MODES[modeIdx];
 
   const partitions: { id: number; user: string }[][] = [[], [], []];
   for (const e of EVENTS) {
@@ -55,7 +57,10 @@ export default function PartitionOrderingDiagram() {
       <PillSelect<KeyMode>
         label="Partition assignment"
         value={mode}
-        onChange={setMode}
+        onChange={(val) => {
+          const next = typeof val === 'function' ? val(mode) : val;
+          pick(MODES.indexOf(next));
+        }}
         options={[
           { value: 'random', label: 'No key (round-robin)' },
           { value: 'byUser', label: 'Keyed by user ID' },

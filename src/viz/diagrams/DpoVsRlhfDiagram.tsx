@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 /** Same preference data in, two structurally different paths: RLHF trains
@@ -9,7 +8,10 @@ import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
  * Toggle to see exactly which boxes disappear. */
 export default function DpoVsRlhfDiagram() {
   const t = useVizTokens();
-  const [method, setMethod] = useState<'rlhf' | 'dpo'>('dpo');
+  const methods = ['rlhf', 'dpo'] as const;
+  const cycle = useAutoCycle(methods.length, 3400, 1);
+  const method = methods[cycle.value];
+  const setMethod = (next: (typeof methods)[number]) => cycle.pick(methods.indexOf(next));
   const rlhfColor = t.accentDanger;
   const dpoColor = getConceptColor(t, 'attention');
   const color = method === 'rlhf' ? rlhfColor : dpoColor;

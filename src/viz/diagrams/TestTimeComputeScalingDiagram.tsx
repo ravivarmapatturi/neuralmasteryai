@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const MIN_BUDGET = 1024;
@@ -23,7 +23,9 @@ function illustrativeAccuracy(budgetTokens: number): number {
 
 export default function TestTimeComputeScalingDiagram() {
   const t = useVizTokens();
-  const [budget, setBudget] = useState(4096);
+  const budgetCycle = useAutoCycle(497, 120, 48);
+  const budget = MIN_BUDGET + budgetCycle.value * 64;
+  const setBudget = (next: number) => budgetCycle.pick(Math.round((next - MIN_BUDGET) / 64));
   const color = t.accentPrimary;
 
   const points = useMemo(() => {

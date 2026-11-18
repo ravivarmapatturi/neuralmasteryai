@@ -1,14 +1,18 @@
 import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, Slider } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const ROW_H = 34;
 const PAD_L = 90;
+const TIMES = [200, 500, 800, 1200, 1600];
 
 export default function SyncVsAsyncDiagram() {
   const t = useVizTokens();
-  const [processingMs, setProcessingMs] = useState(600);
+  const { value: timeIdx, pick } = useAutoCycle(TIMES.length, 2500, 1);
+  const [manualMs, setManualMs] = useState<number | null>(null);
+  const processingMs = manualMs ?? TIMES[timeIdx];
 
   const pxPerMs = 0.35;
   const requestPx = 20;
@@ -22,7 +26,19 @@ export default function SyncVsAsyncDiagram() {
 
   return (
     <VisualizationContainer footer="Sync: the client's thread is blocked for the entire processing time -- it can't do anything else until the response comes back. Async: the client hands the request to a queue and is free immediately; a separate consumer processes it whenever it gets to it, decoupled from the client's timeline entirely.">
-      <Slider label="Processing time" value={processingMs} onChange={setProcessingMs} min={100} max={2000} step={100} format={(v) => `${v}ms`} />
+      <Slider
+        label="Processing time"
+        value={processingMs}
+        onChange={(v) => {
+          setManualMs(v);
+          const closest = TIMES.reduce((prev, curr) => Math.abs(curr - v) < Math.abs(prev - v) ? curr : prev);
+          pick(TIMES.indexOf(closest));
+        }}
+        min={100}
+        max={2000}
+        step={100}
+        format={(v) => `${v}ms`}
+      />
       <svg width="100%" viewBox={`0 0 ${maxWidth} ${ROW_H * 5 + 10}`} style={{ display: 'block', marginTop: 12 }}>
         <text x={8} y={16} fontSize={14} fontWeight={700} fill={t.textMuted}>Sync</text>
         <text x={8} y={16 + ROW_H} fontSize={14} fill={t.textSecondary}>client</text>

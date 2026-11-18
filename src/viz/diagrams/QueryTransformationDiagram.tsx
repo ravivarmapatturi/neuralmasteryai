@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -38,7 +37,10 @@ const TRANSFORMS: Record<Technique, { label: string; outputs: string[]; desc: st
  * addition to) the raw question. */
 export default function QueryTransformationDiagram() {
   const t = useVizTokens();
-  const [technique, setTechnique] = useState<Technique>('multiquery');
+  const techniques: Technique[] = ['hyde', 'decomposition', 'stepback', 'multiquery'];
+  const cycle = useAutoCycle(techniques.length, 3400, 3);
+  const technique = techniques[cycle.value];
+  const setTechnique = (next: Technique) => cycle.pick(techniques.indexOf(next));
   const origColor = t.textMuted;
   const transformColor = getConceptColor(t, 'attention');
   const config = TRANSFORMS[technique];

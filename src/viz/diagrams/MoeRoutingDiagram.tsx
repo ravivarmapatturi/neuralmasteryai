@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const TOKENS = ['The', 'cat', 'sat'];
@@ -19,7 +18,9 @@ const SCORES: Record<string, number[]> = {
  * pass. That's the whole mechanism behind "larger model, same compute." */
 export default function MoeRoutingDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('cat');
+  const tokenKeys = TOKENS;
+  const cycle = useAutoCycle(tokenKeys.length, 2600);
+  const selected = tokenKeys[cycle.value];
   const routerColor = getConceptColor(t, 'attention');
   const activeColor = getConceptColor(t, 'embedding');
 
@@ -32,7 +33,7 @@ export default function MoeRoutingDiagram() {
         {TOKENS.map((tok) => (
           <div
             key={tok}
-            onClick={() => setSelected(tok)}
+            onClick={() => cycle.pick(tokenKeys.indexOf(tok))}
             style={{ padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontFamily: 'monospace', fontWeight: 700, background: selected === tok ? `${routerColor}30` : t.surfaceAlt, border: `1.5px solid ${selected === tok ? routerColor : t.border}`, color: selected === tok ? routerColor : t.textSecondary }}
           >
             {tok}

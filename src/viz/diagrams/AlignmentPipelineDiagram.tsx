@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const STAGES = [
@@ -15,7 +14,9 @@ const STAGES = [
  * for the RNN->Transformer evolution on the sequence-models page. */
 export default function AlignmentPipelineDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(2);
+  const cycle = useAutoCycle(STAGES.length, 2800, 2);
+  const selected = cycle.value;
+  const setSelected = cycle.pick;
   const width = 500;
   const height = 90;
   const nodeW = (width - 20) / STAGES.length;

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Family = 'encoder' | 'decoder' | 'encdec';
@@ -17,7 +16,10 @@ const DESC: Record<Family, string> = {
  * is the entire structural difference between them. */
 export default function ArchitectureFamiliesDiagram() {
   const t = useVizTokens();
-  const [family, setFamily] = useState<Family>('decoder');
+  const families: Family[] = ['encoder', 'decoder', 'encdec'];
+  const cycle = useAutoCycle(families.length, 3200, 1);
+  const family = families[cycle.value];
+  const setFamily = (next: Family) => cycle.pick(families.indexOf(next));
   const color = getConceptColor(t, 'attention');
   const cell = 26;
 

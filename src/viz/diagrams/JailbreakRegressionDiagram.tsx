@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 
@@ -13,7 +13,7 @@ const TIMELINE = [
  * after an unrelated model update -- click through the timeline. */
 export default function JailbreakRegressionDiagram() {
   const t = useVizTokens();
-  const [step, setStep] = useState(3);
+  const { value: step, pick } = useAutoCycle(TIMELINE.length, 2500, 3);
   const okColor = t.accentPrimary;
   const badColor = t.accentDanger;
 
@@ -24,7 +24,7 @@ export default function JailbreakRegressionDiagram() {
           const isActive = step === i;
           const c = s.blocked ? okColor : badColor;
           return (
-            <div key={s.label} onClick={() => setStep(i)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(i); } }} onMouseEnter={() => setStep(i)} style={{ flex: 1, cursor: 'pointer', padding: '0.5rem', borderRadius: 7, textAlign: 'center', background: isActive ? `${c}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}>
+            <div key={s.label} onClick={() => pick(i)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(i); } }} onMouseEnter={() => pick(i)} style={{ flex: 1, cursor: 'pointer', padding: '0.5rem', borderRadius: 7, textAlign: 'center', background: isActive ? `${c}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}>
               <div style={{ fontSize: 9, fontWeight: isActive ? 700 : 500, color: isActive ? c : t.textPrimary }}>{s.label}</div>
               <div style={{ fontSize: 8, color: c, marginTop: 2 }}>{s.blocked ? '✓ blocked' : '✗ works again'}</div>
             </div>

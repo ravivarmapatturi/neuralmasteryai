@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STEPS = [
@@ -16,7 +15,9 @@ const STEPS = [
  * "the RL step" in general, it's the guardrail against reward hacking). */
 export default function RlhfPipelineDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<(typeof STEPS)[number]['key']>('reward');
+  const cycle = useAutoCycle(STEPS.length, 2800, 2);
+  const selected = STEPS[cycle.value].key;
+  const setSelected = (key: (typeof STEPS)[number]['key']) => cycle.pick(STEPS.findIndex((step) => step.key === key));
   const color = getConceptColor(t, 'attention');
   const klColor = t.accentWarn;
   const active = STEPS.find((s) => s.key === selected)!;

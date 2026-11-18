@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -16,9 +16,10 @@ const LAYERS = [
  * is the exception, not the rule -- these are conceptually separate jobs. */
 export default function InferenceStackLayersDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('engine');
+  const { value: activeIdx, pick } = useAutoCycle(LAYERS.length, 2500, 2);
+  const active = LAYERS[activeIdx].key;
   const color = getConceptColor(t, 'attention');
-  const info = LAYERS.find((l) => l.key === active)!;
+  const info = LAYERS[activeIdx];
 
   return (
     <VisualizationContainer footer={info.desc}>
@@ -28,8 +29,8 @@ export default function InferenceStackLayersDiagram() {
           return (
             <div key={l.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div
-                onClick={() => setActive(l.key)}
-                onMouseEnter={() => setActive(l.key)}
+                onClick={() => pick(i)}
+                onMouseEnter={() => pick(i)}
                 style={{ flex: 1, cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}
               >
                 {l.label}

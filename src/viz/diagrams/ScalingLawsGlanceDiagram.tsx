@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 /** Simplified power-law loss curve: loss ~ C^-a. Drag the compute budget
@@ -9,7 +8,9 @@ import { DIAGRAM_TYPE } from './diagramSystem';
  * of scale -- scale changes WHERE you are on the curve, not the ratio. */
 export default function ScalingLawsGlanceDiagram() {
   const t = useVizTokens();
-  const [logCompute, setLogCompute] = useState(3);
+  const computeCycle = useAutoCycle(51, 140, 20);
+  const logCompute = 1 + computeCycle.value / 10;
+  const setLogCompute = (next: number) => computeCycle.pick(Math.round((next - 1) * 10));
   const color = t.accentPrimary;
   const compute = Math.pow(10, logCompute);
   const loss = 3.5 * Math.pow(compute, -0.05);

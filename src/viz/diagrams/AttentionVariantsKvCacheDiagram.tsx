@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Variant = 'mha' | 'gqa' | 'mqa' | 'mla';
@@ -18,7 +17,10 @@ const DESC: Record<Variant, string> = {
  * grouping and the resulting KV-cache-per-token count. */
 export default function AttentionVariantsKvCacheDiagram() {
   const t = useVizTokens();
-  const [variant, setVariant] = useState<Variant>('gqa');
+  const variants: Variant[] = ['mha', 'gqa', 'mqa', 'mla'];
+  const cycle = useAutoCycle(variants.length, 3200, 1);
+  const variant = variants[cycle.value];
+  const setVariant = (next: Variant) => cycle.pick(variants.indexOf(next));
   const qColor = getConceptColor(t, 'query');
   const kvColor = getConceptColor(t, 'key');
   const groups = KV_GROUPS[variant];

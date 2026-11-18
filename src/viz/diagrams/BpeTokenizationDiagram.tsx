@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 // A tiny corpus, pre-computed BPE merge steps: each step merges the most
@@ -36,7 +35,8 @@ function applyMerges(word: string[], upTo: number): string[] {
  * one word to see the vocabulary being built, not just described. */
 export default function BpeTokenizationDiagram() {
   const t = useVizTokens();
-  const [step, setStep] = useState(0);
+  const cycle = useAutoCycle(MERGES.length + 1, 2200);
+  const step = cycle.value;
   const color = getConceptColor(t, 'token');
   const symbols = applyMerges(WORD, step);
 
@@ -53,7 +53,7 @@ export default function BpeTokenizationDiagram() {
         {[0, 1, 2, 3].map((s) => (
           <div
             key={s}
-            onClick={() => setStep(s)}
+            onClick={() => cycle.pick(s)}
             style={{ padding: '6px 12px', borderRadius: 999, fontSize: 11, cursor: 'pointer', background: step === s ? t.accentPrimary : t.surfaceAlt, color: step === s ? t.background : t.textSecondary, fontWeight: step === s ? 700 : 400 }}
           >
             {s === 0 ? 'raw chars' : `merge ${s}`}

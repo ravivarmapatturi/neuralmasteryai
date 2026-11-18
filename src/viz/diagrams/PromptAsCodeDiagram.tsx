@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { getConceptColor } from './diagramSystem';
@@ -8,7 +8,8 @@ import { getConceptColor } from './diagramSystem';
  * be. */
 export default function PromptAsCodeDiagram() {
   const t = useVizTokens();
-  const [tested, setTested] = useState(true);
+  const { value: testIdx, pick } = useAutoCycle(2, 3500, 0);
+  const tested = testIdx === 0;
   const color = getConceptColor(t, 'attention');
   const badColor = t.accentDanger;
   const okColor = t.accentPrimary;
@@ -21,7 +22,7 @@ export default function PromptAsCodeDiagram() {
 
   return (
     <VisualizationContainer footer={tested ? '1 of 3 fixed test cases regressed after the prompt edit -- caught before this ever reached production, the same way a unit test would catch a code regression.' : 'A prompt template was just edited. Click "run tests" to check it against the fixed test set.'}>
-      <button type="button" onClick={() => setTested((t2) => !t2)} style={{ marginBottom: 10, padding: '6px 12px', borderRadius: 6, border: `1px solid ${color}`, background: tested ? `${color}15` : 'transparent', color, cursor: 'pointer', fontSize: 11.5, fontWeight: 700 }}>
+      <button type="button" onClick={() => pick(tested ? 1 : 0)} style={{ marginBottom: 10, padding: '6px 12px', borderRadius: 6, border: `1px solid ${color}`, background: tested ? `${color}15` : 'transparent', color, cursor: 'pointer', fontSize: 11.5, fontWeight: 700 }}>
         {tested ? 'Tests run' : 'Run tests against prompt edit'}
       </button>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>

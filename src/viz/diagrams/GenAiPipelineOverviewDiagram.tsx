@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const STAGES = [
@@ -16,7 +15,9 @@ const STAGES = [
  * link titles. */
 export default function GenAiPipelineOverviewDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState(0);
+  const cycle = useAutoCycle(STAGES.length, 2600);
+  const active = cycle.value;
+  const setActive = cycle.pick;
   const width = 600;
   const height = 100;
   const stageW = (width - 20) / STAGES.length;

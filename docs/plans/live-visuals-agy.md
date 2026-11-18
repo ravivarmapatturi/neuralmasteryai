@@ -155,42 +155,42 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 5
 - `src/content/docs/mlops/legal-licensing-and-governance.mdx`
-  - [ ] `src/viz/diagrams/GovernanceApprovalFlowDiagram.tsx`
-  - [ ] `src/viz/diagrams/ModelCardVsDataCardDiagram.tsx`
-  - [ ] `src/viz/diagrams/ModelLicenseSpectrumDiagram.tsx`
-  - [ ] `src/viz/diagrams/PrivacyRegulationScopeDiagram.tsx`
+  - [x] `src/viz/diagrams/GovernanceApprovalFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/ModelCardVsDataCardDiagram.tsx`
+  - [x] `src/viz/diagrams/ModelLicenseSpectrumDiagram.tsx`
+  - [x] `src/viz/diagrams/PrivacyRegulationScopeDiagram.tsx`
 - `src/content/docs/mlops/llm-evaluation-and-ragops.mdx`
-  - [ ] `src/viz/diagrams/BleuVsSemanticDiagram.tsx`
-  - [ ] `src/viz/diagrams/NdcgRankingDiagram.tsx`
-  - [ ] `src/viz/diagrams/RagFailureLayerDiagram.tsx`
+  - [x] `src/viz/diagrams/BleuVsSemanticDiagram.tsx`
+  - [x] `src/viz/diagrams/NdcgRankingDiagram.tsx`
+  - [x] `src/viz/diagrams/RagFailureLayerDiagram.tsx`
 - `src/content/docs/mlops/llm-hosting-and-serving-patterns.mdx`
-  - [ ] `src/viz/diagrams/EmbeddingRerankerPipelineDiagram.tsx`
-  - [ ] `src/viz/diagrams/FineTuningToInferenceHandoffDiagram.tsx`
-  - [ ] `src/viz/diagrams/HostingStackDiagram.tsx`
-  - [ ] `src/viz/diagrams/MultiLoraServingDiagram.tsx`
-  - [ ] `src/viz/diagrams/ServerlessColdStartDiagram.tsx`
+  - [x] `src/viz/diagrams/EmbeddingRerankerPipelineDiagram.tsx`
+  - [x] `src/viz/diagrams/FineTuningToInferenceHandoffDiagram.tsx`
+  - [x] `src/viz/diagrams/HostingStackDiagram.tsx`
+  - [x] `src/viz/diagrams/MultiLoraServingDiagram.tsx`
+  - [x] `src/viz/diagrams/ServerlessColdStartDiagram.tsx`
 - `src/content/docs/mlops/llm-inference-engines.mdx`
-  - [ ] `src/viz/diagrams/BaselineVsEngineDiagram.tsx`
-  - [ ] `src/viz/diagrams/EdgeVsServerDeploymentDiagram.tsx`
-  - [ ] `src/viz/diagrams/EngineTerminologyDiagram.tsx`
-  - [ ] `src/viz/diagrams/InferenceStackLayersDiagram.tsx`
+  - [x] `src/viz/diagrams/BaselineVsEngineDiagram.tsx`
+  - [x] `src/viz/diagrams/EdgeVsServerDeploymentDiagram.tsx`
+  - [x] `src/viz/diagrams/EngineTerminologyDiagram.tsx`
+  - [x] `src/viz/diagrams/InferenceStackLayersDiagram.tsx`
 - `src/content/docs/mlops/llm-inference-optimization.mdx`
-  - [ ] `src/viz/diagrams/FlashAttentionMemoryDiagram.tsx`
-  - [ ] `src/viz/diagrams/PrefillVsDecodeDiagram.tsx`
-  - [ ] `src/viz/diagrams/PrefixCachingDiagram.tsx`
-  - [ ] `src/viz/diagrams/TtftTpotTimelineDiagram.tsx`
+  - [x] `src/viz/diagrams/FlashAttentionMemoryDiagram.tsx`
+  - [x] `src/viz/diagrams/PrefillVsDecodeDiagram.tsx`
+  - [x] `src/viz/diagrams/PrefixCachingDiagram.tsx`
+  - [x] `src/viz/diagrams/TtftTpotTimelineDiagram.tsx`
 - `src/content/docs/mlops/message-queues-and-async-processing.mdx`
-  - [ ] `src/viz/diagrams/DeliverySemanticsDiagram.tsx`
-  - [ ] `src/viz/diagrams/PartitionOrderingDiagram.tsx`
-  - [ ] `src/viz/diagrams/PubSubVsPointToPointDiagram.tsx`
-  - [ ] `src/viz/diagrams/SyncVsAsyncDiagram.tsx`
+  - [x] `src/viz/diagrams/DeliverySemanticsDiagram.tsx`
+  - [x] `src/viz/diagrams/PartitionOrderingDiagram.tsx`
+  - [x] `src/viz/diagrams/PubSubVsPointToPointDiagram.tsx`
+  - [x] `src/viz/diagrams/SyncVsAsyncDiagram.tsx`
 - `src/content/docs/mlops/ml-and-llm-testing.mdx`
-  - [ ] `src/viz/diagrams/JailbreakRegressionDiagram.tsx`
-  - [ ] `src/viz/diagrams/LlmTestTypesDiagram.tsx`
-  - [ ] `src/viz/diagrams/MlTestPyramidDiagram.tsx`
-  - [ ] `src/viz/diagrams/PromptAsCodeDiagram.tsx`
+  - [x] `src/viz/diagrams/JailbreakRegressionDiagram.tsx`
+  - [x] `src/viz/diagrams/LlmTestTypesDiagram.tsx`
+  - [x] `src/viz/diagrams/MlTestPyramidDiagram.tsx`
+  - [x] `src/viz/diagrams/PromptAsCodeDiagram.tsx`
 - `src/content/docs/mlops/mlops-architecture-and-roadmap.mdx`
-  - [ ] `src/viz/diagrams/MlLifecyclePipelineDiagram.tsx`
+  - [x] `src/viz/diagrams/MlLifecyclePipelineDiagram.tsx`
 
 ## Batch 6
 - `src/content/docs/mlops/model-serving.mdx`

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const CANDIDATES = [
@@ -17,7 +16,10 @@ const CANDIDATES = [
  * -- that's the extra signal distillation actually trains the student on. */
 export default function DistillationDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'hard' | 'soft'>('soft');
+  const modes = ['hard', 'soft'] as const;
+  const cycle = useAutoCycle(modes.length, 3200, 1);
+  const mode = modes[cycle.value];
+  const setMode = (next: (typeof modes)[number]) => cycle.pick(modes.indexOf(next));
   const hardColor = t.textMuted;
   const softColor = getConceptColor(t, 'attention');
   const color = mode === 'hard' ? hardColor : softColor;

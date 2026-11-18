@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, PillSelect } from '../primitives';
+import { VisualizationContainer, Slider, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const N = 16;
@@ -27,8 +27,13 @@ type Mode = 'ar' | 'diffusion';
 
 export default function AutoregressiveVsDiffusionGenerationDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('ar');
-  const [step, setStep] = useState(4);
+  const modes: Mode[] = ['ar', 'diffusion'];
+  const modeCycle = useAutoCycle(modes.length, 9000);
+  const mode = modes[modeCycle.value];
+  const setMode = (next: Mode) => modeCycle.pick(modes.indexOf(next));
+  const stepCycle = useAutoCycle(STEPS + 1, 500);
+  const step = stepCycle.value;
+  const setStep = stepCycle.pick;
 
   const resolved = useMemo(() => {
     if (mode === 'ar') return Array.from({ length: N }, (_, i) => i < step);

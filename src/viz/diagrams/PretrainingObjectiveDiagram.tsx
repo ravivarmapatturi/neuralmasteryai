@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const SEQUENCE = ['The', 'cat', 'sat', 'on', 'the', 'mat'];
@@ -18,7 +17,10 @@ const CANDIDATES: Record<number, { token: string; p: number }[]> = {
  * position to see that distribution and the resulting loss contribution. */
 export default function PretrainingObjectiveDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(2);
+  const selectable = Object.keys(CANDIDATES).map(Number);
+  const cycle = useAutoCycle(selectable.length, 2800, 1);
+  const selected = selectable[cycle.value];
+  const setSelected = (index: number) => cycle.pick(selectable.indexOf(index));
   const tokenColor = getConceptColor(t, 'token');
   const predColor = getConceptColor(t, 'attention');
   const candidates = CANDIDATES[selected] ?? CANDIDATES[2];

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const STAGES = [
@@ -15,7 +14,9 @@ const STAGES = [
  * this multi-stage forward pass, not just standard text generation. */
 export default function VlmArchitectureDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('projector');
+  const cycle = useAutoCycle(STAGES.length, 2800, 1);
+  const active = STAGES[cycle.value].key;
+  const setActive = (key: string) => cycle.pick(STAGES.findIndex((stage) => stage.key === key));
   const color = getConceptColor(t, 'attention');
   const s = STAGES.find((x) => x.key === active)!;
 

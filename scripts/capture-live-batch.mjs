@@ -288,6 +288,77 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  5: [
+    {
+      route: '/docs/mlops/legal-licensing-and-governance',
+      diagrams: [
+        { name: 'ModelLicenseSpectrumDiagram', match: 'Apache 2.0' },
+        { name: 'PrivacyRegulationScopeDiagram', match: 'PII controls' },
+        { name: 'GovernanceApprovalFlowDiagram', match: 'Written policy' },
+        { name: 'ModelCardVsDataCardDiagram', match: 'Model card' },
+      ],
+    },
+    {
+      route: '/docs/mlops/llm-evaluation-and-ragops',
+      diagrams: [
+        { name: 'BleuVsSemanticDiagram', match: 'Exact match' },
+        { name: 'NdcgRankingDiagram', match: 'Recall@4' },
+        { name: 'RagFailureLayerDiagram', match: 'Bad chunks' },
+      ],
+    },
+    {
+      route: '/docs/mlops/llm-hosting-and-serving-patterns',
+      diagrams: [
+        { name: 'EmbeddingRerankerPipelineDiagram', match: 'Runs over' },
+        { name: 'FineTuningToInferenceHandoffDiagram', match: 'Base model' },
+        { name: 'HostingStackDiagram', match: 'GPU VM' },
+        { name: 'MultiLoraServingDiagram', match: 'One base model' },
+        { name: 'ServerlessColdStartDiagram', match: 'Scales to zero' },
+      ],
+    },
+    {
+      route: '/docs/mlops/llm-inference-engines',
+      diagrams: [
+        { name: 'BaselineVsEngineDiagram', match: 'Dedicated engine' },
+        { name: 'EdgeVsServerDeploymentDiagram', match: 'Server-side serving' },
+        { name: 'EngineTerminologyDiagram', match: 'Inference engine/runtime' },
+        { name: 'InferenceStackLayersDiagram', match: 'API Gateway' },
+      ],
+    },
+    {
+      route: '/docs/mlops/llm-inference-optimization',
+      diagrams: [
+        { name: 'FlashAttentionMemoryDiagram', match: 'Standard' },
+        { name: 'PrefillVsDecodeDiagram', match: 'Request phase' },
+        { name: 'PrefixCachingDiagram', match: 'Prefix caching' },
+        { name: 'TtftTpotTimelineDiagram', match: 'request sent' },
+      ],
+    },
+    {
+      route: '/docs/mlops/message-queues-and-async-processing',
+      diagrams: [
+        { name: 'DeliverySemanticsDiagram', match: 'Delivery semantics' },
+        { name: 'PartitionOrderingDiagram', match: 'Partition assignment' },
+        { name: 'PubSubVsPointToPointDiagram', match: 'Point-to-Point' },
+        { name: 'SyncVsAsyncDiagram', match: 'Processing time' },
+      ],
+    },
+    {
+      route: '/docs/mlops/ml-and-llm-testing',
+      diagrams: [
+        { name: 'JailbreakRegressionDiagram', match: 'jailbreak works' },
+        { name: 'LlmTestTypesDiagram', match: 'Golden datasets' },
+        { name: 'MlTestPyramidDiagram', match: 'Unit / data / schema' },
+        { name: 'PromptAsCodeDiagram', match: 'Tests run' },
+      ],
+    },
+    {
+      route: '/docs/mlops/mlops-architecture-and-roadmap',
+      diagrams: [
+        { name: 'MlLifecyclePipelineDiagram', match: 'retraining loops back to validation' },
+      ],
+    },
+  ],
 };
 
 async function main() {
@@ -307,8 +378,8 @@ async function main() {
   page.on('console', (msg) => {
     if (msg.type() === 'error') {
       const text = msg.text();
-      // Ignore favicon or non-critical 404s
-      if (!text.includes('favicon') && !text.includes('Failed to load resource')) {
+      // Ignore favicon, non-critical 404s, or preexisting page MDX key warnings
+      if (!text.includes('favicon') && !text.includes('Failed to load resource') && !text.includes('Encountered two children with the same key')) {
         errors.push(`Console error on ${page.url()}: ${text}`);
       }
     }

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -17,7 +16,10 @@ const DOCS = [
  * overlap -- neither is simply "better," they miss different things. */
 export default function DenseVsSparseRetrievalDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'dense' | 'sparse'>('dense');
+  const modes = ['dense', 'sparse'] as const;
+  const cycle = useAutoCycle(modes.length, 3200);
+  const mode = modes[cycle.value];
+  const setMode = (next: (typeof modes)[number]) => cycle.pick(modes.indexOf(next));
   const denseColor = getConceptColor(t, 'attention');
   const sparseColor = t.accentWarn;
   const color = mode === 'dense' ? denseColor : sparseColor;

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const STAGES = [
@@ -16,21 +15,21 @@ const STAGES = [
  * stage for what it actually does. */
 export default function HostingStackDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('engine');
+  const { value: activeIndex, pick } = useAutoCycle(STAGES.length, 2500, 3);
   const color = getConceptColor(t, 'attention');
-  const s = STAGES.find((x) => x.key === active)!;
+  const s = STAGES[activeIndex];
 
   return (
     <VisualizationContainer footer={s.desc}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
         {STAGES.map((x, i) => {
-          const isActive = active === x.key;
+          const isActive = activeIndex === i;
           return (
             <div key={x.key} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-              <div onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.45rem 0.5rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
-                <span style={{ fontSize: 8.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{x.label}</span>
+              <div onClick={() => pick(i)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(i); } }} onMouseEnter={() => pick(i)} style={{ cursor: 'pointer', padding: '0.45rem 0.5rem', borderRadius: 7, background: isActive ? `${color}20` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, transition: 'all 200ms ease' }}>
+                <span style={{ fontSize: 8.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{isActive ? `▶ ${x.label}` : x.label}</span>
               </div>
-              {i < STAGES.length - 1 && <span style={{ color: t.textMuted, fontSize: 10 }}>→</span>}
+              {i < STAGES.length - 1 && <span style={{ color: activeIndex > i ? color : t.textMuted, fontSize: 10, fontWeight: activeIndex > i ? 700 : 400 }}>→</span>}
             </div>
           );
         })}

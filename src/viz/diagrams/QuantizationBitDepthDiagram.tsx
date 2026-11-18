@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const PRECISIONS = [
@@ -17,7 +16,9 @@ const PARAM_COUNT_B = 7; // a 7B-parameter model, for a concrete memory number
  * the representable value grid gets at that bit depth. */
 export default function QuantizationBitDepthDiagram() {
   const t = useVizTokens();
-  const [bits, setBits] = useState<8 | 32 | 16 | 4>(8);
+  const cycle = useAutoCycle(PRECISIONS.length, 3000, 2);
+  const bits = PRECISIONS[cycle.value].bits;
+  const setBits = (next: 8 | 32 | 16 | 4) => cycle.pick(PRECISIONS.findIndex((precision) => precision.bits === next));
   const color = getConceptColor(t, 'attention');
   const gbMemory = (PARAM_COUNT_B * 1e9 * bits) / 8 / 1e9;
   const levels = Math.pow(2, bits);

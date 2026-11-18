@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const METHODS = [
@@ -18,7 +17,9 @@ const METHODS = [
  * fine-tuning's 100%. Click a method for what it actually does. */
 export default function PeftMethodsComparisonDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('lora');
+  const cycle = useAutoCycle(METHODS.length, 3000);
+  const selected = METHODS[cycle.value].key;
+  const setSelected = (key: string) => cycle.pick(METHODS.findIndex((method) => method.key === key));
   const color = getConceptColor(t, 'attention');
   const active = METHODS.find((m) => m.key === selected)!;
   const maxLog = Math.log10(100);

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchEllipse } from '../../components/notebook/RoughShape';
 
@@ -22,7 +21,9 @@ const ALL = [1, 2, 3, 4, 5, 6, 7, 8];
  * which dots it counts, rather than just stating the ratio in words. */
 export default function RagEvalMetricsDiagram() {
   const t = useVizTokens();
-  const [metric, setMetric] = useState<Metric>('precision');
+  const cycle = useAutoCycle(METRICS.length, 3000, 2);
+  const metric = METRICS[cycle.value].key;
+  const setMetric = (next: Metric) => cycle.pick(METRICS.findIndex((item) => item.key === next));
   const retrievedColor = getConceptColor(t, 'query');
   const relevantColor = t.accentWarn;
   const bothColor = getConceptColor(t, 'attention');

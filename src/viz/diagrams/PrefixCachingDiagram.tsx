@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle, FlowDots } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -15,7 +15,8 @@ const REQUESTS = [
  * shared vs. unique cache blocks). */
 export default function PrefixCachingDiagram() {
   const t = useVizTokens();
-  const [shared, setShared] = useState(true);
+  const { value: cycleIdx, pick } = useAutoCycle(2, 3500, 0);
+  const shared = cycleIdx === 0;
   const sharedColor = getConceptColor(t, 'attention');
   const uniqueColors = [getConceptColor(t, 'query'), getConceptColor(t, 'key'), t.accentWarn];
   const width = 560;
@@ -27,7 +28,7 @@ export default function PrefixCachingDiagram() {
     <VisualizationContainer footer={shared ? `Shared prefix computed ONCE (6 blocks) instead of ${REQUESTS.length}x -- total KV compute: ${totalComputedWithSharing} blocks instead of ${totalComputedWithoutSharing}.` : 'Without prefix caching, the identical system-prompt prefix is recomputed from scratch for every single request.'}>
       <button
         type="button"
-        onClick={() => setShared((s) => !s)}
+        onClick={() => pick(shared ? 1 : 0)}
         style={{ marginBottom: 10, padding: '6px 12px', borderRadius: 6, border: `1px solid ${sharedColor}`, background: shared ? `${sharedColor}20` : 'transparent', color: sharedColor, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
       >
         {shared ? 'Prefix caching: ON' : 'Prefix caching: OFF'}
@@ -47,6 +48,12 @@ export default function PrefixCachingDiagram() {
             </g>
           );
         })}
+        {shared && (
+          <>
+            <FlowDots d="M 80 35 L 80 50" count={2} color={sharedColor} dur={1.8} />
+            <FlowDots d="M 80 70 L 80 85" count={2} color={sharedColor} dur={1.8} />
+          </>
+        )}
         <text x={60} y={125} textAnchor="middle" fontSize={8} fill={sharedColor}>shared prefix</text>
         <text x={330} y={125} textAnchor="middle" fontSize={8} fill={t.textMuted}>unique per-request</text>
       </svg>

@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useAutoCycle, FlowDots } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+
+type Mode = 'standard' | 'flash';
+const MODES: Mode[] = ['standard', 'flash'];
 
 /** Standard attention materializes the full n x n attention matrix in
  * slow HBM; FlashAttention computes it in small tiles that stay in fast
@@ -9,7 +12,8 @@ import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
  * memory tier each approach actually touches. */
 export default function FlashAttentionMemoryDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'standard' | 'flash'>('flash');
+  const { value: modeIdx, pick } = useAutoCycle(MODES.length, 3500, 1);
+  const mode = MODES[modeIdx];
   const color = getConceptColor(t, 'attention');
   const width = 560;
 
@@ -21,7 +25,15 @@ export default function FlashAttentionMemoryDiagram() {
           : "FlashAttention: computes attention in small TILES that fit entirely in fast on-chip SRAM, fusing the score/softmax/weighted-sum steps so the full n x n matrix is never materialized in slow memory at all."
       }
     >
-      <PillSelect<'standard' | 'flash'> label="Attention implementation" value={mode} onChange={setMode} options={[{ value: 'standard', label: 'Standard' }, { value: 'flash', label: 'FlashAttention' }]} />
+      <PillSelect<Mode>
+        label="Attention implementation"
+        value={mode}
+        onChange={(val) => {
+          const next = typeof val === 'function' ? val(mode) : val;
+          pick(MODES.indexOf(next));
+        }}
+        options={[{ value: 'standard', label: 'Standard' }, { value: 'flash', label: 'FlashAttention' }]}
+      />
       <svg width="100%" viewBox={`0 0 ${width} 150`} style={{ display: 'block', marginTop: 8 }}>
         <defs>
           <marker id="fam-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
@@ -38,6 +50,7 @@ export default function FlashAttentionMemoryDiagram() {
             <rect x={40} y={106} width={480} height={22} rx={4} fill={`${color}30`} stroke={color} strokeWidth={1.5} />
             <text x={280} y={121} textAnchor="middle" fontSize={9} fill={color}>full n × n attention matrix, materialized here</text>
             <line x1={280} y1={100} x2={280} y2={58} stroke={color} strokeWidth={1.5} strokeDasharray="2 2" markerEnd="url(#fam-arrow)" />
+            <FlowDots d="M 280 100 L 280 58" count={3} color={color} dur={1.6} />
             <text x={292} y={80} fontSize={8} fill={t.textMuted}>read back for softmax + weighted sum</text>
           </>
         ) : (

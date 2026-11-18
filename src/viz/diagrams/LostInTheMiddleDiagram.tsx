@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 /** The retrieval-accuracy-vs-position U-curve from Liu et al.'s "Lost in
@@ -16,7 +16,9 @@ const N_DOCS = 12;
 
 export default function LostInTheMiddleDiagram() {
   const t = useVizTokens();
-  const [factPos, setFactPos] = useState(5);
+  const factCycle = useAutoCycle(N_DOCS, 550, 5);
+  const factPos = factCycle.value;
+  const setFactPos = factCycle.pick;
   const [dip, setDip] = useState(0.4);
   const edgeAcc = 0.92;
 

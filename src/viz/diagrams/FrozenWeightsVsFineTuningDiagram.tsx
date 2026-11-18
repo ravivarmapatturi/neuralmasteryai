@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const FROZEN = ['Zero/few-shot prompting', 'Chain-of-thought', 'RAG (retrieval)', 'Tool use / agents'];
@@ -10,7 +9,10 @@ const TRAINED = ['Full fine-tuning', 'LoRA / QLoRA / DoRA', 'Prefix / prompt tun
  * Click either side to see the concrete techniques and what changes. */
 export default function FrozenWeightsVsFineTuningDiagram() {
   const t = useVizTokens();
-  const [side, setSide] = useState<'frozen' | 'trained'>('frozen');
+  const sides = ['frozen', 'trained'] as const;
+  const cycle = useAutoCycle(sides.length, 3000);
+  const side = sides[cycle.value];
+  const setSide = (next: (typeof sides)[number]) => cycle.pick(sides.indexOf(next));
   const frozenColor = t.accentSecondary;
   const trainedColor = t.accentWarn;
   const color = side === 'frozen' ? frozenColor : trainedColor;

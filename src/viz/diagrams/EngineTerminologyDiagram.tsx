@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -15,22 +15,23 @@ const TERMS = [
  * as the one that's commonly mistaken for an inference tool. */
 export default function EngineTerminologyDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('training');
+  const { value: activeIdx, pick } = useAutoCycle(TERMS.length, 2500, 3);
+  const active = TERMS[activeIdx].key;
   const infColor = getConceptColor(t, 'attention');
   const trainColor = t.accentWarn;
-  const info = TERMS.find((term) => term.key === active)!;
+  const info = TERMS[activeIdx];
 
   return (
     <VisualizationContainer footer={`${info.verb}. Examples: ${info.examples}.`}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {TERMS.map((term) => {
+        {TERMS.map((term, idx) => {
           const isSelected = active === term.key;
           const color = term.isTraining ? trainColor : infColor;
           return (
             <div
               key={term.key}
-              onClick={() => setActive(term.key)}
-              onMouseEnter={() => setActive(term.key)}
+              onClick={() => pick(idx)}
+              onMouseEnter={() => pick(idx)}
               style={{ cursor: 'pointer', padding: '0.55rem 0.8rem', borderRadius: 7, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}
             >
               <span style={{ fontSize: 12, fontWeight: isSelected ? 700 : 500, color: isSelected ? color : t.textPrimary }}>{term.label}</span>

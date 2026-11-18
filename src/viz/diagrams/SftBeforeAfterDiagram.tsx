@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const PROMPT = 'How do I reverse a list in Python?';
@@ -13,7 +12,10 @@ const SFT_RESPONSE = 'Use list.reverse() to reverse in place, or reversed(list) 
  * to recognize "this is an instruction" and respond directly. */
 export default function SftBeforeAfterDiagram() {
   const t = useVizTokens();
-  const [stage, setStage] = useState<'base' | 'sft'>('sft');
+  const stages = ['base', 'sft'] as const;
+  const cycle = useAutoCycle(stages.length, 3600, 1);
+  const stage = stages[cycle.value];
+  const setStage = (next: (typeof stages)[number]) => cycle.pick(stages.indexOf(next));
   const baseColor = t.textMuted;
   const sftColor = getConceptColor(t, 'attention');
   const response = stage === 'base' ? BASE_RESPONSE : SFT_RESPONSE;

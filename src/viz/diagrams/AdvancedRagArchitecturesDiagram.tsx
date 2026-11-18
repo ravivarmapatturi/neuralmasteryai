@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -12,7 +11,10 @@ type Arch = 'agentic' | 'corrective' | 'self-rag' | 'raptor' | 'cag' | 'flare';
  * its extra loop/branch/tier sits relative to the plain pipeline. */
 export default function AdvancedRagArchitecturesDiagram() {
   const t = useVizTokens();
-  const [arch, setArch] = useState<Arch>('agentic');
+  const architectures: Arch[] = ['agentic', 'corrective', 'self-rag', 'raptor', 'cag', 'flare'];
+  const cycle = useAutoCycle(architectures.length, 3400);
+  const arch = architectures[cycle.value];
+  const setArch = (next: Arch) => cycle.pick(architectures.indexOf(next));
   const baseColor = t.textMuted;
   const loopColor = getConceptColor(t, 'attention');
   const width = 560;

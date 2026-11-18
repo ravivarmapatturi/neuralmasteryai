@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchEllipse } from '../../components/notebook/RoughShape';
 
@@ -19,7 +18,9 @@ const EDGES: [string, string][] = [['A', 'B'], ['A', 'C'], ['C', 'D'], ['D', 'E'
  * directly instead, chaining across documents in one hop. */
 export default function GraphRagDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<string | null>('A');
+  const cycle = useAutoCycle(NODES.length, 2600);
+  const selected = NODES[cycle.value].id;
+  const setSelected = (id: string) => cycle.pick(NODES.findIndex((node) => node.id === id));
   const nodeColor = getConceptColor(t, 'embedding');
   const edgeColor = getConceptColor(t, 'attention');
 

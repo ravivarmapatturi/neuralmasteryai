@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useAutoCycle, FlowDots } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VizButton } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Mode = 'p2p' | 'pubsub';
+const MODES: Mode[] = ['p2p', 'pubsub'];
 const MESSAGES = [1, 2, 3, 4];
 
 const WIDTH = 560;
@@ -11,7 +12,8 @@ const HEIGHT = 190;
 
 export default function PubSubVsPointToPointDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('p2p');
+  const { value: modeIdx, pick } = useAutoCycle(MODES.length, 3500, 0);
+  const mode = MODES[modeIdx];
 
   const producerColor = getConceptColor(t, 'token');
   const aColor = getConceptColor(t, 'attention');
@@ -31,10 +33,10 @@ export default function PubSubVsPointToPointDiagram() {
       }
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <VizButton variant={mode === 'p2p' ? 'primary' : 'secondary'} onClick={() => setMode('p2p')}>
+        <VizButton variant={mode === 'p2p' ? 'primary' : 'secondary'} onClick={() => pick(0)}>
           Point-to-Point (Queue)
         </VizButton>
-        <VizButton variant={mode === 'pubsub' ? 'primary' : 'secondary'} onClick={() => setMode('pubsub')}>
+        <VizButton variant={mode === 'pubsub' ? 'primary' : 'secondary'} onClick={() => pick(1)}>
           Pub/Sub (Topic)
         </VizButton>
       </div>
@@ -65,6 +67,9 @@ export default function PubSubVsPointToPointDiagram() {
         <line x1={110} y1={100} x2={143} y2={100} stroke={producerColor} strokeWidth={2} markerEnd="url(#p2p-arrow)" />
         <line x1={240} y1={80} x2={323} y2={56} stroke={aColor} strokeWidth={2} markerEnd="url(#p2p-arrow-a)" />
         <line x1={240} y1={120} x2={323} y2={149} stroke={bColor} strokeWidth={2} markerEnd="url(#p2p-arrow-b)" />
+        <FlowDots d="M 110 100 L 143 100" count={2} color={producerColor} dur={1.8} />
+        <FlowDots d="M 240 80 L 323 56" count={2} color={aColor} dur={1.8} />
+        <FlowDots d="M 240 120 L 323 149" count={2} color={bColor} dur={1.8} />
         <defs>
           <marker id="p2p-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill={producerColor} /></marker>
           <marker id="p2p-arrow-a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill={aColor} /></marker>

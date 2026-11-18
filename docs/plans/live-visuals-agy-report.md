@@ -192,3 +192,42 @@ Pages covered:
 - Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 36 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-4/`.
+
+## Batch 5 Report
+
+### Motion Rationales:
+1. `GovernanceApprovalFlowDiagram.tsx`: Autocycles (2600ms) through 4 stages from written policy to CI/CD gate, because policy is dormant until technical automated enforcement executes.
+2. `ModelCardVsDataCardDiagram.tsx`: Autocycles (3500ms) between model card and data card transparency artifacts, because practitioners must inspect both model limitations and dataset provenance before deployment.
+3. `ModelLicenseSpectrumDiagram.tsx`: Autocycles (3200ms) across permissive, copyleft, and commercial restrictions, because license compatibility dictates enterprise deployment boundaries.
+4. `PrivacyRegulationScopeDiagram.tsx`: Autocycles (3200ms) through PII controls, GDPR, and HIPAA scopes, because compliance requirements govern data retention and model deletion.
+5. `BleuVsSemanticDiagram.tsx`: Autocycles (3000ms) across 3 candidate answers comparing n-gram overlap vs embedding cosine similarity, because lexical metrics fail on valid paraphrases.
+6. `NdcgRankingDiagram.tsx`: Autocycles (3500ms) between good ranking and poor ranking, because rank-position discounting dictates search user satisfaction.
+7. `RagFailureLayerDiagram.tsx`: Autocycles (3200ms) across 4 failure layers (chunking, retrieval, ranking, generation), because debugging RAG requires isolating which architectural stage introduced the error.
+8. `EmbeddingRerankerPipelineDiagram.tsx`: Autocycles (3500ms) between bi-encoder embedding retrieval and cross-encoder reranking, because bi-encoders optimize candidate recall while rerankers optimize precision.
+9. `FineTuningToInferenceHandoffDiagram.tsx`: Autocycles (2800ms) across 5 handoff stages, because training frameworks must output clean adapter weights for dedicated serving runtimes.
+10. `HostingStackDiagram.tsx`: Autocycles (2600ms) through the 6 hosting stack layers, because production requests traverse load balancers, containers, and engines down to GPU hardware.
+11. `MultiLoraServingDiagram.tsx`: Autocycles (3500ms) between separate full-model replicas and single-base multi-LoRA serving, because sharing base weights eliminates redundant VRAM waste.
+12. `ServerlessColdStartDiagram.tsx`: Autocycles (3500ms) between always-on VMs and serverless scale-to-zero, because spiky workloads trade cold-start delay for zero idle compute cost.
+13. `BaselineVsEngineDiagram.tsx`: Autocycles (3500ms) through 3 scaling challenges, contrasting naive PyTorch single-request bottlenecks with dedicated engine continuous batching.
+14. `EdgeVsServerDeploymentDiagram.tsx`: Autocycles (3500ms) between Server and Edge across 4 tradeoff dimensions (throughput, privacy, offline, cost), because deployment target reflects structural architectural requirements.
+15. `EngineTerminologyDiagram.tsx`: Autocycles (2500ms) through inference engine, serving framework, platform, and fine-tuning framework, highlighting Unsloth as the training outlier.
+16. `InferenceStackLayersDiagram.tsx`: Autocycles (2500ms) through 5 request layers from API gateway to CUDA runtime, because modular serving isolates orchestration from kernel execution.
+17. `FlashAttentionMemoryDiagram.tsx`: Autocycles (3500ms) between Standard and FlashAttention with FlowDots along HBM read-back line, because memory traffic to slow HBM is the actual hardware bottleneck.
+18. `PrefillVsDecodeDiagram.tsx`: Autocycles (3500ms) between compute-bound Prefill (parallel prompt tokens) and memory-bandwidth-bound Decode (sequential autoregressive token generation).
+19. `PrefixCachingDiagram.tsx`: Autocycles (3500ms) toggling prefix caching with FlowDots streaming to 3 requests in parallel, because identical system prompt KV blocks should only be computed once.
+20. `TtftTpotTimelineDiagram.tsx`: Autocycles (3200ms) between TTFT and TPOT measurement windows on the request timeline, because responsiveness and streaming velocity have independent physical limits.
+21. `DeliverySemanticsDiagram.tsx`: Autocycles (3500ms) across at-most-once, at-least-once, and effectively exactly-once semantics, because acknowledgement timing relative to processing dictates failure outcomes.
+22. `PartitionOrderingDiagram.tsx`: Autocycles (3500ms) between round-robin and user ID keyed partitioning, because per-key ordering constraints trade off against uniform partition load balancing.
+23. `PubSubVsPointToPointDiagram.tsx`: Autocycles (3500ms) between competing consumer queue and fanout topic with FlowDots, because point-to-point distributes tasks while pub/sub replicates events.
+24. `SyncVsAsyncDiagram.tsx`: Autocycles (2500ms) across processing durations, showing linear client blocking for sync requests versus immediate client release for async queues.
+25. `JailbreakRegressionDiagram.tsx`: Autocycles (2500ms) through 4 regression timeline stages, showing how subsequent model updates silently reopen patched jailbreak exploits.
+26. `LlmTestTypesDiagram.tsx`: Autocycles (2500ms) across 7 LLM testing disciplines, because LLM evaluation requires non-classical testing modalities.
+27. `MlTestPyramidDiagram.tsx`: Autocycles (2500ms) up the ML testing pyramid from cheap data contracts to statistical distribution tests and full regression benchmarks.
+28. `PromptAsCodeDiagram.tsx`: Autocycles (3500ms) toggling test execution against fixed evaluation assertions, because prompt templates require regression testing identical to software code.
+29. `MlLifecyclePipelineDiagram.tsx`: Autocycles (2200ms) through 9 lifecycle stages with FlowDots along pipeline and loopback arrow, because production MLOps is a continuous feedback loop from retraining to validation.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 29 captured cleanly in `docs/evidence/live-visuals/agy/batch-5/`.

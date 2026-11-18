@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+
+const METRICS = ['ttft', 'tpot'] as const;
 
 /** Where TTFT and TPOT are actually measured on a real request timeline
  * -- click either metric to see exactly which span it covers. */
 export default function TtftTpotTimelineDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<'ttft' | 'tpot'>('ttft');
+  const { value: activeIdx, pick } = useAutoCycle(METRICS.length, 3200, 0);
+  const active = METRICS[activeIdx];
   const ttftColor = getConceptColor(t, 'query');
   const tpotColor = getConceptColor(t, 'attention');
   const width = 560;
@@ -23,14 +26,14 @@ export default function TtftTpotTimelineDiagram() {
         <circle cx={reqStart} cy={y} r={4} fill={t.textMuted} />
         <text x={reqStart} y={y - 12} fontSize={8} fill={t.textMuted}>request sent</text>
 
-        <g onClick={() => setActive('ttft')} onMouseEnter={() => setActive('ttft')} style={{ cursor: 'pointer' }} opacity={active === 'ttft' ? 1 : 0.35}>
+        <g onClick={() => pick(0)} onMouseEnter={() => pick(0)} style={{ cursor: 'pointer' }} opacity={active === 'ttft' ? 1 : 0.35}>
           <line x1={reqStart} y1={y - 22} x2={firstToken} y2={y - 22} stroke={ttftColor} strokeWidth={3} />
           <text x={(reqStart + firstToken) / 2} y={y - 28} textAnchor="middle" fontSize={9} fontWeight={700} fill={ttftColor}>TTFT</text>
         </g>
         <circle cx={firstToken} cy={y} r={5} fill={ttftColor} />
         <text x={firstToken} y={y + 18} fontSize={8} fill={ttftColor}>1st token</text>
 
-        <g onClick={() => setActive('tpot')} onMouseEnter={() => setActive('tpot')} style={{ cursor: 'pointer' }} opacity={active === 'tpot' ? 1 : 0.35}>
+        <g onClick={() => pick(1)} onMouseEnter={() => pick(1)} style={{ cursor: 'pointer' }} opacity={active === 'tpot' ? 1 : 0.35}>
           {tokens.map((x, i) => {
             const prevX = i === 0 ? firstToken : tokens[i - 1];
             return (

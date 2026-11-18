@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, PillSelect } from '../primitives';
+import { VisualizationContainer, Slider, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Strategy = 'temperature' | 'topk' | 'topp';
@@ -21,7 +21,10 @@ function softmax(logits: number[]): number[] {
  * get zeroed out or reweighted before sampling actually happens. */
 export default function SamplingStrategiesDiagram() {
   const t = useVizTokens();
-  const [strategy, setStrategy] = useState<Strategy>('topp');
+  const strategies: Strategy[] = ['temperature', 'topk', 'topp'];
+  const cycle = useAutoCycle(strategies.length, 3400, 2);
+  const strategy = strategies[cycle.value];
+  const setStrategy = (next: Strategy) => cycle.pick(strategies.indexOf(next));
   const [temperature, setTemperature] = useState(1);
   const [k, setK] = useState(4);
   const [p, setP] = useState(0.85);

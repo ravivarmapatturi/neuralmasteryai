@@ -52,3 +52,54 @@
 - `JudgePositionBiasDiagram`: The response order swaps because an LLM judge's first-position bias can reverse its verdict without changing response quality.
 - `PagedAttentionDiagram`: The allocation view alternates because paged KV caches use non-contiguous on-demand blocks instead of contiguous over-reservation.
 - `SpeculativeDecodingDiagram`: Draft tokens alternate between proposed and verified states because the target model accepts a matching prefix and rejects the remainder in one pass.
+
+## Batch 3
+
+- `InferenceFlowVisualizer`: Requests already move through every inference stage because decoding transforms one prompt into logits, filtered candidates, and a sampled token in order.
+- `AlibiPositionalBiasDiagram`: The query cursor sweeps across key positions because ALiBi recomputes its distance penalty from the current query position.
+- `ArchitectureFamiliesDiagram`: The mask family advances because encoder, decoder, and encoder-decoder models permit different attention connections.
+- `AttentionVariantsKvCacheDiagram`: The attention variant advances because MHA, GQA, MQA, and MLA store different numbers and shapes of key/value representations.
+- `BpeTokenizationDiagram`: The symbol sequence merges step by step because BPE repeatedly replaces the most frequent adjacent pair with one vocabulary token.
+- `ContextWindowScalingDiagram`: The context cursor sweeps the curves because full attention cost grows quadratically while sliding-window cost grows linearly with sequence length.
+- `KvCacheDiagram`: Generation steps accumulate and the mode alternates because caching computes only the new token's keys and values instead of recomputing the whole prefix.
+- `MoeRoutingDiagram`: The selected token advances because an MoE router activates a different top-k expert subset for each token.
+- `SamplingStrategiesDiagram`: The strategy advances because temperature, top-k, and top-p reshape the same next-token distribution in different ways.
+- `SlidingWindowAttentionDiagram`: Left static because it is a parameter explorer whose fixed mask makes the selected window boundary directly readable.
+- `SwiGluGatingDiagram`: Left static because it is a numerical gate explorer and automatic parameter changes would obscure the learner's chosen input comparison.
+- `AutoregressiveVsDiffusionGenerationDiagram`: The step cursor advances while the mode alternates because autoregressive generation resolves positions left to right whereas diffusion refines positions in parallel.
+- `VlmArchitectureDiagram`: The active stage advances because a VLM turns an image into visual features, projects them into language space, and then decodes text.
+- `AlignmentPipelineDiagram`: The active stage advances because alignment proceeds from pretraining through supervised tuning, preference learning, and safety evaluation.
+- `CapabilityCostLatencyTradeoffDiagram`: The selected model advances because the plot compares the capability, cost, and latency position of each deployment choice.
+- `FrozenWeightsVsFineTuningDiagram`: The view alternates because prompting changes activations with frozen weights while fine-tuning updates the weights themselves.
+- `GenAiPipelineOverviewDiagram`: The active stage advances because a generative-AI system moves from data and pretraining through post-training, extension, and serving.
+- `ScalingLawsGlanceDiagram`: The compute cursor sweeps the power-law curve because increasing compute moves the training run toward lower loss while preserving the compute-optimal split.
+- `LostInTheMiddleDiagram`: The relevant fact moves through the context because its position alone produces the characteristic U-shaped retrieval accuracy.
+- `PromptInjectionFlowDiagram`: The outcome alternates because treating retrieved text as instructions permits injection while treating it as untrusted data neutralizes it.
+- `SelfConsistencyVotingDiagram`: Left static because it is a probability calculator whose selected path count and accuracy must remain stable for exact comparison.
+- `TestTimeComputeScalingDiagram`: The budget cursor sweeps the curve because additional thinking tokens buy diminishing accuracy gains while increasing latency and cost.
+- `EmbeddingSpaceExplorer`: Left static because it is a direct-manipulation spatial explorer and moving points automatically would imply that fixed embeddings drift at inference time.
+- `RagPipelineSimulator`: Requests already move along the RAG graph because the query is chunked, retrieved, optionally reranked, and passed to generation in sequence.
+- `AdvancedRagArchitecturesDiagram`: The architecture advances because each RAG variant adds a different branch, loop, hierarchy, or cache to the base retrieve-generate path.
+- `BiEncoderVsCrossEncoderDiagram`: Left static because it is a fixed side-by-side architecture reference and sequential animation would incorrectly imply that either encoder runs after the other.
+- `Bm25ScoringDiagram`: Left static because it is a score calculator whose term-frequency and length controls are intended for deliberate numeric inspection.
+- `ChunkingStrategiesDiagram`: The strategy advances because fixed, semantic, recursive, and parent-child chunkers place boundaries differently on the same document.
+- `DenseVsSparseRetrievalDiagram`: The scoring mode alternates because dense retrieval matches meaning while sparse retrieval depends on exact term overlap.
+- `GraphRagDiagram`: The selected node advances because graph retrieval follows a different set of explicit relationships from each starting entity.
+- `HybridSearchFusionDiagram`: Left static because it is a rank-fusion calculator whose fixed component rankings make the reciprocal-rank sum auditable.
+- `QueryTransformationDiagram`: The technique advances because HyDE, decomposition, step-back, and multi-query send different derived queries to retrieval.
+- `RagEvalMetricsDiagram`: The selected metric advances because faithfulness, relevance, precision, and recall count different evidence sets.
+- `RetrievalFunnelMissDiagram`: Left static because it is a fixed recall-loss reference and motion would imply that the displayed miss rates change over time.
+- `ThreeWayRetrievalArchitecturesDiagram`: Left static because it compares three independent retrieval architectures and cycling them would hide the simultaneous structural contrast.
+- `DataPipelineStagesDiagram`: The active stage advances because pretraining data is progressively cleaned, deduplicated, filtered, checked, and packed.
+- `DistillationDiagram`: The target alternates because hard labels discard the teacher's class relationships while soft targets preserve the full distribution.
+- `DpoVsRlhfDiagram`: The method alternates because RLHF trains through a reward model and policy optimization while DPO learns directly from preference pairs.
+- `GrpoVsPpoDiagram`: Left static because it is a controlled estimator comparison whose learner-selected group size should remain fixed while reading the computed baselines.
+- `LoraMechanicsDiagram`: Left static because it is a rank-and-scale calculator whose matrix-shape result must remain tied to the learner's chosen values.
+- `PeftMethodsComparisonDiagram`: The selected method advances because each PEFT method changes a different, much smaller subset of model parameters.
+- `PreferenceOptimizationFamilyDiagram`: The selected method advances because IPO, KTO, ORPO, and RLOO change the baseline objective or required feedback format.
+- `PretrainingObjectiveDiagram`: The active token advances because next-token pretraining emits a new probability distribution and loss contribution at every sequence position.
+- `QuantizationBitDepthDiagram`: The precision advances because reducing bit depth coarsens the value grid while shrinking the same model's weight memory.
+- `RlhfPipelineDiagram`: The active stage advances because RLHF samples outputs, gathers rankings, trains a reward model, optimizes the policy, and constrains drift.
+- `ScalingLawsChinchillaDiagram`: Left static because it is a compute-allocation calculator whose selected budget must stay fixed while the parameter-token split is read.
+- `SftBeforeAfterDiagram`: The response alternates because supervised fine-tuning changes a base model from continuing text patterns to following the instruction.
+- `IsolationPathLengthDiagram`: Left static because it is a Monte Carlo result whose fixed seed keeps the displayed path-length comparison reproducible until the learner explicitly reruns it.

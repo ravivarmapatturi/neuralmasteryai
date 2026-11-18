@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { PillSelect, VisualizationContainer, VisualizationHeader } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Phase = 'prefill' | 'decode';
+const PHASES: Phase[] = ['prefill', 'decode'];
 
 /** The two phases every LLM request goes through, on the axis that
  * actually determines their bottleneck -- prefill parallelizes across
@@ -11,7 +12,8 @@ type Phase = 'prefill' | 'decode';
  * across steps at all (memory-bandwidth-bound). Click either. */
 export default function PrefillVsDecodeDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<Phase>('decode');
+  const { value: phaseIdx, pick } = useAutoCycle(PHASES.length, 3500, 1);
+  const active = PHASES[phaseIdx];
   const phaseColor = getConceptColor(t, active === 'prefill' ? 'query' : 'attention');
   const tokens = active === 'prefill' ? ['the', 'cat', 'sat', 'down'] : ['fast', 'next'];
 
@@ -24,10 +26,38 @@ export default function PrefillVsDecodeDiagram() {
       }
     >
       <VisualizationHeader eyebrow="Interactive model" title="Two phases, two bottlenecks" description="Choose a phase to see which tokens can run together." />
-      <PillSelect label="Request phase" value={active} onChange={setActive} options={[{ value: 'prefill', label: 'Prefill' }, { value: 'decode', label: 'Decode' }]} />
+      <PillSelect<Phase>
+        label="Request phase"
+        value={active}
+        onChange={(val) => {
+          const next = typeof val === 'function' ? val(active) : val;
+          pick(PHASES.indexOf(next));
+        }}
+        options={[{ value: 'prefill', label: 'Prefill' }, { value: 'decode', label: 'Decode' }]}
+      />
       <div role="img" aria-label={`${active} phase token flow: ${tokens.join(', ')}. ${active === 'prefill' ? 'All prompt tokens are processed together.' : 'Each next token waits for the previous token.'}`} style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '16px 8px', color: t.textPrimary }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-          {tokens.map((token, i) => <span key={`${active}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 56, minHeight: 42, padding: '4px 10px', border: `2px solid ${phaseColor}`, borderRadius: 8, background: `${phaseColor}18`, fontSize: 16 }}>{token}</span>)}
+          {tokens.map((token, i) => (
+            <span
+              key={`${active}-${i}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: 56,
+                minHeight: 42,
+                padding: '4px 10px',
+                border: `2px solid ${phaseColor}`,
+                borderRadius: 8,
+                background: `${phaseColor}18`,
+                fontSize: 16,
+                boxShadow: active === 'prefill' ? `0 0 8px ${phaseColor}40` : undefined,
+                transition: 'box-shadow 0.3s ease',
+              }}
+            >
+              {token}
+            </span>
+          ))}
         </div>
         <div style={{ fontSize: 15, lineHeight: 1.5 }}>{active === 'prefill' ? 'Prompt tokens are processed together in parallel.' : 'The next token waits for the previous token before generation continues.'}</div>
       </div>

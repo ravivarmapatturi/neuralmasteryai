@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STAGES = [
@@ -17,7 +16,9 @@ const STAGES = [
  * actually drop at each filtering step, not just read as a flat list. */
 export default function DataPipelineStagesDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<(typeof STAGES)[number]['key']>('dedupe');
+  const cycle = useAutoCycle(STAGES.length, 2600, 2);
+  const selected = STAGES[cycle.value].key;
+  const setSelected = (key: (typeof STAGES)[number]['key']) => cycle.pick(STAGES.findIndex((stage) => stage.key === key));
   const color = getConceptColor(t, 'embedding');
   const active = STAGES.find((s) => s.key === selected)!;
   const maxVolume = 100;

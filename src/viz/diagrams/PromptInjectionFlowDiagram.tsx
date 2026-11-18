@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 /** A RAG document with hidden malicious instructions -- click to see
@@ -9,7 +8,9 @@ import { getConceptColor } from './diagramSystem';
  * as untrusted data. */
 export default function PromptInjectionFlowDiagram() {
   const t = useVizTokens();
-  const [defended, setDefended] = useState(true);
+  const cycle = useAutoCycle(2, 3200, 1);
+  const defended = cycle.value === 1;
+  const setDefended = (next: boolean) => cycle.pick(next ? 1 : 0);
   const color = getConceptColor(t, 'attention');
   const badColor = t.accentDanger;
   const okColor = t.accentPrimary;

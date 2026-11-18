@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PillSelect } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
@@ -7,6 +7,7 @@ import SketchBox from '../../components/notebook/SketchBox';
 const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Mode = 'atmost' | 'atleast' | 'exactly';
+const MODES: Mode[] = ['atmost', 'atleast', 'exactly'];
 
 interface Step {
   label: string;
@@ -48,7 +49,8 @@ const SCRIPTS: Record<Mode, { steps: Step[]; verdict: string; explain: string }>
 
 export default function DeliverySemanticsDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('atleast');
+  const { value: modeIdx, pick } = useAutoCycle(MODES.length, 3500, 1);
+  const mode = MODES[modeIdx];
   const script = SCRIPTS[mode];
 
   const outcomeColor = (o?: Step['outcome']) => (o === 'lost' ? t.accentDanger : o === 'duplicate' ? t.accentWarn : o === 'ok' ? t.accentPrimary : t.textSecondary);
@@ -58,7 +60,10 @@ export default function DeliverySemanticsDiagram() {
       <PillSelect<Mode>
         label="Delivery semantics"
         value={mode}
-        onChange={setMode}
+        onChange={(val) => {
+          const next = typeof val === 'function' ? val(mode) : val;
+          pick(MODES.indexOf(next));
+        }}
         options={[
           { value: 'atmost', label: 'At-Most-Once' },
           { value: 'atleast', label: 'At-Least-Once' },

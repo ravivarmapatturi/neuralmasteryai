@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const REGS = [
@@ -13,18 +12,18 @@ const REGS = [
  * for what it actually requires. */
 export default function PrivacyRegulationScopeDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('gdpr');
+  const { value: activeIndex, pick } = useAutoCycle(REGS.length, 2600, 1);
   const color = getConceptColor(t, 'attention');
-  const r = REGS.find((x) => x.key === active)!;
+  const r = REGS[activeIndex];
 
   return (
     <VisualizationContainer footer={r.desc}>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        {REGS.map((x) => {
-          const isActive = active === x.key;
+        {REGS.map((x, idx) => {
+          const isActive = activeIndex === idx;
           return (
-            <div key={x.key} onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.7rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
-              <span style={{ fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{x.label}</span>
+            <div key={x.key} onClick={() => pick(idx)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(idx); } }} onMouseEnter={() => pick(idx)} style={{ cursor: 'pointer', padding: '0.5rem 0.7rem', borderRadius: 7, background: isActive ? `${color}20` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, transition: 'all 200ms ease' }}>
+              <span style={{ fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{isActive ? `▶ ${x.label}` : x.label}</span>
             </div>
           );
         })}

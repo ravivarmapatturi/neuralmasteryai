@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAutoCycle } from '../primitives';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
@@ -13,22 +13,24 @@ const LEVELS = [
  * the cheap ones, fewer of the expensive ones. Click a level. */
 export default function MlTestPyramidDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('statistical');
+  const { value: activeIdx, pick } = useAutoCycle(LEVELS.length, 2500, 1);
+  const active = LEVELS[activeIdx].key;
   const color = getConceptColor(t, 'attention');
-  const info = LEVELS.find((l) => l.key === active)!;
+  const info = LEVELS[activeIdx];
   const widths = [280, 190, 110];
 
   return (
     <VisualizationContainer footer={info.desc}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
         {LEVELS.slice().reverse().map((l, i) => {
+          const originalIdx = LEVELS.length - 1 - i;
           const isActive = active === l.key;
-          const w = widths[LEVELS.length - 1 - i];
+          const w = widths[originalIdx];
           return (
             <div
               key={l.key}
-              onClick={() => setActive(l.key)}
-              onMouseEnter={() => setActive(l.key)}
+              onClick={() => pick(originalIdx)}
+              onMouseEnter={() => pick(originalIdx)}
               style={{ width: w, cursor: 'pointer', padding: '0.5rem', borderRadius: 6, background: isActive ? `${color}25` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, textAlign: 'center' }}
             >
               <div style={{ fontSize: 10, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{l.label}</div>
