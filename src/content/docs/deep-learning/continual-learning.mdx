@@ -7,6 +7,8 @@ description: "Why a network trained on a new task forgets the old one, the three
 import CatastrophicForgettingDiagram from '../../../viz/diagrams/CatastrophicForgettingDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Continual Learning
 
@@ -21,6 +23,17 @@ You could write only in the corners the first subject barely used (that's EWC). 
 A neural network's weights are the whiteboard, and training on a new task writes wherever the new task's gradient says, regardless of what was there. Everything below is those three strategies made exact.
 
 </ELI5>
+
+## Why it exists
+
+A model trained on a new task can overwrite weights needed for an earlier one. Here naive sequential training drops task A from 0.92 to 0.39; replay of 5% of old examples keeps it at 0.82, and joint training reaches 0.91.
+
+## The big picture
+
+<PenFlow title="Learn a new task while protecting old ones" ariaLabel="Learn a new task while protecting old ones" rows={[{ steps: { title: 'Train task A', lines: ['Record baseline performance'], tone: 'blue' } }, { steps: { title: 'Learn task B', lines: ['Shared weights can overwrite A'], tone: 'purple' } }, { steps: { title: 'Protect old knowledge', lines: ['Replay, EWC or parameter isolation'], tone: 'orange' } }, { steps: { title: 'Measure retention', lines: ['Evaluate both tasks after every update'], tone: 'green' } }]} caption="Continual learning is measured by new-task performance and retained performance together." />
+
+<Worksheet title="Accuracy after learning task B" ariaLabel="Accuracy after learning task B" stages={[{ tag: 'Printed results', color: 'yellow', note: 'Values copied from the recorded output below.', grid: { head: ['', 'Measured result'], rows: [{ label: 'Naive sequential', cells: ['Task A 0.39; task B 0.91'] }, { label: 'EWC', cells: ['Task A 0.76; task B 0.86'] }, { label: 'Replay 5%', cells: ['Task A 0.82; task B 0.91'] }, { label: 'Joint', cells: ['Task A 0.91; task B 0.93'] }] } }]} />
+
 
 ## 1. Catastrophic Forgetting
 
@@ -164,7 +177,7 @@ for method, (before, a, b) in results.items():
     print(f"{method:10s} {first:18s} | {second}: task A {a:.2f}, task B {b:.2f}")
 ```
 
-```text
+```output
 naive      after A: task A 0.92 | after B: task A 0.39, task B 0.91
 EWC        after A: task A 0.92 | after B: task A 0.76, task B 0.86
 replay 5%  after A: task A 0.92 | after B: task A 0.82, task B 0.91
@@ -228,7 +241,27 @@ Neither removes forgetting. A large pretrained model fine-tuned hard on a narrow
 | Is the new information mostly facts? | Retrieval rather than training | Fine-tune with data mixing and a broad evaluation suite |
 | Can you afford to retrain on everything? | Joint retraining, the ceiling for every method | Continual learning, with forgetting measured explicitly |
 
-## 9. When *Not* to Use Continual Learning Methods
+## Worked example
+
+A model trained on a new task can overwrite weights needed for an earlier one. Here naive sequential training drops task A from 0.92 to 0.39; replay of 5% of old examples keeps it at 0.82, and joint training reaches 0.91.
+
+## Try it yourself
+
+The page’s code and recorded output give a starting point for this edit.
+
+```python
+# Try it: change the replay buffer from 5% to 10% and compare task A retention.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Reporting only new-task accuracy | Forgetting on earlier tasks stays hidden | Track an accuracy matrix across tasks |
+| Treating EWC as a free fix | Its importance estimate can be costly or stale | Compare with replay and adapters |
+| Using replay without checking data limits | Old data may be private or unavailable | Choose a compliant retention strategy |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

@@ -12,6 +12,8 @@ import ClipDualEncoderDiagram from '../../../viz/diagrams/ClipDualEncoderDiagram
 import TcnDilatedConvDiagram from '../../../viz/diagrams/TcnDilatedConvDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Beyond Grids and Labels: GNNs, Metric Learning, RL, Self-Supervision and Multimodal Networks
 
@@ -26,6 +28,17 @@ Some things don't come as flashcards. A friendship network is a web, not a pictu
 Each family below is a way of learning when the flashcards are missing or the data isn't shaped like a picture.
 
 </ELI5>
+
+## Why it exists
+
+Graph models use connections as input, while Siamese and metric-learning models use distances between examples. On the Karate Club example, a GCN learns with two labels and reaches 0.97 accuracy on the other 32 nodes; without graph edges it reaches 0.56.
+
+## The big picture
+
+<PenFlow title="Pass structure or similarity into the model" ariaLabel="Pass structure or similarity into the model" rows={[{ steps: { title: 'Represent the relation', lines: ['Graph edges or paired examples'], tone: 'blue' } }, { steps: { title: 'Aggregate or compare', lines: ['Message passing or shared encoders'], tone: 'purple' } }, { steps: { title: 'Train on the objective', lines: ['Node labels, contrastive pairs or triplets'], tone: 'orange' } }, { steps: { title: 'Check the structure', lines: ['Remove edges or alter pairs as a control'], tone: 'green' } }]} caption="The relational signal is what lets these architectures learn beyond isolated inputs." />
+
+<Worksheet title="Graph edge ablation" ariaLabel="Graph edge ablation" stages={[{ tag: 'Printed results', color: 'yellow', note: 'Values copied from the recorded output below.', grid: { head: ['', 'Measured result'], rows: [{ label: 'GCN with edges', cells: ['2 of 34 labelled; accuracy 0.97'] }, { label: 'GCN without edges', cells: ['2 of 34 labelled; accuracy 0.56'] }] } }]} />
+
 
 ## 1. Learning on Graphs
 
@@ -101,7 +114,7 @@ pred = gcn(X).argmax(1)
 print(f"same model without the edges: accuracy on the other {len(others)}: {(pred[others] == labels[others]).float().mean():.2f}")
 ```
 
-```text
+```output
 labelled nodes: 2 of 34; accuracy on the other 32: 0.97
 same model without the edges: accuracy on the other 32: 0.56
 ```
@@ -196,7 +209,27 @@ Beyond the classical models in [Time Series Forecasting](/docs/machine-learning/
 
 <TcnDilatedConvDiagram />
 
-## 8. When *Not* to Use These
+## Worked example
+
+Graph models use connections as input, while Siamese and metric-learning models use distances between examples. On the Karate Club example, a GCN learns with two labels and reaches 0.97 accuracy on the other 32 nodes; without graph edges it reaches 0.56.
+
+## Try it yourself
+
+The page’s code and recorded output give a starting point for this edit.
+
+```python
+# Try it: set the graph adjacency to identity and compare node accuracy.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Using a GCN without useful edges | Message passing has no structure to aggregate | Add informative relations or use a feature model |
+| Using only two labels as broad proof | One small graph cannot establish general performance | Evaluate on multiple graphs and splits |
+| Ignoring pair construction in metric learning | False negatives distort the embedding space | Audit sampling and label quality |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

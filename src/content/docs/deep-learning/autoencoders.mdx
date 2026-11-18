@@ -7,6 +7,8 @@ description: "Learning from unlabelled data by reconstructing it: why the bottle
 import AutoencoderDiagram from '../../../viz/diagrams/AutoencoderDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Autoencoders and Variational Autoencoders
 
@@ -21,6 +23,17 @@ To do this well you both have to learn what faces are made of, which handful of 
 An autoencoder is that game. One network (the describer) squeezes the input into a few numbers; another (the sketcher) rebuilds the input from them. Training them together to make the sketch match the photo teaches them what the data is made of. Everything below is that game made exact.
 
 </ELI5>
+
+## Why it exists
+
+An autoencoder can compress nonlinear structure and flag inputs that do not resemble its training data. The recorded digit experiment gives held-out MSE 0.0409 for a two-number autoencoder code versus 0.0526 for PCA; an eight-number code reconstructs digits at 0.0177 and random noise at 0.2295.
+
+## The big picture
+
+<PenFlow title="Compress, reconstruct, inspect error" ariaLabel="Compress, reconstruct, inspect error" rows={[{ steps: { title: 'Encode input', lines: ['Map the example to a compact code'], tone: 'blue' } }, { steps: { title: 'Decode code', lines: ['Rebuild the input from fewer values'], tone: 'purple' } }, { steps: { title: 'Measure reconstruction', lines: ['Error shows what the code could not preserve'], tone: 'orange' } }, { steps: { title: 'Use a prior if generating', lines: ['VAE codes occupy a sampleable distribution'], tone: 'green' } }]} caption="Reconstruction measures compression quality; a VAE additionally shapes its code distribution for sampling." />
+
+<Worksheet title="Reconstruction and code checks" ariaLabel="Reconstruction and code checks" stages={[{ tag: 'Printed results', color: 'yellow', note: 'Values copied from the recorded output below.', grid: { head: ['', 'Measured result'], rows: [{ label: '2D code: PCA MSE', cells: ['0.0526'] }, { label: '2D code: autoencoder MSE', cells: ['0.0409'] }, { label: '8D digit error', cells: ['0.0177'] }, { label: '8D noise error', cells: ['0.2295'] }, { label: 'VAE code mean', cells: ['0.12'] }] } }]} />
+
 
 ## 1. The Autoencoder
 
@@ -124,7 +137,7 @@ for name, z in codes.items():
     print(f"{name:17s} codes: per-dimension mean {z.mean(0).abs().mean():5.2f}, std from {z.std(0).min():5.2f} to {z.std(0).max():5.2f}")
 ```
 
-```text
+```output
 2-number code, test reconstruction MSE:  PCA 0.0526   autoencoder 0.0409
 8-number code, per-image error: digits 0.0177   random noise 0.2295
 plain autoencoder codes: per-dimension mean  3.01, std from  1.37 to  2.30
@@ -216,7 +229,27 @@ The most widely used autoencoders today are hidden inside image and video genera
 
 So the division of labour in a modern generator is: an autoencoder learns a compact, well-behaved representation, and a stronger generative model ([diffusion or flow matching](/docs/deep-learning/generative-models)) learns to produce points in it.
 
-## 8. When *Not* to Use an Autoencoder
+## Worked example
+
+An autoencoder can compress nonlinear structure and flag inputs that do not resemble its training data. The recorded digit experiment gives held-out MSE 0.0409 for a two-number autoencoder code versus 0.0526 for PCA; an eight-number code reconstructs digits at 0.0177 and random noise at 0.2295.
+
+## Try it yourself
+
+The page’s code and recorded output give a starting point for this edit.
+
+```python
+# Try it: compare reconstruction error with 2 code dimensions and 8 code dimensions.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treating a low reconstruction error as semantic understanding | The model can copy details without learning useful features | Test the code on the downstream task |
+| Sampling arbitrary plain-autoencoder codes | Its code space has no simple sampling prior | Use a VAE or fit a prior to the codes |
+| Using reconstruction error as a universal anomaly score | Some anomalies reconstruct well and normal inputs may not | Validate scores on representative labelled cases |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

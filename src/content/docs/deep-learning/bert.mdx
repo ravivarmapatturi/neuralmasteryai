@@ -7,6 +7,8 @@ description: "BERT, the encoder-only transformer: its input representation, mask
 import BertInputRepresentationDiagram from '../../../viz/diagrams/BertInputRepresentationDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 import { Remember } from '../../../components/content/Remember';
 
 # BERT
@@ -18,6 +20,17 @@ import { Remember } from '../../../components/content/Remember';
 Imagine a fill-in-the-blank worksheet where you're allowed to read the *entire* sentence — words before and after the blank — before guessing what goes in it. That's BERT: it's trained by hiding random words in a sentence and learning to guess them using context from both directions at once, not just what came before (the way GPT-style models are forced to work). Reading both directions before answering produces a genuinely richer understanding of each word's meaning in context, which is exactly why BERT-family models became the standard for tasks where you already have the full input and need to *understand* it — classification, search, extracting an answer from a passage — rather than generate new text one word at a time.
 
 </ELI5>
+
+## Why it exists
+
+Raw BERT needs a different objective for semantic similarity. Its mean-pooled vectors score the paraphrase 0.68 and unrelated question 0.64; the sentence-tuned model scores 0.63 and 0.05.
+
+## The big picture
+
+<PenFlow title="Read both directions, train for similarity" ariaLabel="Read both directions, train for similarity" rows={[{ steps: { title: 'Tokenize input', lines: ['Add token, position and segment signals'], tone: 'blue' } }, { steps: { title: 'Encode context', lines: ['Every token can use both directions'], tone: 'purple' } }, { steps: { title: 'Choose the objective', lines: ['Mask words or fine-tune labels'], tone: 'orange' } }, { steps: { title: 'Match the task', lines: ['Use contrastive training for sentence vectors'], tone: 'green' } }]} caption="BERT’s pretraining objective predicts masked tokens; similarity tasks need embeddings trained for similarity." />
+
+<Worksheet title="Compare sentence similarity" ariaLabel="Compare sentence similarity" stages={[{ tag: 'Printed results', color: 'yellow', note: 'Values copied from the recorded output below.', grid: { head: ['', 'Measured result'], rows: [{ label: 'Raw BERT', cells: ['paraphrase 0.68; unrelated 0.64'] }, { label: 'Sentence-tuned MiniLM', cells: ['paraphrase 0.63; unrelated 0.05'] }] } }]} />
+
 
 ## 1. The Architecture
 
@@ -121,7 +134,7 @@ for text in ["Plants create [MASK] through a process known as photosynthesis.",
     print(f"{text:60s} -> {guesses}")
 ```
 
-```text
+```output
 Plants create [MASK] through a process known as photosynthesis. -> energy 0.15, flowers 0.15, sunlight 0.08
 The [MASK] barked at the mailman all morning.                -> dog 0.28, man 0.09, dogs 0.03
 She deposited the cheque at the [MASK] before it closed.     -> door 0.70, desk 0.05, counter 0.04
@@ -156,7 +169,7 @@ for name in ["google-bert/bert-base-uncased", "sentence-transformers/all-MiniLM-
     print(f"{name:40s} same meaning {e[0] @ e[1]:.2f}   unrelated {e[0] @ e[2]:.2f}")
 ```
 
-```text
+```output
 google-bert/bert-base-uncased            same meaning 0.68   unrelated 0.64
 sentence-transformers/all-MiniLM-L6-v2   same meaning 0.63   unrelated 0.05
 ```
@@ -198,7 +211,27 @@ The most widely deployed descendants today are **embedding models**: BERT-style 
 
 BERT itself — and its direct descendants (RoBERTa, DeBERTa) — remain a strong, efficient default anywhere the task is *understanding a complete input* rather than generating open-ended text: classification, named-entity recognition, extractive question answering, and — via SBERT-style fine-tuning specifically — the embedding models behind [dense retrieval in RAG](/docs/llms-genai/rag#choosing-an-embedding-model) and the [bi-encoder half of retrieval-and-reranking](/docs/llms-genai/retrieval-and-reranking-architectures#bi-encoder-independent-encoding-pooled-to-one-vector). For open-ended generation, decoder-only models (GPT, LLaMA, and the rest of the [decoder-only family](/docs/deep-learning/attention-transformers#gpt-llama-mistral-and-claude-style-models-decoder-only-generation)) are the right tool instead — the two families solve genuinely different problems, not competing versions of the same one.
 
-## 9. When *Not* to Use a BERT-Style Encoder
+## Worked example
+
+Raw BERT needs a different objective for semantic similarity. Its mean-pooled vectors score the paraphrase 0.68 and unrelated question 0.64; the sentence-tuned model scores 0.63 and 0.05.
+
+## Try it yourself
+
+The page’s code and recorded output give a starting point for this edit.
+
+```python
+# Try it: swap the unrelated sentence for a second paraphrase and compare cosine separation.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Using raw BERT as a sentence encoder | Masked-token training does not align semantic paraphrases | Use a contrastively fine-tuned embedding model |
+| Expecting MLM to reason about a scene | Local token patterns can outweigh situation clues | Fine-tune and evaluate on task examples |
+| Choosing an encoder for generation | BERT reads the complete input bidirectionally | Use a decoder-only model for open-ended generation |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

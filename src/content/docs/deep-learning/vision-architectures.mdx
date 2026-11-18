@@ -12,6 +12,8 @@ import SemanticVsInstanceSegmentationDiagram from '../../../viz/diagrams/Semanti
 import UNetArchitectureDiagram from '../../../viz/diagrams/UNetArchitectureDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Vision Architectures
 
@@ -30,6 +32,17 @@ Look at a photo of a busy street and answer three questions of increasing diffic
 Each question needs the network to keep more information about *where* things are. Everything below is how architectures are built to keep that information and produce those answers.
 
 </ELI5>
+
+## Why it exists
+
+Vision systems need to detect and localize objects, not only classify an entire image. The recorded example checks overlap with IoU 0.895, keeps box indices 0 and 3 with NMS, and shows global-attention scores growing from 38,416 to 9,834,496 per head as image size rises from 224 to 896.
+
+## The big picture
+
+<PenFlow title="Find objects and control image cost" ariaLabel="Find objects and control image cost" rows={[{ steps: { title: 'Encode image features', lines: ['CNN or patch-based Transformer'], tone: 'blue' } }, { steps: { title: 'Predict boxes and classes', lines: ['Localize objects and assign confidence'], tone: 'purple' } }, { steps: { title: 'Remove duplicates', lines: ['IoU and non-maximum suppression'], tone: 'orange' } }, { steps: { title: 'Scale input size', lines: ['Patch count drives attention cost'], tone: 'green' } }]} caption="Detection requires box comparison; Transformer cost grows quickly with the number of image patches." />
+
+<Worksheet title="Detection and patch costs" ariaLabel="Detection and patch costs" stages={[{ tag: 'Printed results', color: 'yellow', note: 'Values copied from the recorded output below.', grid: { head: ['', 'Measured result'], rows: [{ label: 'Best-box IoU', cells: ['0.895'] }, { label: 'NMS kept boxes', cells: ['0 and 3'] }, { label: '224px image', cells: ['196 patches; 38,416 scores'] }, { label: '448px image', cells: ['784 patches; 614,656 scores'] }, { label: '896px image', cells: ['3,136 patches; 9,834,496 scores'] }] } }]} />
+
 
 ## 1. From Classification to Dense Prediction
 
@@ -156,7 +169,7 @@ for side in (224, 448, 896):
     print(f"{side}x{side} image -> {tokens:5d} patches -> {tokens**2:>12,} attention scores per head per layer")
 ```
 
-```text
+```output
 IoU of the two best dog boxes: 0.895
 ours:  [0, 3]
 torch: [0, 3]
@@ -241,7 +254,27 @@ The choice is mostly decided by three constraints: the task's output, the latenc
 
 In practice the backbone is almost always pretrained, and the most consequential decision is which pretrained checkpoint to start from.
 
-## 8. When *Not* to Use These Architectures
+## Worked example
+
+Vision systems need to detect and localize objects, not only classify an entire image. The recorded example checks overlap with IoU 0.895, keeps box indices 0 and 3 with NMS, and shows global-attention scores growing from 38,416 to 9,834,496 per head as image size rises from 224 to 896.
+
+## Try it yourself
+
+The page’s code and recorded output give a starting point for this edit.
+
+```python
+# Try it: change the patch size from 16 to 32 and recompute tokens and attention scores.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Keeping every overlapping box | One object can trigger several nearby predictions | Apply NMS or a learned duplicate strategy |
+| Ignoring patch count when raising resolution | Global attention scales with token count squared | Estimate attention cost before increasing image size |
+| Using classification metrics for detection | A correct class can still have a misplaced box | Track localization and detection metrics |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

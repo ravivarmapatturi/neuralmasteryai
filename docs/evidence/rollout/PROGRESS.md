@@ -187,3 +187,9 @@ Static checks pass: notebook (9 changed pages/0 violations across the current co
 Standardized Activation Functions, Loss Functions, Optimizers, Sequence Models, Neural Network Layers Reference, Initialization/Regularization/Scheduling, Training Deep Networks, and CNNs. Added Why, a page-specific PenFlow and numeric Worksheet from each page's captured results, Worked example, Try it yourself with a concrete `# Try it:` edit, Common mistakes, and When not to use it. Existing mechanisms and printed outputs were preserved; captured CLI `text` blocks were labelled `output`. The dense-image mapping calculation was recomputed as 483,385,147,392 weights, compared with 1,792 for the convolution.
 
 Static gates pass: notebook (8/0), math (1,991), MDX (2,019/2,019), links (2,147 routes/no broken links or anchors), typecheck, tracker, and diff check. Browser captures, runnable execution, overlap guard, full Vitest and build are deferred because available RAM is 0 GiB. See `dl-1/scorecard.md`. No push.
+
+## Deep Learning batch 2 — six pages
+
+Standardized BERT, Advanced Architectures, Vision Architectures, Autoencoders, Generative Models, and Continual Learning. Added Why, page-specific PenFlow, Worksheet with the pages' recorded numerical results, Worked example, Try it yourself with a concrete edit, Common mistakes, and When not to use it. All recorded outputs remain present in named `output` fences. Pretrained model weights were not downloaded or run in this environment.
+
+Static checks pass: notebook (14 changed pages/0 violations across current tree), math (1,991), MDX (2,019/2,019), links (2,147 routes/no broken links or anchors), typecheck, tracker, and diff check. Browser screenshots, widget execution, SVG overlap, full Vitest and build are deferred with 0 GiB available RAM. See `dl-2/scorecard.md`. No push.

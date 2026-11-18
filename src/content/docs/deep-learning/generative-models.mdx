@@ -10,6 +10,8 @@ import GanMinimaxDiagram from '../../../viz/diagrams/GanMinimaxDiagram';
 import DiffusionForwardProcessDiagram from '../../../viz/diagrams/DiffusionForwardProcessDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Generative Models: GANs, Diffusion and Flow Matching
 
@@ -24,6 +26,17 @@ Now imagine filming it and playing the film backwards: a flat patch of sand slow
 A diffusion model learns exactly that backwards step, for images instead of sand and random noise instead of waves. A GAN takes a different route: a forger keeps making fake paintings while a detective keeps getting better at spotting them, until the forgeries are good enough to fool the detective. Everything below is those two ideas made exact.
 
 </ELI5>
+
+## Why it exists
+
+Generative models must learn both the data distribution and how to sample from it. In the ring experiment, DDPM with 200 steps and flow matching with 20 steps put 99% of samples near the target ring; pure noise puts 13% there.
+
+## The big picture
+
+<PenFlow title="Learn a path from noise to data" ariaLabel="Learn a path from noise to data" rows={[{ steps: { title: 'Choose a model family', lines: ['GAN, diffusion or flow matching'], tone: 'blue' } }, { steps: { title: 'Train its signal', lines: ['Discriminator, denoising target or velocity'], tone: 'purple' } }, { steps: { title: 'Sample from noise', lines: ['Follow the learned transformation'], tone: 'orange' } }, { steps: { title: 'Check coverage', lines: ['Measure fidelity and mode coverage'], tone: 'green' } }]} caption="A good sample should land on the target distribution and cover its modes." />
+
+<Worksheet title="Ring sample coverage" ariaLabel="Ring sample coverage" stages={[{ tag: 'Printed results', color: 'yellow', note: 'Values copied from the recorded output below.', grid: { head: ['', 'Measured result'], rows: [{ label: 'Pure noise', cells: ['13% near ring'] }, { label: 'DDPM, 200 steps', cells: ['99% near ring'] }, { label: 'Flow matching, 20 steps', cells: ['99% near ring'] }, { label: 'Real data', cells: ['100% near ring'] }] } }]} />
+
 
 ## 1. What It Means to Generate
 
@@ -205,7 +218,7 @@ for name, x in [("pure noise", torch.randn(5000, 2)), ("DDPM, 200 steps", sample
           f"share per eighth of the circle: {share.min():.3f} to {share.max():.3f}")
 ```
 
-```text
+```output
 pure noise               on the ring (radius 2 +/- 0.25):  13%   share per eighth of the circle: 0.122 to 0.128
 DDPM, 200 steps          on the ring (radius 2 +/- 0.25):  99%   share per eighth of the circle: 0.097 to 0.145
 flow matching, 20 steps  on the ring (radius 2 +/- 0.25):  99%   share per eighth of the circle: 0.105 to 0.136
@@ -278,7 +291,27 @@ The deciding factor at scale was the second row. When generators became billion-
 - **VAEs and VQ-VAEs** are the compression stage in front of most generators.
 - **Autoregressive transformers** generate text, and also images and audio as sequences of discrete tokens; some recent multimodal models combine them with diffusion. [Multimodal and Generative Models](/docs/llms-genai/multimodal-generative-models) covers text-to-image systems end to end.
 
-## 9. When *Not* to Use Each
+## Worked example
+
+Generative models must learn both the data distribution and how to sample from it. In the ring experiment, DDPM with 200 steps and flow matching with 20 steps put 99% of samples near the target ring; pure noise puts 13% there.
+
+## Try it yourself
+
+The page’s code and recorded output give a starting point for this edit.
+
+```python
+# Try it: change the flow sampler from 20 steps to 10 and measure ring coverage.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Judging samples only by one metric | Fidelity can hide missing modes | Measure quality and coverage |
+| Using GAN losses as a quality score | The objectives do not directly measure sample fidelity | Inspect samples and use distributional metrics |
+| Choosing too many sampling steps by habit | Fast samplers may reach the target with fewer steps | Measure quality against latency |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
