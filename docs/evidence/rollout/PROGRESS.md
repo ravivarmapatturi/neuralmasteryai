@@ -293,3 +293,9 @@ Static checks passed: notebook (30 current changed pages/0 violations), math, MD
 Standardized four Context Engineering pages and five Frameworks pages. Context Worksheets preserve source examples for 128k-token budgeting, memory retrieval/injection, dynamic tool schema overhead and compaction watermarks. Framework pages use a separate flow for model tooling, orchestration and serving. Existing ASCII diagram fences in context-engineering pages were relabeled `output`; contents were retained.
 
 Static checks passed: notebook (39 combined changed pages/0 violations), MDX (2,019/2,019), math, links (2,147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Browser, full Vitest, and build deferred under low-memory constraints. See `rest-7/scorecard.md`. No push.
+
+## Rest batch 8 — eleven pages
+
+Standardized the AI Engineering Track, main Roadmap and Suggested Paths; Research Engineering overview/roadmap/paper reading/timeline; Guides and Open Source AI Resources; and Getting Started. These navigation and decision pages use qualitative flow diagrams and specific paths, without invented output values.
+
+Static checks passed: notebook (49 current changed pages/0 violations), math, MDX (2,019/2,019), links (2,147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Browser, full Vitest, and build deferred under low-memory constraints. See `rest-8/scorecard.md`. No push.
