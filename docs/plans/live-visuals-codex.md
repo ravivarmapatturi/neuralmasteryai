@@ -130,21 +130,21 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 4
 - `src/content/docs/machine-learning/association-rules.mdx`
-  - [ ] `src/viz/diagrams/AssociationRulesDiagram.tsx`
+  - [x] `src/viz/diagrams/AssociationRulesDiagram.tsx`
 - `src/content/docs/machine-learning/dbscan-hdbscan.mdx`
-  - [ ] `src/viz/diagrams/DbscanLiveDiagram.tsx`
+  - [x] `src/viz/diagrams/DbscanLiveDiagram.tsx`
 - `src/content/docs/machine-learning/decision-tree.mdx`
-  - [ ] `src/viz/DecisionBoundaryPlayground.tsx`
+  - [x] `src/viz/DecisionBoundaryPlayground.tsx`
 - `src/content/docs/machine-learning/elastic-net.mdx`
-  - [ ] `src/viz/ElasticNetStudio.tsx`
+  - [x] `src/viz/ElasticNetStudio.tsx`
 - `src/content/docs/machine-learning/gmm-spectral-clustering.mdx`
-  - [ ] `src/viz/diagrams/GmmSoftAssignmentDiagram.tsx`
+  - [x] `src/viz/diagrams/GmmSoftAssignmentDiagram.tsx`
 - `src/content/docs/machine-learning/hyperparameter-optimization.mdx`
-  - [ ] `src/viz/diagrams/HyperparamSearchDiagram.tsx`
+  - [x] `src/viz/diagrams/HyperparamSearchDiagram.tsx`
 - `src/content/docs/machine-learning/ica-tsne-umap.mdx`
-  - [ ] `src/viz/diagrams/IcaCocktailPartyDiagram.tsx`
+  - [x] `src/viz/diagrams/IcaCocktailPartyDiagram.tsx`
 - `src/content/docs/machine-learning/lasso-regression.mdx`
-  - [ ] `src/viz/LassoRegressionStudio.tsx`
+  - [x] `src/viz/LassoRegressionStudio.tsx`
 
 ## Batch 5
 - `src/content/docs/machine-learning/learning-to-rank.mdx`

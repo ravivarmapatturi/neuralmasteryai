@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVizTokens } from '../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, Slider, PillSelect, VizButton, ControlRow } from './primitives';
+import { VisualizationContainer, VisualizationHeader, Slider, PillSelect, VizButton, ControlRow, useAutoCycle } from './primitives';
 import { makeBlobs } from './lib/datasets';
 import { knnPredict, buildTree, treePredict, kmeans, type LabeledPoint, type TreeShape, type KMeansResult } from './lib/decisionBoundary';
 
@@ -28,9 +28,17 @@ export default function DecisionBoundaryPlayground({ defaultMode = 'knn' as Mode
   const [mode, setMode] = useState<Mode>(defaultMode);
   const [points, setPoints] = useState<LabeledPoint[]>(seedPoints);
   const [currentClass, setCurrentClass] = useState(0);
-  const [k, setK] = useState(3);
-  const [maxDepth, setMaxDepth] = useState(3);
-  const [kClusters, setKClusters] = useState(3);
+  // Live by default: the setting that matters for the current algorithm steps on
+  // its own (k for KNN, depth for the tree, cluster count for k-means), so the
+  // boundary visibly reshapes; any interaction hands control to the reader.
+  const [kManual, setK] = useState(3);
+  const [depthManual, setDepth] = useState(3);
+  const [kClustersManual, setKClusters] = useState(3);
+  const depthCycle = useAutoCycle(6, 1600, 2);
+  const auto = depthCycle.auto;
+  const k = auto && mode === 'knn' ? [1, 2, 3, 5, 7, 9][depthCycle.value] : kManual;
+  const maxDepth = auto && mode === 'tree' ? depthCycle.value + 1 : depthManual;
+  const kClusters = auto && mode === 'kmeans' ? 2 + (depthCycle.value % 3) : kClustersManual;
   const [size, setSize] = useState(420);
 
   useEffect(() => {
@@ -143,6 +151,7 @@ export default function DecisionBoundaryPlayground({ defaultMode = 'knn' as Mode
     const px = ((e.clientX - rect.left) / rect.width) * canvas.width;
     const py = ((e.clientY - rect.top) / rect.height) * canvas.height;
     const [x, y] = toDomain(px, py, canvas.width, canvas.height);
+    depthCycle.stop();
     setPoints((pts) => [...pts, { x, y, label: currentClass }]);
   };
 
@@ -150,12 +159,12 @@ export default function DecisionBoundaryPlayground({ defaultMode = 'knn' as Mode
     <VisualizationContainer footer="Real KNN, a real Gini-impurity decision tree, and real Lloyd's-algorithm k-means -- click the canvas to add points and watch the boundary recompute live.">
       <VisualizationHeader eyebrow="Interactive" title="Decision Boundary Playground" />
       <ControlRow>
-        <PillSelect<Mode> label="Algorithm" value={mode} onChange={setMode} options={MODE_OPTIONS} />
+        <PillSelect<Mode> label="Algorithm" value={mode} onChange={(value) => { depthCycle.stop(); setMode(value); }} options={MODE_OPTIONS} />
         {mode !== 'kmeans' && (
           <PillSelect<number>
             label="Click adds class"
             value={currentClass}
-            onChange={setCurrentClass}
+            onChange={(value) => { depthCycle.stop(); setCurrentClass(value); }}
             options={[
               { value: 0, label: 'A' },
               { value: 1, label: 'B' },
@@ -166,23 +175,23 @@ export default function DecisionBoundaryPlayground({ defaultMode = 'knn' as Mode
       <ControlRow>
         {mode === 'knn' && (
           <div style={{ minWidth: 180 }}>
-            <Slider label="k" value={k} onChange={setK} min={1} max={9} step={1} />
+            <Slider label="k" value={k} onChange={(value) => { depthCycle.stop(); setK(value); }} min={1} max={9} step={1} />
           </div>
         )}
         {mode === 'tree' && (
           <div style={{ minWidth: 180 }}>
-            <Slider label="Max depth" value={maxDepth} onChange={setMaxDepth} min={1} max={6} step={1} />
+            <Slider label="Max depth" value={maxDepth} onChange={(value) => { depthCycle.stop(); setDepth(value); }} min={1} max={6} step={1} />
           </div>
         )}
         {mode === 'kmeans' && (
           <div style={{ minWidth: 180 }}>
-            <Slider label="Clusters (k)" value={kClusters} onChange={setKClusters} min={2} max={4} step={1} />
+            <Slider label="Clusters (k)" value={kClusters} onChange={(value) => { depthCycle.stop(); setKClusters(value); }} min={2} max={4} step={1} />
           </div>
         )}
-        <VizButton variant="secondary" onClick={() => setPoints((pts) => pts.slice(0, -1))}>
+        <VizButton variant="secondary" onClick={() => { depthCycle.stop(); setPoints((pts) => pts.slice(0, -1)); }}>
           Undo Point
         </VizButton>
-        <VizButton variant="secondary" onClick={() => setPoints(seedPoints())}>
+        <VizButton variant="secondary" onClick={() => { depthCycle.stop(); setPoints(seedPoints()); }}>
           Reset Points
         </VizButton>
       </ControlRow>

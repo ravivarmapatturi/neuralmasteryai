@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generateGmmPoints, trainGmm } from '../lib/clustering';
 
@@ -8,7 +8,8 @@ const POINTS = generateGmmPoints(5);
 
 export default function GmmSoftAssignmentDiagram() {
   const t = useVizTokens();
-  const [iterations, setIterations] = useState(10);
+  const iterationCycle = useAutoCycle(21, 350, 10);
+  const iterations = iterationCycle.value;
 
   const { comps, responsibilities } = useMemo(() => trainGmm(POINTS, iterations, 2), [iterations]);
 
@@ -22,7 +23,7 @@ export default function GmmSoftAssignmentDiagram() {
 
   return (
     <VisualizationContainer footer={`Real EM, ${iterations} iterations: component means at (${comps[0].mu[0].toFixed(2)}, ${comps[0].mu[1].toFixed(2)}) and (${comps[1].mu[0].toFixed(2)}, ${comps[1].mu[1].toFixed(2)}). The point sitting closest to the boundary gets real soft membership (${(ambiguous[0] * 100).toFixed(0)}%, ${(ambiguous[1] * 100).toFixed(0)}%) -- honestly reflecting genuine ambiguity, something K-Means' hard 0%/100% assignment structurally can't express.`}>
-      <Slider label="EM iterations" value={iterations} onChange={setIterations} min={0} max={20} step={1} />
+      <Slider label="EM iterations" value={iterations} onChange={iterationCycle.pick} min={0} max={20} step={1} />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8, maxWidth: 320, margin: '8px auto 0' }}>
         {POINTS.map((p, i) => {

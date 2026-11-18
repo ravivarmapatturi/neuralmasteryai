@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens, SPACING, FONT_FAMILY, getFeatureColors } from '../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, Slider, VizButton, ControlRow } from './primitives';
+import { VisualizationContainer, VisualizationHeader, Slider, VizButton, ControlRow, useAutoCycle } from './primitives';
 import RegularizationPathChart from './patterns/RegularizationPathChart';
 import { FEATURE_NAMES, LAMBDA_MAX, generateData, lassoSolve, mse, regularizationPath } from './lib/lasso';
 
@@ -9,7 +9,8 @@ export default function LassoRegressionStudio() {
   const [seed, setSeed] = useState(5);
   const [correlation, setCorrelation] = useState(0.9);
   const [noise, setNoise] = useState(1.5);
-  const [lambda, setLambda] = useState(0);
+  const lambdaCycle = useAutoCycle(Math.round(LAMBDA_MAX / 0.05) + 1, 100, 20);
+  const lambda = lambdaCycle.value * 0.05;
 
   const rows = useMemo(() => generateData(40, correlation, noise, seed), [correlation, noise, seed]);
   const path = useMemo(() => regularizationPath(rows, 30), [rows]);
@@ -24,18 +25,18 @@ export default function LassoRegressionStudio() {
       <VisualizationHeader eyebrow="Interactive" title="Lasso Regression Studio" />
       <ControlRow>
         <div style={{ minWidth: 200 }}>
-          <Slider label="Correlation (x1, x2)" value={correlation} onChange={setCorrelation} min={0} max={0.98} step={0.02} format={(v) => v.toFixed(2)} />
+          <Slider label="Correlation (x1, x2)" value={correlation} onChange={(value) => { lambdaCycle.stop(); setCorrelation(value); }} min={0} max={0.98} step={0.02} format={(v) => v.toFixed(2)} />
         </div>
         <div style={{ minWidth: 160 }}>
-          <Slider label="Noise" value={noise} onChange={setNoise} min={0.2} max={4} step={0.1} format={(v) => v.toFixed(1)} />
+          <Slider label="Noise" value={noise} onChange={(value) => { lambdaCycle.stop(); setNoise(value); }} min={0.2} max={4} step={0.1} format={(v) => v.toFixed(1)} />
         </div>
-        <VizButton variant="secondary" onClick={() => setSeed((s) => s + 1)}>
+        <VizButton variant="secondary" onClick={() => { lambdaCycle.stop(); setSeed((s) => s + 1); }}>
           New Dataset
         </VizButton>
       </ControlRow>
       <ControlRow>
         <div style={{ minWidth: 260, flex: 1 }}>
-          <Slider label="λ (regularization strength)" value={lambda} onChange={setLambda} min={0} max={LAMBDA_MAX} step={0.05} format={(v) => v.toFixed(2)} />
+          <Slider label="λ (regularization strength)" value={lambda} onChange={(value) => lambdaCycle.pick(Math.round(value / 0.05))} min={0} max={LAMBDA_MAX} step={0.05} format={(v) => v.toFixed(2)} />
         </div>
       </ControlRow>
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generateDbscanPoints, runDbscan } from '../lib/clustering';
 
@@ -9,7 +9,8 @@ const CLUSTER_COLORS = ['accentPrimary', 'accentSecondary', 'accentWarn'] as con
 
 export default function DbscanLiveDiagram() {
   const t = useVizTokens();
-  const [eps, setEps] = useState(0.7);
+  const epsCycle = useAutoCycle(27, 240, 10);
+  const eps = 0.2 + epsCycle.value * 0.05;
   const [minSamples, setMinSamples] = useState(4);
 
   const labels = useMemo(() => runDbscan(POINTS, eps, minSamples), [eps, minSamples]);
@@ -23,11 +24,12 @@ export default function DbscanLiveDiagram() {
   return (
     <VisualizationContainer footer={`Real DBSCAN, run live on ${POINTS.length} real points: at ε=${eps.toFixed(2)}, min_samples=${minSamples} → ${nClusters} real cluster(s) found, ${nNoise} points labeled noise. Core points (filled) have ≥${minSamples} real neighbors within ε; border points (ring) don't qualify themselves but sit within ε of a core point; noise (×) qualifies for neither.`}>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <Slider label="ε (radius)" value={eps} onChange={setEps} min={0.2} max={1.5} step={0.05} />
-        <Slider label="min_samples" value={minSamples} onChange={setMinSamples} min={2} max={10} step={1} />
+        <Slider label="ε (radius)" value={eps} onChange={(value) => epsCycle.pick(Math.round((value - 0.2) / 0.05))} min={0.2} max={1.5} step={0.05} />
+        <Slider label="min_samples" value={minSamples} onChange={(value) => { epsCycle.stop(); setMinSamples(value); }} min={2} max={10} step={1} />
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8, maxWidth: 320, margin: '8px auto 0' }}>
+        <circle cx={px(POINTS[0].x)} cy={py(POINTS[0].y)} r={eps * scale} fill="none" stroke={t.accentPrimary} strokeWidth={1.5} strokeDasharray="5 4" opacity={0.55} aria-hidden />
         {POINTS.map((p, i) => {
           const label = labels[i];
           const color = label.cluster !== null ? t[CLUSTER_COLORS[label.cluster % CLUSTER_COLORS.length]] : t.textMuted;

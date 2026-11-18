@@ -103,3 +103,14 @@
 - `ScalingLawsChinchillaDiagram`: Left static because it is a compute-allocation calculator whose selected budget must stay fixed while the parameter-token split is read.
 - `SftBeforeAfterDiagram`: The response alternates because supervised fine-tuning changes a base model from continuing text patterns to following the instruction.
 - `IsolationPathLengthDiagram`: Left static because it is a Monte Carlo result whose fixed seed keeps the displayed path-length comparison reproducible until the learner explicitly reruns it.
+
+## Batch 4
+
+- `AssociationRulesDiagram`: The active transaction advances because support and confidence are counted by checking each basket for the antecedent and consequent.
+- `DbscanLiveDiagram`: The neighbourhood radius expands because DBSCAN changes core, border, and noise assignments as epsilon reaches more nearby points.
+- `DecisionBoundaryPlayground`: Tree depth advances because each additional decision-tree level can partition the feature space into finer regions.
+- `ElasticNetStudio`: The lambda cursor travels along the coefficient paths because stronger Elastic Net regularization continuously shrinks weights and can drive some to zero.
+- `GmmSoftAssignmentDiagram`: EM iterations advance because each expectation-maximization update moves the component means and recomputes every point's soft membership.
+- `HyperparamSearchDiagram`: Evaluated points appear in search order because each strategy spends the same budget on a different sequence of hyperparameter trials.
+- `IcaCocktailPartyDiagram`: One time cursor sweeps all four signals together because each microphone mixture is formed from the source samples at that same instant.
+- `LassoRegressionStudio`: The lambda cursor travels along the coefficient paths because increasing L1 regularization soft-thresholds features to exactly zero at different strengths.

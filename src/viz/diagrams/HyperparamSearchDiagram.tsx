@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor, valueColor } from './diagramSystem';
 import { gridSamples, randomSamples, bayesianSamples, score } from '../lib/hyperparamSearch';
 
@@ -20,6 +20,7 @@ const N = 9;
 export default function HyperparamSearchDiagram() {
   const t = useVizTokens();
   const [method, setMethod] = useState<Method>('grid');
+  const evaluationCycle = useAutoCycle(N, 550, N - 1);
 
   const points = useMemo(() => {
     if (method === 'grid') return gridSamples(3); // 3x3 = 9, matches N
@@ -52,7 +53,7 @@ export default function HyperparamSearchDiagram() {
       <PillSelect<Method>
         label="Search strategy"
         value={method}
-        onChange={setMethod}
+        onChange={(value) => { evaluationCycle.stop(); setMethod(value); }}
         options={[
           { value: 'grid', label: 'Grid Search' },
           { value: 'random', label: 'Random Search' },
@@ -79,7 +80,7 @@ export default function HyperparamSearchDiagram() {
         )}
         <text x={width / 2} y={height - 4} textAnchor="middle" fontSize={9} fill={t.textMuted}>hyperparameter that matters (e.g. learning rate) →</text>
         <text x={10} y={height / 2} textAnchor="middle" fontSize={9} fill={t.textMuted} transform={`rotate(-90 10 ${height / 2})`}>hyperparameter that doesn't →</text>
-        {points.map((p, i) => (
+        {points.slice(0, evaluationCycle.value + 1).map((p, i) => (
           <circle key={i} cx={toPx(p.x)} cy={toPy(p.y)} r={5} fill={t.surface} stroke={color} strokeWidth={2} />
         ))}
       </svg>
