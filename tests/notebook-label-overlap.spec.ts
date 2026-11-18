@@ -48,6 +48,13 @@ const ROUTES = [
   'docs/mlops/llm-inference-engines',
   'docs/mlops/llm-hosting-and-serving-patterns',
   'docs/mlops/llm-evaluation-and-ragops',
+  'docs/mlops/ai-cost-engineering',
+  'docs/mlops/caching-strategies',
+  'docs/mlops/legal-licensing-and-governance',
+  'docs/mlops/security-and-reproducibility',
+  'docs/mlops/ml-and-llm-testing',
+  'docs/mlops/production-reliability',
+  'docs/mlops/mlops-architecture-and-roadmap',
   // Keep the already-approved pilot last so the Vite dev server has warmed its
   // route modules before this large lazy-loaded page is checked.
   'docs/search-ranking-recommendations/tf-idf',

@@ -10,10 +10,11 @@ import CacheEvictionTtlDiagram from '../../../viz/diagrams/CacheEvictionTtlDiagr
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Caching Strategies & Redis Patterns
-
-[APIs & Model Serving](/docs/mlops/model-serving) made individual predictions fast; [AI Cost Engineering](/docs/mlops/ai-cost-engineering) is about paying less for them. Caching serves both: the fastest and cheapest computation is the one you don't repeat. ML systems cache at many levels, from feature lookups and model predictions to whole LLM answers and the attention state inside a model. This page covers the mechanics they share: when a cache pays off, how reads and writes keep it consistent, why invalidation is hard, the stampede that can take down a database when a popular key expires (measured on real Redis), how eviction interacts with real traffic patterns, and semantic caching for LLMs, where "the same question" stops being a simple equality test.
-
 <ELI5>
 
 A librarian who is asked for the same popular book twenty times a day keeps a copy on the front desk instead of walking to the stacks each time. That desk is a cache. It only has room for a few books, so the librarian keeps the ones people ask for most and puts back the ones nobody has asked for lately. And when a new edition comes out, the old copy on the desk has to go, or people get the outdated one.
@@ -23,6 +24,24 @@ Every cache faces those three questions: what to keep close, what to throw out w
 Everything below is how those questions are answered in software.
 
 </ELI5>
+
+## Why it exists
+
+[APIs & Model Serving](/docs/mlops/model-serving) made individual predictions fast; [AI Cost Engineering](/docs/mlops/ai-cost-engineering) is about paying less for them. Caching serves both: the fastest and cheapest computation is the one you don't repeat. ML systems cache at many levels, from feature lookups and model predictions to whole LLM answers and the attention state inside a model. This page covers the mechanics they share: when a cache pays off, how reads and writes keep it consistent, why invalidation is hard, the stampede that can take down a database when a popular key expires (measured on real Redis), how eviction interacts with real traffic patterns, and semantic caching for LLMs, where "the same question" stops being a simple equality test.
+
+
+
+## The big picture
+
+A cache is useful only when repeated work is cheaper to retain than to recompute safely.
+
+<PenFlow ariaLabel="caching strategies overview path" rows={[{ steps: { title: 'Identify repeated work', lines: ['Choose a cache key'], tone: 'blue' } }, { steps: { title: 'Choose a cache key', lines: ['Set freshness and invalidation'], tone: 'purple' } }, { steps: { title: 'Set freshness and invalidation', lines: ['Measure hit rate and staleness'], tone: 'green' } }, { steps: { title: 'Measure hit rate and staleness', lines: ['Check the outcome and adjust'], tone: 'orange' } }]} caption="A cache is useful only when repeated work is cheaper to retain than to recompute safely." />
+
+<Worksheet title="Estimate the cache latency" ariaLabel="Worksheet comparing average latency at three cache hit rates" stages={[
+  { tag: 'Inputs', color: 'blue', note: 'Cache lookup takes 1 ms; source computation takes 200 ms.', grid: { head: ['Hit rate', 'Average latency'], rows: [{ label: '50%', cells: ['101 ms'] }, { label: '90%', cells: ['21 ms'] }, { label: '99%', cells: ['3 ms'] }] } },
+  { tag: 'Choose', color: 'green', note: 'A cache helps only when requests repeat and the saved time exceeds lookup and staleness costs.', children: <>For a unique credit decision, the hit rate is near zero and the cache adds work.</> },
+]} />
+
 
 ## 1. When a Cache Pays Off
 
@@ -75,7 +94,7 @@ Phil Karlton's often-quoted line, that there are only two hard things in compute
 
 Two tools control staleness:
 
-- **TTL expiry** bounds it: a value cached with a 5-minute TTL is at most 5 minutes out of date. It needs no coordination, which makes it robust, but it serves stale data for up to the full TTL and expires values that hadn't changed.
+- **TTL expiry** bounds it: a value cached with a 5-minute TTL is at most 5 minutes out of date. It needs no coordination, which makes it dependable, but it serves stale data for up to the full TTL and expires values that hadn't changed.
 - **Explicit invalidation** deletes the cached key when the source changes. It's precise, but every write path must remember every cached representation of the data, and a forgotten one leaves values stale indefinitely, with no error to notice. Event-driven invalidation (a change-data-capture stream from the database deleting affected keys) is more reliable than invalidation scattered through application code.
 
 Production systems usually use both: invalidate where you can, and keep a TTL as a safety net that bounds how long a missed invalidation can hurt.
@@ -150,10 +169,9 @@ for name, getter in [("no protection", get_naive), ("single-flight lock", get_wi
     print(f"{name:<19} 50 concurrent misses -> {db_calls:>2} database queries, {time.perf_counter() - start:.2f} s")
 ```
 
-```text
-no protection       50 concurrent misses -> 50 database queries, 0.21 s
-single-flight lock  50 concurrent misses ->  1 database queries, 0.22 s
-```
+- no protection       50 concurrent misses -> 50 database queries, 0.21 s
+- single-flight lock  50 concurrent misses ->  1 database queries, 0.22 s
+
 
 Without protection, all 50 requests hit the source. With the lock, one does, and the other 49 get its result a few milliseconds later; total time is essentially the same. `SET ... NX EX` is what makes this safe: it sets the lock only if it doesn't exist (`NX`), atomically, and the expiry (`EX 10`) releases it even if the holder crashes.
 
@@ -213,11 +231,10 @@ for s in [0.6, 1.0, 1.2]:
           f"keys in cache {r.dbsize():,}, evicted {stats['evicted_keys']:,}")
 ```
 
-```text
-skew s=0.6: hit rate 21.8% (ideal 37.4%), keys in cache 905, evicted 45,950
-skew s=1.0: hit rate 64.0% (ideal 75.7%), keys in cache 905, evicted 20,625
-skew s=1.2: hit rate 84.8% (ideal 90.0%), keys in cache 905, evicted 8,182
-```
+- skew s=0.6: hit rate 21.8% (ideal 37.4%), keys in cache 905, evicted 45,950
+- skew s=1.0: hit rate 64.0% (ideal 75.7%), keys in cache 905, evicted 20,625
+- skew s=1.2: hit rate 84.8% (ideal 90.0%), keys in cache 905, evicted 8,182
+
 
 The same cache holding 9% of the items achieves anything from 22% to 85% hits depending only on how skewed the traffic is. Measure your traffic's popularity distribution before sizing a cache: with heavy skew a small cache does most of the work, and with flat traffic even a large one helps little.
 
@@ -258,10 +275,9 @@ print(f"day 1: {first:.2f} s to embed 2,000 documents")
 print(f"day 2: {second:.2f} s, {len(cache) - 2_000} new embeddings computed, 1,900 served from cache")
 ```
 
-```text
-day 1: 4.84 s to embed 2,000 documents
-day 2: 0.19 s, 100 new embeddings computed, 1,900 served from cache
-```
+- day 1: 4.84 s to embed 2,000 documents
+- day 2: 0.19 s, 100 new embeddings computed, 1,900 served from cache
+
 
 The second run embedded only the 100 changed documents, 25 times faster, and with a paid embedding API the saving is in money as well as time. Three details make it correct:
 
@@ -293,13 +309,12 @@ for question, v in zip(new_questions, vectors[1:]):
     print(f"{float(v @ vectors[0]):.3f}  {question}")
 ```
 
-```text
-0.930  How can I cancel an order I placed?
-0.979  what's the way to cancel my order
-0.712  How do I cancel my subscription?
-0.523  How do I track my order?
-0.887  How do I stop my order from being cancelled?
-```
+- 0.930  How can I cancel an order I placed?
+- 0.979  what's the way to cancel my order
+- 0.712  How do I cancel my subscription?
+- 0.523  How do I track my order?
+- 0.887  How do I stop my order from being cancelled?
+
 
 The paraphrases score 0.93 and 0.98, and the unrelated questions are well below. But the question with the *opposite* intent, stopping a cancellation, scores 0.887, barely below a true paraphrase. A threshold of 0.85, which sounds conservative, would answer it with instructions for cancelling. Embedding models capture topic and wording well and are weak on negation and intent.
 
@@ -324,7 +339,23 @@ The provider-side alternative is **prompt caching**: providers cache the process
   explanation="A semantic cache can be wrong in a way an exact-match cache cannot: it can serve a confident, fluent answer to a different question. Hit rate measures savings; the false-hit rate measures harm. Questions with negation or opposite intent can score as high as true paraphrases, so the evaluation sample must include them, and the threshold should be set from that measurement rather than from intuition."
 />
 
-## 9. When *Not* to Cache
+## Worked example
+
+With a 1 ms lookup and a 200 ms source operation, 90% hits give an average of 21 ms. At 99% the average is 3 ms. If requests are unique, however, every request pays the lookup and still runs the source operation.
+
+## Try it yourself
+
+Use the page’s latency formula to compare the three hit rates, then inspect Redis key TTL and hit/miss counters for a non-sensitive test key. Do not cache a result whose freshness or user-specific permissions are unclear.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| A stale value is served | Invalidation or TTL is missing | Define freshness and invalidate on source changes |
+| Expiry causes a traffic spike | Many hot keys expire together | Add jitter, single-flight, or stale-while-revalidate |
+| A private result crosses users | The cache key omits identity or permissions | Include the access scope in the key or avoid caching |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

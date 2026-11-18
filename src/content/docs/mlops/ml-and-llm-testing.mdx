@@ -11,10 +11,11 @@ import JailbreakRegressionDiagram from '../../../viz/diagrams/JailbreakRegressio
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # ML & LLM Testing
-
-[Engineering Foundations for ML](/docs/mlops/engineering-foundations) covered testing the ordinary code in an ML system, and [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd) covered data contracts, behaviour tests and the statistical gate a retrained model must pass. This page is about the hardest case: testing systems built on large language models, whose outputs vary from run to run, are free text, and can be steered by their inputs. It covers how the test pyramid changes, why a single pass or fail means little and what to measure instead, how to compare two prompt versions honestly, how to make LLM tests fast and repeatable in CI, mechanical checks on structured output and tool calls, how to tell whether an LLM judge can be trusted, and how to keep fixed jailbreaks fixed.
-
 <ELI5>
 
 Testing a calculator is easy: 2 + 2 must be 4, every time. Testing a new waiter is different. You can't check that they say the exact same sentence to every table. You check things that must always be true (they never serve the wrong dish, they never insult anyone, the bill always adds up), and for the rest you watch many tables and count how often it goes well.
@@ -24,6 +25,24 @@ Testing an LLM application is testing the waiter. A few checks are exact, and th
 Everything below is how to do both properly.
 
 </ELI5>
+
+## Why it exists
+
+[Engineering Foundations for ML](/docs/mlops/engineering-foundations) covered testing the ordinary code in an ML system, and [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd) covered data contracts, behaviour tests and the statistical gate a retrained model must pass. This page is about the hardest case: testing systems built on large language models, whose outputs vary from run to run, are free text, and can be steered by their inputs. It covers how the test pyramid changes, why a single pass or fail means little and what to measure instead, how to compare two prompt versions honestly, how to make LLM tests fast and repeatable in CI, mechanical checks on structured output and tool calls, how to tell whether an LLM judge can be trusted, and how to keep fixed jailbreaks fixed.
+
+
+
+## The big picture
+
+A model change is safe to ship only when its inputs, outputs, tools, and measured quality pass explicit checks.
+
+<PenFlow ariaLabel="ml and llm testing overview path" rows={[{ steps: { title: 'Pin a golden case set', lines: ['Run mechanical checks'], tone: 'blue' } }, { steps: { title: 'Run mechanical checks', lines: ['Compare quality and safety'], tone: 'purple' } }, { steps: { title: 'Compare quality and safety', lines: ['Gate the release'], tone: 'green' } }, { steps: { title: 'Gate the release', lines: ['Check the outcome and adjust'], tone: 'orange' } }]} caption="A model change is safe to ship only when its inputs, outputs, tools, and measured quality pass explicit checks." />
+
+<Worksheet title="Compare pass-rate evidence" ariaLabel="Worksheet comparing Wilson intervals for three test suite sizes" stages={[
+  { tag: 'Suites', color: 'blue', note: 'Use the measured pass counts from the Wilson interval example.', grid: { head: ['Passes', 'Rate', '95% interval'], rows: [{ label: '19/20', cells: ['95%', '76.4%–99.1%'] }, { label: '190/200', cells: ['95%', '91.0%–97.3%'] }, { label: '50/50', cells: ['100%', '92.9%–100%'] }] } },
+  { tag: 'Decision', color: 'yellow', note: 'A higher pass rate on a tiny set can still leave substantial uncertainty.', children: <>Grow the golden set and inspect changed cases before declaring a prompt or model better.</> },
+]} />
+
 
 ## 1. The Test Pyramid for ML Systems
 
@@ -79,13 +98,12 @@ for b, c in [(14, 6), (20, 4)]:
     print(f"v2 fixed {b} cases and broke {c}: net +{b - c}, one-sided p = {p:.3f}")
 ```
 
-```text
-19/20 passed: pass rate 95%, 95% interval [76.4%, 99.1%]
-190/200 passed: pass rate 95%, 95% interval [91.0%, 97.3%]
-50/50 passed: pass rate 100%, 95% interval [92.9%, 100.0%]
-v2 fixed 14 cases and broke 6: net +8, one-sided p = 0.058
-v2 fixed 20 cases and broke 4: net +16, one-sided p = 0.001
-```
+- 19/20 passed: pass rate 95%, 95% interval [76.4%, 99.1%]
+- 190/200 passed: pass rate 95%, 95% interval [91.0%, 97.3%]
+- 50/50 passed: pass rate 100%, 95% interval [92.9%, 100.0%]
+- v2 fixed 14 cases and broke 6: net +8, one-sided p = 0.058
+- v2 fixed 20 cases and broke 4: net +16, one-sided p = 0.001
+
 
 The first three lines show how little a small suite says. **95% on 20 cases is consistent with a true rate anywhere from 76% to 99%.** A perfect 50 out of 50 still allows a true failure rate of up to 7%. So a threshold like "the suite must pass at 90%" on 20 cases can't distinguish a 90% system from a 99% one, and should be written against the interval's lower bound on a suite big enough to make that bound meaningful.
 
@@ -183,10 +201,9 @@ def test_classification(ticket, expected):
 
 The cassette for this example holds three recorded replies, one of which is the most common real failure of "reply with JSON only" prompts: the model added a friendly sentence before the JSON.
 
-```text
-E           Failed: not valid ticket JSON: 'Sure! Here is the JSON: {"category": "account", "priority": '... (1 errors)
-1 failed, 2 passed in 0.33s
-```
+- E           Failed: not valid ticket JSON: 'Sure! Here is the JSON: &#123;"category": "account", "priority": '... (1 errors)
+- 1 failed, 2 passed in 0.33s
+
 
 The test catches it deterministically, on every run, at no cost. The fix belongs in the system, not the test: use the provider's structured-output mode (which constrains decoding to a JSON schema), or a parser that extracts and validates the JSON and retries on failure.
 
@@ -220,11 +237,10 @@ print("serving version", prompt.version, "|", prompt.commit_message)
 print(prompt.format(ticket="I was charged twice for October"))
 ```
 
-```text
-serving version 2 | forbid text around the JSON (fixes the 'Sure! Here is the JSON' failure)
-Classify the support ticket into billing, bug or account. Reply with JSON only, no text before or after it.
-Ticket: I was charged twice for October
-```
+- serving version 2 | forbid text around the JSON (fixes the 'Sure! Here is the JSON' failure)
+- Classify the support ticket into billing, bug or account. Reply with JSON only, no text before or after it.
+- Ticket: I was charged twice for October
+
 
 Whatever stores them, the rules are the same as for models: never edit a version in place, record which prompt version produced each logged response, and let a prompt reach `production` only through the evaluation gate in section 7.
 
@@ -265,11 +281,10 @@ for raw in recorded_calls:
     print("OK  " if not errors else "FAIL", raw if not errors else "; ".join(errors))
 ```
 
-```text
-OK   {"order_id": "ORD-104233", "amount": 49.99, "reason": "damaged"}
-FAIL '104233' does not match '^ORD-[0-9]{6}$'
-FAIL 4999 is greater than the maximum of 500; 'customer asked nicely' is not one of ['damaged', 'late', 'duplicate']
-```
+- OK   &#123;"order_id": "ORD-104233", "amount": 49.99, "reason": "damaged"&#125;
+- FAIL '104233' does not match '^ORD-[0-9]&#123;6&#125;$'
+- FAIL 4999 is greater than the maximum of 500; 'customer asked nicely' is not one of ['damaged', 'late', 'duplicate']
+
 
 The third call shows why this matters: an amount a hundred times too large and a made-up reason, the kind of output a manipulated or confused model produces. A schema check stops it before any money moves. Beyond argument validity, tool tests should check **choice** (for a given request, the right tool is called, and no tool is called when none should be) and, for multi-step agents, **trajectory**: the sequence of calls for scripted scenarios, such as "look up the order before issuing a refund".
 
@@ -304,10 +319,9 @@ for name, judge in [("lenient judge", judge_lenient), ("useful judge", judge_use
           f"bad answers caught {caught}/6")
 ```
 
-```text
-lenient judge  raw agreement 88%   kappa 0.25   bad answers caught 1/6
-useful judge   raw agreement 95%   kappa 0.80   bad answers caught 5/6
-```
+- lenient judge  raw agreement 88%   kappa 0.25   bad answers caught 1/6
+- useful judge   raw agreement 95%   kappa 0.80   bad answers caught 5/6
+
 
 The lenient judge agrees with the human 88% of the time, which sounds fine, and catches one bad answer in six, which is useless: it agrees mostly because nearly everything is good. Kappa exposes it (0.25, slight agreement), while the useful judge scores 0.80 (strong). Only a judge with high kappa on *your* data should gate releases, and the calibration should be repeated when the judge model or the rubric changes.
 
@@ -354,7 +368,23 @@ The structure mirrors [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd): cheap de
   explanation="An any-failure rule on sampled outputs turns ordinary variation into red builds, and temperature 0 doesn't guarantee identical outputs. Deleting hard cases or retrying until success hides real failures. Replaying recordings makes per-commit tests deterministic, while the live evaluation runs where it is informative, measured as a rate with an uncertainty-aware threshold."
 />
 
-## 8. When *Not* to Build This Much
+## Worked example
+
+The same 95% pass rate means different things on 20 and 200 cases: the 95% Wilson interval is 76.4%–99.1% for 19/20, and 91.0%–97.3% for 190/200. A small suite is a useful smoke test, but it cannot support a narrow quality claim.
+
+## Try it yourself
+
+Run the deterministic schema and tool tests on every change. For stochastic outputs, replay the fixed golden set several times and compare the confidence interval and changed cases, not only one pass rate.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| A prompt passes after one lucky run | One output is a noisy sample | Repeat cases and report uncertainty |
+| A judge score is treated as ground truth | The judge may disagree with people | Calibrate it against human labels and disagreement cases |
+| A recorded cassette hides a changed tool contract | The test only replays the old response | Keep schema and live contract checks alongside replay tests |
+
+## When not to use it
 
 | Situation | Proportionate approach |
 |---|---|

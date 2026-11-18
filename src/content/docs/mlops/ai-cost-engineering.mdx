@@ -11,10 +11,11 @@ import QualityLatencyCostTriangleDiagram from '../../../viz/diagrams/QualityLate
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # AI Cost Engineering
-
-[LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) showed that a self-hosted GPU's cost per token depends mostly on how busy it is, and [Caching Strategies](/docs/mlops/caching-strategies) showed how to avoid repeating work. This page puts cost on its own footing. GPUs, accelerators and model APIs make ML systems far more expensive per request than ordinary web services, and the bill grows with usage in ways that surprise teams. It covers how to estimate training cost from first principles, how to compute the unit economics of an LLM feature and which levers move them most, why utilization dominates infrastructure cost, how routing between small and large models trades quality against cost (simulated as a cascade), and the quality-latency-cost trade-off every one of these decisions sits on.
-
 <ELI5>
 
 A delivery company can cut costs in a few ways. It can make sure vans don't drive around half empty. It can avoid sending a big lorry to deliver a small envelope. It can pack parcels more tightly. And it can stop delivering things nobody ordered. What it can't do is cut costs blindly, because a cheaper service that loses parcels isn't cheaper in the end.
@@ -24,6 +25,24 @@ Running AI systems is the same: keep the expensive hardware busy, send easy work
 Everything below is how to measure each of those and how much each one saves.
 
 </ELI5>
+
+## Why it exists
+
+[LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns) showed that a self-hosted GPU's cost per token depends mostly on how busy it is, and [Caching Strategies](/docs/mlops/caching-strategies) showed how to avoid repeating work. This page puts cost on its own footing. GPUs, accelerators and model APIs make ML systems far more expensive per request than ordinary web services, and the bill grows with usage in ways that surprise teams. It covers how to estimate training cost from first principles, how to compute the unit economics of an LLM feature and which levers move them most, why utilization dominates infrastructure cost, how routing between small and large models trades quality against cost (simulated as a cascade), and the quality-latency-cost trade-off every one of these decisions sits on.
+
+
+
+## The big picture
+
+Cost decisions compare spend per useful result with latency and answer quality.
+
+<PenFlow ariaLabel="ai cost engineering overview path" rows={[{ steps: { title: 'Estimate workload', lines: ['Measure unit cost'], tone: 'blue' } }, { steps: { title: 'Measure unit cost', lines: ['Choose the largest savings lever'], tone: 'purple' } }, { steps: { title: 'Choose the largest savings lever', lines: ['Check quality impact'], tone: 'green' } }, { steps: { title: 'Check quality impact', lines: ['Check the outcome and adjust'], tone: 'orange' } }]} caption="Cost decisions compare spend per useful result with latency and answer quality." />
+
+<Worksheet title="Compare the monthly feature bill" ariaLabel="Worksheet comparing monthly cost for four model API cost changes" stages={[
+  { tag: 'Inputs', color: 'blue', note: 'Use the worked RAG assistant: 2 million requests, 3,000 system tokens, 6,000 retrieved tokens, 100 question tokens, and 400 output tokens.', grid: { head: ['Variant', 'Cost per request', 'Monthly cost'], rows: [{ label: 'As built', cells: ['$0.0333', '$66,600'] }, { label: 'Cache system prompt', cells: ['$0.0252', '$50,400'] }, { label: 'Retrieve 3 chunks', cells: ['$0.0117', '$23,400'] }, { label: 'Cap answer at 200 tokens', cells: ['$0.0087', '$17,400'] }] } },
+  { tag: 'Check quality', color: 'yellow', note: 'The last changes save money only if answers still meet the product quality bar.', children: <>Compare retrieval recall and answer completeness after each change.</> },
+]} />
+
 
 ## 1. Where the Money Goes
 
@@ -58,11 +77,10 @@ for mfu in [0.5, 0.4, 0.3]:                 # model FLOPs utilization actually a
     print(f"MFU {mfu:.0%}: {gpu_hours / 1e6:4.2f}M GPU-hours, ${gpu_hours * 2.5 / 1e6:4.1f}M at $2.50/GPU-hour")
 ```
 
-```text
-MFU 50%: 0.40M GPU-hours, $ 1.0M at $2.50/GPU-hour
-MFU 40%: 0.51M GPU-hours, $ 1.3M at $2.50/GPU-hour
-MFU 30%: 0.67M GPU-hours, $ 1.7M at $2.50/GPU-hour
-```
+- MFU 50%: 0.40M GPU-hours, $ 1.0M at $2.50/GPU-hour
+- MFU 40%: 0.51M GPU-hours, $ 1.3M at $2.50/GPU-hour
+- MFU 30%: 0.67M GPU-hours, $ 1.7M at $2.50/GPU-hour
+
 
 For comparison, Meta's model card for Llama 3.1 8B (trained on about 15 trillion tokens) reports 1.46 million H100 GPU-hours, two to three times this estimate. The gap is normal: the formula counts only the final run's arithmetic, not lower-utilization phases, restarts after failures, long-context stages and experiments. Use $6ND$ as a floor and plan with a multiple.
 
@@ -101,12 +119,11 @@ for name, v in variants.items():
     print(f"{name:<33} ${per:.4f}/request   ${per * 2_000_000:>8,.0f}/month at 2M requests")
 ```
 
-```text
-as built                          $0.0333/request   $  66,600/month at 2M requests
-prompt caching on system prompt   $0.0252/request   $  50,400/month at 2M requests
-+ retrieve 3 chunks, not 12       $0.0117/request   $  23,400/month at 2M requests
-+ cap answers at 200 tokens       $0.0087/request   $  17,400/month at 2M requests
-```
+- as built                          $0.0333/request   $  66,600/month at 2M requests
+- prompt caching on system prompt   $0.0252/request   $  50,400/month at 2M requests
+- + retrieve 3 chunks, not 12       $0.0117/request   $  23,400/month at 2M requests
+- + cap answers at 200 tokens       $0.0087/request   $  17,400/month at 2M requests
+
 
 The user's question is 100 of 9,500 input tokens; the cost is almost entirely context. Three changes that never touch the model cut the bill by 74%: caching the stable system prompt, retrieving fewer but better passages, and asking for shorter answers. Each must be checked against quality: fewer passages can lower recall, and a length cap can cut useful answers ([LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) has the measurements). Often they improve it, since long, noisy contexts are harder for a model to use than short, relevant ones.
 
@@ -166,14 +183,13 @@ for threshold in [0.6, 0.7, 0.8]:
           f"   ({escalate.mean():.0%} escalated)")
 ```
 
-```text
-strategy                      quality  cost / 1k requests
-always large                    94.9%              12.00
-always small                    83.5%               0.60
-cascade, escalate below 0.6     93.0%               1.91   (11% escalated)
-cascade, escalate below 0.7     95.9%               2.94   (19% escalated)
-cascade, escalate below 0.8     96.7%               5.59   (42% escalated)
-```
+- strategy                      quality  cost / 1k requests
+- always large                    94.9%              12.00
+- always small                    83.5%               0.60
+- cascade, escalate below 0.6     93.0%               1.91   (11% escalated)
+- cascade, escalate below 0.7     95.9%               2.94   (19% escalated)
+- cascade, escalate below 0.8     96.7%               5.59   (42% escalated)
+
 
 At a threshold of 0.7, the cascade matches the large model's quality for a quarter of its cost, escalating 19% of requests. The threshold is a dial: lower saves more and loses quality, higher spends more. Two cautions keep this honest. The simulation treats the two models' mistakes as independent, which lets the cascade slightly *beat* the large model; real models tend to fail on the same hard inputs, so expect the cascade to approach the large model's quality, not exceed it. And the whole scheme rests on the confidence signal: measure how well it separates right from wrong answers on labelled data before trusting it, exactly as you would calibrate an LLM judge ([ML & LLM Testing](/docs/mlops/ml-and-llm-testing#5-judging-quality-and-judging-the-judge)).
 
@@ -229,7 +245,23 @@ The engineering job is choosing the point that a specific product needs. A real-
   explanation="An overnight job has no latency requirement, so it can use asynchronous batch processing, typically priced well below real-time calls, and it can tolerate a slower or smaller model if quality holds. Tickets are mostly unique, so a semantic cache would rarely hit; more parallelism changes speed, not price; streaming adds nothing for an offline job."
 />
 
-## 8. When *Not* to Optimize Cost Yet
+## Worked example
+
+The example’s monthly bill falls from $66,600 to $17,400 after system-prompt caching, fewer retrieved chunks, and a shorter answer. That is a 74% reduction, but the last two changes must be checked for retrieval recall and answer completeness.
+
+## Try it yourself
+
+Change one cost lever at a time in the included Python example. Compare cost per request and monthly spend, then check the corresponding quality metric before keeping the change.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Cost falls but answer quality also falls | Token reduction removed useful context | Track cost with retrieval and answer-quality measures |
+| Training estimate is treated as a quote | The FLOP estimate omits retries and experiments | Use it as a floor and add measured run overhead |
+| A model is routed by confidence alone | Confidence can be wrong on hard cases | Calibrate routing and inspect errors by difficulty |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

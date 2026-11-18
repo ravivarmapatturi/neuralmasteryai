@@ -11,10 +11,11 @@ import ModelCardVsDataCardDiagram from '../../../viz/diagrams/ModelCardVsDataCar
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Legal, Licensing & Governance
-
-[Security & Reproducibility](/docs/mlops/security-and-reproducibility) asked whether a system is safe and can be rebuilt. This page asks a different question that engineers often meet too late: is the system *allowed*? Can this model be used commercially, was this data ours to train on, does this feature comply with privacy law, does it fall under the EU AI Act, and could we prove what we did if a regulator asked? It covers model and dataset licences (with a script that checks them), where AI copyright law stands as of late 2026, privacy law and why deletion is hard for trained models, the AI Act's risk tiers and its revised timeline, governance built into the delivery pipeline, model and data cards, and audit trails that show when they've been altered. It's an engineer's guide, not legal advice: for any real decision, involve your legal team.
-
 <ELI5>
 
 Building a house means more than building it well. The land has to be yours, the materials paid for, the plans approved by the council, and the paperwork kept in case an inspector asks. A beautiful house on someone else's land gets torn down.
@@ -22,6 +23,24 @@ Building a house means more than building it well. The land has to be yours, the
 ML systems have the same paperwork. The model you start from comes with a licence. The data you train on belongs to someone. Personal data has legal protections. Some uses of AI need approval and records. This page is about knowing those rules early, and building the checks into the pipeline so they can't be forgotten.
 
 </ELI5>
+
+## Why it exists
+
+[Security & Reproducibility](/docs/mlops/security-and-reproducibility) asked whether a system is safe and can be rebuilt. This page asks a different question that engineers often meet too late: is the system *allowed*? Can this model be used commercially, was this data ours to train on, does this feature comply with privacy law, does it fall under the EU AI Act, and could we prove what we did if a regulator asked? It covers model and dataset licences (with a script that checks them), where AI copyright law stands as of late 2026, privacy law and why deletion is hard for trained models, the AI Act's risk tiers and its revised timeline, governance built into the delivery pipeline, model and data cards, and audit trails that show when they've been altered. It's an engineer's guide, not legal advice: for any real decision, involve your legal team.
+
+
+
+## The big picture
+
+Governance connects data and model provenance to a review before deployment.
+
+<PenFlow ariaLabel="legal licensing and governance overview path" rows={[{ steps: { title: 'Record source and terms', lines: ['Review permitted use'], tone: 'blue' } }, { steps: { title: 'Review permitted use', lines: ['Add pipeline gates'], tone: 'purple' } }, { steps: { title: 'Add pipeline gates', lines: ['Keep an audit trail'], tone: 'green' } }, { steps: { title: 'Keep an audit trail', lines: ['Check the outcome and adjust'], tone: 'orange' } }]} caption="Governance connects data and model provenance to a review before deployment." />
+
+<Worksheet title="Place the AI Act dates on a release plan" ariaLabel="Worksheet matching AI Act obligations to their application dates" stages={[
+  { tag: 'Dates', color: 'blue', note: 'Use the current consolidated AI Act text and the Commission timeline.', grid: { head: ['Provision', 'Application date'], rows: [{ label: 'Prohibitions and AI literacy', cells: ['2 February 2025'] }, { label: 'General application and transparency rules', cells: ['2 August 2026'] }, { label: 'Annex III high-risk systems', cells: ['2 December 2027'] }, { label: 'Annex I product high-risk systems', cells: ['2 August 2028'] }] } },
+  { tag: 'Before release', color: 'yellow', note: 'Map the system to its risk class and check the current consolidated text before setting a compliance date.', children: <>This worksheet is an engineering planning aid; involve counsel for a real classification or legal decision.</> },
+]} />
+
 
 ## 1. Why Engineers Need to Care
 
@@ -68,13 +87,12 @@ for repo in candidates:
     print(f"{repo:<42} {license_tag:<14} gated={str(bool(info.gated)):<5} -> {verdict}")
 ```
 
-```text
-Qwen/Qwen2.5-7B-Instruct                   apache-2.0     gated=False -> approved
-mistralai/Mistral-7B-Instruct-v0.3         apache-2.0     gated=False -> approved
-meta-llama/Llama-3.1-8B-Instruct           llama3.1       gated=True  -> needs legal review
-google/gemma-2-9b-it                       gemma          gated=True  -> needs legal review
-sentence-transformers/all-MiniLM-L6-v2     apache-2.0     gated=False -> approved
-```
+- Qwen/Qwen2.5-7B-Instruct                   apache-2.0     gated=False -> approved
+- mistralai/Mistral-7B-Instruct-v0.3         apache-2.0     gated=False -> approved
+- meta-llama/Llama-3.1-8B-Instruct           llama3.1       gated=True  -> needs legal review
+- google/gemma-2-9b-it                       gemma          gated=True  -> needs legal review
+- sentence-transformers/all-MiniLM-L6-v2     apache-2.0     gated=False -> approved
+
 
 The custom licences aren't forbidden; they're routed to a person who reads them once and adds the decision, with any conditions, to the allow-list. Run the check in CI on every model reference, so an unreviewed model can't reach the registry.
 
@@ -142,14 +160,14 @@ The EU AI Act is the first comprehensive AI law, and it applies to providers and
 | Tier | Examples | Obligations |
 |---|---|---|
 | **Prohibited** | Social scoring by public authorities, manipulative techniques causing harm, untargeted scraping of facial images, emotion recognition at work and school (with exceptions) | Banned since February 2025; the 2026 amendments added bans on generating non-consensual intimate imagery and child sexual abuse material |
-| **High-risk** | AI in hiring, education, credit scoring, essential services, law enforcement, and safety components of regulated products | Risk management, data governance, technical documentation, logging, human oversight, accuracy and robustness, registration, conformity assessment |
+| **High-risk** | AI in hiring, education, credit scoring, essential services, law enforcement, and safety components of regulated products | Risk management, data governance, technical documentation, logging, human oversight, accuracy and resilience under intended conditions, registration, conformity assessment |
 | **Transparency obligations** | Chatbots, emotion recognition, deepfakes and other AI-generated content | Tell people they're interacting with AI; label synthetic content, including machine-readable marking |
 | **General-purpose AI models** | Foundation models offered to others | Technical documentation, a copyright policy, a public summary of training content; extra duties for models with systemic risk |
 | **Minimal risk** | Spam filters, most recommendation and internal tools | None beyond existing law |
 
 **The timeline moved in 2026.** The Act entered into force in August 2024; prohibitions applied from February 2025 and general-purpose model obligations from August 2025. The **Digital Omnibus on AI**, published in July 2026 as Regulation (EU) 2026/1744, postponed the main high-risk obligations because standards and national authorities weren't ready: to **2 December 2027** for stand-alone high-risk systems such as those in hiring, education and credit, and to August 2028 for AI embedded in regulated products. The transparency obligations were not delayed and apply from August 2026, with a grace period to December 2026 for machine-readable marking on systems already on the market. Dates in this area keep changing, so check the official text before planning against them.
 
-For an ML team, the high-risk requirements read like a description of good MLOps: documented data provenance and quality ([Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)), automatic logging over the system's life ([Observability](/docs/mlops/observability)), accuracy and robustness testing ([CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd)), human oversight, and post-market monitoring ([Monitoring & Drift](/docs/mlops/monitoring-and-drift)). Teams that already run those practices mostly need to document them in the required form.
+For an ML team, the high-risk requirements read like a description of good MLOps: documented data provenance and quality ([Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning)), automatic logging over the system's life ([Observability](/docs/mlops/observability)), accuracy and resilience testing ([CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd)), human oversight, and post-market monitoring ([Monitoring & Drift](/docs/mlops/monitoring-and-drift)). Teams that already run those practices mostly need to document them in the required form.
 
 ## 7. Governance as Pipeline Gates
 
@@ -219,10 +237,9 @@ log[1]["basis"] = "approved by phone"                    # someone rewrites hist
 print("after edit:", verify(log))
 ```
 
-```text
-before: intact
-after edit: tampered at entry 1
-```
+- before: intact
+- after edit: tampered at entry 1
+
 
 The edited approval is detected. A determined insider could recompute every later hash, so in practice the chain is anchored somewhere they can't rewrite: the latest hash periodically written to write-once storage (S3 Object Lock, or a managed ledger service), or to a separate system owned by another team.
 
@@ -246,7 +263,23 @@ Retention has to satisfy two pulls at once: regulators and litigation require ke
   explanation="The question is about one decision made by one model version at one time. The prediction log identifies the inputs, output and version; the registry and run record show how version 12 was built and evaluated; the approval record shows who authorized it. The current model or code may differ from what ran in March, and an explanation produced today from a different model answers a different question."
 />
 
-## 10. When *Not* to Apply the Full Process
+## Worked example
+
+A release planned in November 2026 should use the current AI Act dates: general application begins 2 August 2026, Annex III high-risk rules apply from 2 December 2027, and Annex I product rules from 2 August 2028. The date depends on the system’s classification, so a calendar date alone cannot replace a legal review.
+
+## Try it yourself
+
+For one proposed model release, record the model version, dataset sources, intended use, approver, risk classification, and the official text used to set the review date. Ask counsel to confirm the classification.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| A model is treated as open just because weights are available | Weight access and licence rights are different | Read the exact version’s licence and conditions |
+| A dataset is called open without provenance | Components have different sources and terms | Record source, licence, collection method, and opt-outs |
+| A deadline is copied from an old checklist | The law or guidance changed | Verify the current consolidated official text |
+
+## When not to use it
 
 | Situation | Proportionate approach |
 |---|---|
@@ -277,7 +310,8 @@ Next: [The Full MLOps Architecture, Priority Stack & Learning Path](/docs/mlops/
 
 ## Sources
 
-- European Union, [Regulation (EU) 2024/1689 (AI Act)](https://eur-lex.europa.eu/eli/reg/2024/1689/oj) and the [Digital Omnibus on AI explainer](https://artificialintelligenceact.eu/ai-act-explorer/digital-omnibus/)
+- European Union, [current consolidated AI Act text](https://eur-lex.europa.eu/eli/reg/2024/1689), including [Regulation (EU) 2026/1744](https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32026R1744); European Commission, [AI Act timeline](https://digital-strategy.ec.europa.eu/en/faqs/navigating-ai-act)
+- [General Data Protection Regulation, Article 17](https://eur-lex.europa.eu/eli/reg/2016/679/2016-05-04/eng#d1e2770-1-1)
 - M. Mitchell et al., [Model Cards for Model Reporting](https://arxiv.org/abs/1810.03993), FAT* 2019; T. Gebru et al., [Datasheets for Datasets](https://arxiv.org/abs/1803.09010), CACM 2021
 - L. Bourtoule et al., [Machine Unlearning](https://arxiv.org/abs/1912.03817), IEEE S&P 2021
 - NIST, [AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework); ISO/IEC 42001:2023

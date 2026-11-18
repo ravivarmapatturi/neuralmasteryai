@@ -12,10 +12,11 @@ import IdempotencyKeyDiagram from '../../../viz/diagrams/IdempotencyKeyDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Production Reliability
-
-[Observability](/docs/mlops/observability) showed how to see when a service is in trouble, and [Deployment Strategies](/docs/mlops/deployment-strategies) how to release changes safely. This page is about surviving the failures that happen anyway. A model service depends on feature stores, databases, other models and, increasingly, external LLM providers, and every one of them will sometimes be slow, unavailable or overloaded. It covers how dependencies multiply into downtime, timeouts and retries measured against a deliberately flaky server, how retries can turn a small outage into a large one, circuit breakers, degrading gracefully with fallbacks, backpressure, idempotency (including a race that charges a customer three times), and rollback.
-
 <ELI5>
 
 A good restaurant doesn't close when one supplier is late. The waiter doesn't stand at the kitchen door forever; after a few minutes they check back with the table. If the fish didn't arrive, the chef offers the chicken rather than turning everyone away. When the place is full, the host takes names for a waiting list instead of squeezing in more tables than the kitchen can serve. And if the till glitches, nobody pays twice.
@@ -25,6 +26,24 @@ Production reliability is that set of habits for software: don't wait forever, t
 Everything below is each of those habits, made precise.
 
 </ELI5>
+
+## Why it exists
+
+[Observability](/docs/mlops/observability) showed how to see when a service is in trouble, and [Deployment Strategies](/docs/mlops/deployment-strategies) how to release changes safely. This page is about surviving the failures that happen anyway. A model service depends on feature stores, databases, other models and, increasingly, external LLM providers, and every one of them will sometimes be slow, unavailable or overloaded. It covers how dependencies multiply into downtime, timeouts and retries measured against a deliberately flaky server, how retries can turn a small outage into a large one, circuit breakers, degrading gracefully with fallbacks, backpressure, idempotency (including a race that charges a customer three times), and rollback.
+
+
+
+## The big picture
+
+Reliability limits how one failing dependency can affect the full request path.
+
+<PenFlow ariaLabel="production reliability overview path" rows={[{ steps: { title: 'Set user-facing objective', lines: ['Bound waits and retries'], tone: 'blue' } }, { steps: { title: 'Bound waits and retries', lines: ['Contain overload'], tone: 'purple' } }, { steps: { title: 'Contain overload', lines: ['Recover or roll back'], tone: 'green' } }, { steps: { title: 'Recover or roll back', lines: ['Check the outcome and adjust'], tone: 'orange' } }]} caption="Reliability limits how one failing dependency can affect the full request path." />
+
+<Worksheet title="Compare request-path availability" ariaLabel="Worksheet comparing monthly downtime for three dependency paths" stages={[
+  { tag: 'Paths', color: 'blue', note: 'Use a 30-day month and the availability values from the page example.', grid: { head: ['Request path', 'Availability', 'Downtime/month'], rows: [{ label: 'API only at 99.9%', cells: ['99.9000%', '43 min'] }, { label: 'API, feature store, model, provider', cells: ['99.2018%', '345 min'] }, { label: 'Two independent LLM providers', cells: ['99.6978%', '131 min'] }] } },
+  { tag: 'Interpret', color: 'yellow', note: 'Redundancy helps most when failures are independent; shared regions and providers reduce that benefit.', children: <>Measure real dependency failures and test the fallback path rather than assuming independence.</> },
+]} />
+
 
 ## 1. Why Reliable Parts Make Unreliable Systems
 
@@ -54,11 +73,10 @@ for name, a in paths.items():
     print(f"{name:<47} {a:.4%}  ~{(1 - a) * minutes_per_month:5.0f} min down/month")
 ```
 
-```text
-API alone (99.9%)                               99.9000%  ~   43 min down/month
-API + feature store + model + LLM provider      99.2018%  ~  345 min down/month
-same, LLM with fallback provider (99.5% each)   99.6978%  ~  131 min down/month
-```
+- API alone (99.9%)                               99.9000%  ~   43 min down/month
+- API + feature store + model + LLM provider      99.2018%  ~  345 min down/month
+- same, LLM with fallback provider (99.5% each)   99.6978%  ~  131 min down/month
+
 
 Four components that are each "three nines" or close give a path with almost six hours of downtime a month. A second LLM provider as a fallback cuts that by more than half, because the weakest link stops being a single point of failure. (Real failures are rarely fully independent, since providers share clouds and regions, so redundancy helps less than this formula says; it still helps a lot.)
 
@@ -109,11 +127,10 @@ trial("1 s timeout, no retry", lambda i: once(i, 1.0, "b"))
 trial("1 s timeout, 3 attempts", lambda i: with_retries(i, 1.0, "c"))
 ```
 
-```text
-no timeout, no retry       success  82%   median    57 ms   worst  10058 ms   total  22.1 s
-1 s timeout, no retry      success  78%   median    57 ms   worst   1019 ms   total   3.9 s
-1 s timeout, 3 attempts    success 100%   median    57 ms   worst   2120 ms   total   6.7 s
-```
+- no timeout, no retry       success  82%   median    57 ms   worst  10058 ms   total  22.1 s
+- 1 s timeout, no retry      success  78%   median    57 ms   worst   1019 ms   total   3.9 s
+- 1 s timeout, 3 attempts    success 100%   median    57 ms   worst   2120 ms   total   6.7 s
+
 
 - **No timeout:** the hung calls eventually return, so success looks acceptable, but the worst request took 10 seconds and the run took 22. A dependency that hangs *forever*, which happens, would hold those requests forever.
 - **Timeout only:** the worst case drops to about a second and total time falls by more than 80%, at the cost of turning the slow calls into failures.
@@ -194,15 +211,14 @@ for t, state, outcome, ms in log:
         print(f"t={t:>3}s  {outcome:<13} {ms:>4} ms  breaker now {state}")
 ```
 
-```text
-25 requests in 5 s; 19 rejected at once by the open breaker, without calling the dependency
-t=0.0s  TimeoutError   500 ms  breaker now closed
-t=0.6s  TimeoutError   501 ms  breaker now closed
-t=1.2s  TimeoutError   500 ms  breaker now closed
-t=1.8s  TimeoutError   500 ms  breaker now closed
-t=2.4s  TimeoutError   500 ms  breaker now open
-t=4.9s  ok               0 ms  breaker now closed
-```
+- 25 requests in 5 s; 19 rejected at once by the open breaker, without calling the dependency
+- t=0.0s  TimeoutError   500 ms  breaker now closed
+- t=0.6s  TimeoutError   501 ms  breaker now closed
+- t=1.2s  TimeoutError   500 ms  breaker now closed
+- t=1.8s  TimeoutError   500 ms  breaker now closed
+- t=2.4s  TimeoutError   500 ms  breaker now open
+- t=4.9s  ok               0 ms  breaker now closed
+
 
 Five failures each cost the caller half a second. Then the breaker opened, and the next 19 requests were rejected instantly, each free to use a fallback instead of waiting. At 4.9 seconds the cool-down ended, a single trial call found the dependency healthy again, and the breaker closed. Production libraries (resilience4j, Polly, `pybreaker`, or the outlier detection built into service meshes such as Istio and Envoy) add sliding windows, failure-rate thresholds and per-endpoint state, but the state machine is the one above.
 
@@ -305,10 +321,9 @@ for name, fn in [("check, then act", charge_check_then_act), ("claim key first",
     print(f"{name:<16} -> customer charged {db.execute('SELECT COUNT(*) FROM charges').fetchone()[0]} time(s)")
 ```
 
-```text
-check, then act  -> customer charged 3 time(s)
-claim key first  -> customer charged 1 time(s)
-```
+- check, then act  -> customer charged 3 time(s)
+- claim key first  -> customer charged 1 time(s)
+
 
 The check-then-act version charged the customer three times. The fix is to **claim the key atomically before doing the work**, with an operation that only one caller can win: a unique-key insert in a database, as here, or `SET key NX` in Redis. Later attempts see the claim and return the stored result, or a "still in progress" response if the first attempt hasn't finished. Store the result with the key, keep keys for longer than any client retries (24 hours is common), and scope keys to the client so one customer's keys can't collide with another's.
 
@@ -331,7 +346,23 @@ Some failures are self-inflicted: a bad model version, a broken feature pipeline
 - **Disaster recovery** covers losing a whole zone or region: replicated data, infrastructure defined as code so it can be recreated elsewhere ([Infrastructure as Code](/docs/mlops/infrastructure-as-code)), and backups that are restored on a schedule to prove they work. Define the targets explicitly: how much data you can afford to lose (recovery point objective) and how long you can be down (recovery time objective).
 - **Write it down afterwards.** A blameless post-incident review records what happened, why the system allowed it, and what changes stop it recurring. Most reliability improvements come from these reviews rather than from up-front design.
 
-## 9. When *Not* to Add These Mechanisms
+## Worked example
+
+The page’s four-dependency request path falls from 99.9% for the API alone to 99.2018%, about 345 minutes of monthly downtime. A second independent LLM provider raises it to 99.6978%, about 131 minutes. Real dependencies can share failure causes, so measured fallback tests matter.
+
+## Try it yourself
+
+Run the availability calculator with the dependencies in your actual request path. In a staging environment, inject a timeout and confirm that the caller stops waiting, the fallback is bounded, and retries do not amplify load.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Retries make an outage worse | Each failed request creates extra dependency work | Use bounded attempts, jitter, and a retry budget |
+| A fallback adds more latency than it saves | The fallback has no separate time budget | Set an end-to-end deadline and bound each attempt |
+| A breaker never recovers | Its half-open probe or reset path is wrong | Test closed, open, and half-open transitions |
+
+## When not to use it
 
 | Situation | Proportionate approach |
 |---|---|

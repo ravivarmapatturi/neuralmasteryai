@@ -5,57 +5,36 @@ description: "The complete end-to-end MLOps architecture assembled into one diag
 ---
 
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import MlLifecyclePipelineDiagram from '../../../viz/diagrams/MlLifecyclePipelineDiagram';
+import MlCicdPipelineStepsDiagram from '../../../viz/diagrams/MlCicdPipelineStepsDiagram';
+
 # The Full MLOps Architecture, Priority Stack & Learning Path
+
+<ELI5>
+
+A city needs roads, water, power, and emergency services to work together. An ML platform also has connected parts: data, training, evaluation, release, serving, and monitoring. The architecture is the map that shows how information and responsibility move between them.
+
+</ELI5>
+
+## Why it exists
 
 Every previous page in this section is one piece of a single end-to-end system. This page assembles them, tells you which pieces to learn first, and gives you five projects to actually build it.
 
+## The big picture
+
+The platform flow connects data and feature preparation to reproducible training, gated release, serving, and monitoring.
+
+<PenFlow ariaLabel="MLOps platform lifecycle" rows={[{ steps: { title: 'Prepare data', lines: ['Version and validate features'], tone: 'blue' } }, { steps: { title: 'Train and register', lines: ['Track code, data, and model'], tone: 'purple' } }, { steps: { title: 'Test and deploy', lines: ['Gate a versioned artifact'], tone: 'green' } }, { steps: { title: 'Serve and observe', lines: ['Monitor quality and recover'], tone: 'orange' } }]} caption="Data, model, and service evidence follow the release through its lifecycle." />
+
 ## The Complete End-to-End Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  DATA LAYER                                                         │
-│  Sources → Ingestion → Validation → Transformation → Storage        │
-│  Versioning: DVC / LakeFS / Delta Lake / Iceberg                    │
-└───────────────────────────────┬───────────────────────────────────┘
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  FEATURE LAYER                                                      │
-│  Feature Store (Feast): Offline Store ⇄ Online Store                │
-└───────────────────────────────┬───────────────────────────────────┘
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  EXPERIMENTATION LAYER                                              │
-│  Pipeline Orchestration (Airflow/Prefect/Dagster)                   │
-│  Training → Experiment Tracking (MLflow) → Model Registry           │
-└───────────────────────────────┬───────────────────────────────────┘
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  CI/CD LAYER                                                        │
-│  Code CI → Model regression tests → Drift gate → Auto-promote       │
-└───────────────────────────────┬───────────────────────────────────┘
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  DEPLOYMENT LAYER                                                   │
-│  Container → Kubernetes/Cloud → Blue-Green / Canary / Shadow        │
-│  Classical: FastAPI/BentoML/Triton  |  LLM: vLLM/SGLang/TensorRT-LLM│
-└───────────────────────────────┬───────────────────────────────────┘
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  SERVING LAYER                                                      │
-│  API Gateway → Load Balancer → Inference Engine → GPU/CUDA          │
-└───────────────────────────────┬───────────────────────────────────┘
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  OBSERVABILITY LAYER                                                │
-│  Logs / Metrics / Traces (Prometheus, Grafana, OpenTelemetry)       │
-│  Drift Detection (PSI/KL/JS/KS) — LLM Eval (Ragas/DeepEval)         │
-└───────────────────────────────┬───────────────────────────────────┘
-                                 ▼
-                    feeds back into DATA LAYER
-                 (retraining trigger on drift/decay)
-```
+
 
 Every arrow is a page you've already read: Data Layer is [Data Engineering & Versioning](/docs/mlops/data-engineering-and-versioning); Feature Layer is [Feature Stores & Model Registry](/docs/mlops/feature-stores-and-model-registry); Experimentation is [Experiment Tracking](/docs/mlops/experiment-tracking) + [Pipeline Orchestration](/docs/mlops/pipeline-orchestration); CI/CD is [CI/CD & ML CI/CD](/docs/mlops/cicd-and-ml-cicd); Deployment is [Containers](/docs/mlops/containers) + [Kubernetes](/docs/mlops/kubernetes) + [Deployment Strategies](/docs/mlops/deployment-strategies); Serving is [APIs & Model Serving](/docs/mlops/model-serving) and, for LLMs, [LLM Inference Engines](/docs/mlops/llm-inference-engines) through [LLM Hosting & Serving Patterns](/docs/mlops/llm-hosting-and-serving-patterns); Observability is [Observability](/docs/mlops/observability) + [Monitoring & Drift Detection](/docs/mlops/monitoring-and-drift) + [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops). [Security & Reproducibility](/docs/mlops/security-and-reproducibility) and [Engineering Foundations](/docs/mlops/engineering-foundations) apply across every layer, not one box. [GPU/AI Infrastructure & Distributed Training](/docs/mlops/gpu-and-distributed-training) underlies the Experimentation and Serving layers wherever GPUs are involved.
+
+<MlLifecyclePipelineDiagram />
 
 ## From MLOps to AI Platform Engineering
 
@@ -98,6 +77,8 @@ Don't learn 30 tools at once. This is the order that maximizes what you can actu
 | 5 (advanced) | Feature stores | Feast |
 | 5 (advanced) | LLM optimization internals | Quantization, PagedAttention, speculative decoding |
 
+<MlCicdPipelineStepsDiagram />
+
 ## An 8-Phase Learning Order
 
 1. **Foundations**: Python engineering practices, Git, Docker, SQL.
@@ -118,3 +99,43 @@ Don't learn 30 tools at once. This is the order that maximizes what you can actu
 5. **A full LLM serving + RAG platform**: fine-tune a small model's adapter with a LoRA framework, serve it with multi-LoRA support on vLLM alongside the base model, build a RAG pipeline with an embedding model + reranker, and monitor the whole thing with Ragas-based faithfulness scoring and RAG-specific retrieval metrics — the complete arc from [Engineering Foundations](/docs/mlops/engineering-foundations) to [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) in one project.
 
 See [ML System Design](/docs/ml-system-design/roadmap) for how to reason about *designing* a system like the above before building it, and [Interview Prep](/docs/interview-prep/roadmap) for how this section maps onto MLOps/infra interview questions.
+
+
+## Worked example
+
+A churn model release starts with a versioned dataset and a tracked training run. The registry stores the candidate with its evaluation results; CI checks the model and package; a canary exposes it to limited traffic; monitoring compares errors and drift before promotion. Each stage has an owner and a record that supports rollback.
+
+## Try it yourself
+
+Choose one of the five capstones. Draw its data, training, evaluation, deployment, and monitoring handoffs. For each handoff, name the artifact, the owner, and the check that must pass before the next stage.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Building every platform tool at once | The stack is chosen before a team has a working path | Start with the smallest path that can train, evaluate, and release one model |
+| Omitting data lineage | The design focuses only on model code | Version datasets and features with the run |
+| Treating a diagram as an operating process | Ownership and gates are missing | Name an owner and observable check for each handoff |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| One prototype has a single owner and no production traffic | Use a small reproducible script and add platform parts when a real constraint appears |
+| A team has not established a data or model contract | Define the contract before automating promotion |
+
+## Remember
+
+| Idea | Keep in mind |
+| --- | --- |
+| One lifecycle | Data, model, and service evidence travel together |
+| Priority | Build the smallest safe path first |
+| Ownership | Every gate and failure mode needs an owner |
+
+Next: [MLOps Overview](/docs/mlops/overview) summarizes the operating discipline and links back to the chapter sequence.
+
+## Sources
+
+- [MLflow Model Registry](https://mlflow.org/docs/latest/ml/model-registry/)
+- [Kubernetes documentation](https://kubernetes.io/docs/home/)
+- [NIST AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework)

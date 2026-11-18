@@ -11,10 +11,9 @@ import ReproducibilityChecklistDiagram from '../../../viz/diagrams/Reproducibili
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Security & Reproducibility
-
-The earlier pages in this section each built one stage of an ML system: data pipelines, training, the registry, serving, monitoring. Security and reproducibility aren't stages. They're properties every stage has to have at once, and a gap in any one undoes the rest. This page covers the threats specific to ML systems and the controls that address them: identity and least privilege, secrets, the model file as an attack vector (with a demonstration of why loading a pickle runs code), verifying artifacts, supply-chain scanning, the extra risks of LLM applications, and what it actually takes to get the same model from the same inputs twice.
-
 <ELI5>
 
 A bank vault has more than a strong door. Only certain staff can open it, and only for what their job needs. Keys are never left on desks. Every delivery is checked against its paperwork before it goes in. And there's a log of exactly who opened what and when, so if something goes missing, it can be traced.
@@ -24,6 +23,19 @@ An ML system needs the same habits. Each service and person gets only the access
 Everything below is those habits made concrete.
 
 </ELI5>
+
+## Why it exists
+
+The earlier pages in this section each built one stage of an ML system: data pipelines, training, the registry, serving, monitoring. Security and reproducibility aren't stages. They're properties every stage has to have at once, and a gap in any one undoes the rest. This page covers the threats specific to ML systems and the controls that address them: identity and least privilege, secrets, the model file as an attack vector (with a demonstration of why loading a pickle runs code), verifying artifacts, supply-chain scanning, the extra risks of LLM applications, and what it actually takes to get the same model from the same inputs twice.
+
+
+
+## The big picture
+
+Security and reproducibility share one goal: know what ran, who could change it, and what it touched.
+
+<PenFlow ariaLabel="security and reproducibility overview path" rows={[{ steps: { title: 'Identify principal', lines: ['Verify artifact'], tone: 'blue' } }, { steps: { title: 'Verify artifact', lines: ['Protect data and secrets'], tone: 'purple' } }, { steps: { title: 'Protect data and secrets', lines: ['Reproduce the release'], tone: 'green' } }, { steps: { title: 'Reproduce the release', lines: ['Check the outcome and adjust'], tone: 'orange' } }]} caption="Security and reproducibility share one goal: know what ran, who could change it, and what it touched." />
+
 
 ## 1. Why ML Systems Need More Than Standard Security
 
@@ -71,17 +83,16 @@ GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
 Scanning the repository's *history* with [gitleaks](https://github.com/gitleaks/gitleaks) 8.28 still finds it:
 
-```text
-$ gitleaks git . --redact -v
-Finding:     REDACTED
-Secret:      REDACTED
-RuleID:      github-pat
-File:        train.py
-Line:        2
-Commit:      7d57f85
-2 commits scanned.
-leaks found: 1
-```
+- $ gitleaks git . --redact -v
+- Finding:     REDACTED
+- Secret:      REDACTED
+- RuleID:      github-pat
+- File:        train.py
+- Line:        2
+- Commit:      7d57f85
+- 2 commits scanned.
+- leaks found: 1
+
 
 The scanner exits with code 1, which is what makes it useful as a pre-commit hook and a CI step: the push is rejected. If a secret does reach a shared repository, the only safe response is to **revoke and rotate it**. Rewriting history afterwards reduces exposure but can't guarantee that nobody copied it.
 
@@ -114,11 +125,10 @@ save_file({"weights": np.arange(6, dtype=np.float32).reshape(2, 3)}, "model.safe
 print(load_file("model.safetensors")["weights"])
 ```
 
-```text
-!! code chosen by the file's author just ran during pickle.load
-[[0. 1. 2.]
- [3. 4. 5.]]
-```
+- !! code chosen by the file's author just ran during pickle.load
+- [[0. 1. 2.]
+-  [3. 4. 5.]]
+
 
 The call here is a harmless `print`, but it could equally be `os.system` running anything with the loading process's permissions: reading credentials from the environment, opening a reverse shell, or altering the model's behaviour. Malicious pickles have been found on public model hubs.
 
@@ -168,10 +178,9 @@ print(f"{path}: sha256 verified")
 
 On the file as registered, and then after appending a single byte to it:
 
-```text
-model.safetensors: sha256 verified
-refusing to load model.safetensors: sha256 4c2818d2ec47ea4e... does not match the registry
-```
+- model.safetensors: sha256 verified
+- refusing to load model.safetensors: sha256 4c2818d2ec47ea4e... does not match the registry
+
 
 The same principle applies at every layer: container images referenced by **digest** rather than tag ([Containers](/docs/mlops/containers)), Python dependencies installed from a lock file with hashes (`pip install --require-hashes`, or `uv` and Poetry lock files), and Terraform providers pinned in `.terraform.lock.hcl`. A hash proves the bytes are the ones you recorded. A **signature** goes further and proves *who* produced them: Sigstore's cosign signs container images, and the OpenSSF model-signing project applies the same idea to model files, so a serving system can refuse any model not signed by the training pipeline.
 
@@ -199,7 +208,7 @@ Applications built on large language models add risks that classical ML serving 
 
 <LlmAttackSurfaceDiagram />
 
-- **Prompt injection.** Instructions placed in input the model reads, either typed by a user (direct) or hidden in a document, email or web page the application retrieves (indirect), try to override the developer's instructions. No prompt-writing technique fully prevents it. The robust defences are architectural: treat retrieved content as untrusted data, and design so that a successfully injected model still can't do much harm.
+- **Prompt injection.** Instructions placed in input the model reads, either typed by a user (direct) or hidden in a document, email or web page the application retrieves (indirect), try to override the developer's instructions. No prompt-writing technique fully prevents it. The strongest defences are architectural: treat retrieved content as untrusted data, and design so that a successfully injected model still can't do much harm.
 - **Excessive agency.** An agent with tools that can send email, move money or delete files turns a successful injection into real damage. Give agents the narrowest tools for the task, read-only where possible, and require human confirmation for consequential actions. It's least privilege again, applied to tools.
 
 <LeastPrivilegeAgencyDiagram />
@@ -251,14 +260,13 @@ a = np.float32(1e8); b = np.float32(-1e8); c = np.float32(1.0)
 print("(a + b) + c =", (a + b) + c, "   a + (b + c) =", a + (b + c))
 ```
 
-```text
-seed 0, run 1:         ab720329813c
-seed 0, run 2:         ab720329813c
-seed 0, 4 threads:     ab720329813c
-no seed, run 1:        2f5ba1ad4587
-no seed, run 2:        e304ae1ca7cb
-(a + b) + c = 1.0    a + (b + c) = 0.0
-```
+- seed 0, run 1:         ab720329813c
+- seed 0, run 2:         ab720329813c
+- seed 0, 4 threads:     ab720329813c
+- no seed, run 1:        2f5ba1ad4587
+- no seed, run 2:        e304ae1ca7cb
+- (a + b) + c = 1.0    a + (b + c) = 0.0
+
 
 With a fixed seed, the model is bit-identical across runs and even across thread counts, because scikit-learn derives each tree's randomness from the seed rather than from the thread that builds it. Without a seed, every run produces a different model.
 
@@ -276,7 +284,23 @@ The last line explains why GPU training is harder. Floating-point addition isn't
   explanation="The current main branch may differ from the code that trained version 12, and the model file doesn't say which data, hyperparameters, package versions or seeds produced it. Without those, the team can neither rebuild the model nor show what went into it. This is why each registered version must link to a tracked run that records commit, data version, configuration, environment and seeds."
 />
 
-## 9. When *Not* to Apply the Full Set
+## Worked example
+
+A model file is a security boundary because loading some formats can execute code. The page’s safer artifact path separates tensor data from executable serialization, verifies the artifact digest, and records the same digest in the release manifest.
+
+## Try it yourself
+
+Take a model artifact from the example, compute its SHA-256 digest, and compare it with the trusted manifest before loading. Test secret scanning and dependency checks in CI before adding a release gate.
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| A model loads from an untrusted source | Model files are treated as passive data | Verify provenance and prefer non-executable tensor formats |
+| A secret is found in an image | It was copied during the build | Load secrets at runtime from an authorized store |
+| A run cannot be reproduced | Data, code, or environment versions were omitted | Record hashes, versions, seeds, and hardware assumptions |
+
+## When not to use it
 
 | Situation | Proportionate approach |
 |---|---|
