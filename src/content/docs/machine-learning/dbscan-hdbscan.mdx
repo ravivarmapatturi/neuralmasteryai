@@ -7,6 +7,9 @@ description: "Density-based clustering derived: DBSCAN's core, border and noise 
 import DbscanLiveDiagram from '../../../viz/diagrams/DbscanLiveDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # DBSCAN & HDBSCAN
 
@@ -19,6 +22,17 @@ Look at a city at night from an aeroplane. You can see the towns without anyone 
 DBSCAN finds clusters the same way. A point with many neighbours close by is in a "town". Towns grow by following chains of bright, crowded areas, whatever shape that makes. A point with almost no neighbours is a lone farmhouse: noise. Everything below is that idea made exact.
 
 </ELI5>
+
+## Why it exists
+
+A radius-based clusterer can find curved shapes and label isolated points as noise, but one radius struggles when groups have different densities. On the three-cluster example, DBSCAN at ε = 0.3 marks 31% as noise and splits a group; HDBSCAN finds 3 clusters with 2% noise and ARI 0.968.
+
+## The big picture
+
+<PenFlow title="Grow dense regions across radii" ariaLabel="Grow dense regions across radii" rows={[{ steps: { title: 'Count neighbours', lines: ['Core points meet min_samples inside ε'], tone: 'blue' } }, { steps: { title: 'Expand clusters', lines: ['Follow chains of core points; leave isolated points as noise'], tone: 'purple' } }, { steps: { title: 'Check the radius', lines: ['The k-distance bend suggests ε'], tone: 'orange' } }, { steps: { title: 'Compare densities', lines: ['HDBSCAN keeps stable groups across radii'], tone: 'green' } }]} caption="DBSCAN expands dense neighbourhoods at one radius; HDBSCAN selects groups that persist across many radii." />
+
+<Worksheet title="Choose a density clustering" ariaLabel="Choose a density clustering" stages={[{ tag: 'Measured output', color: 'yellow', note: 'These values come from the runnable example below.', grid: { head: ['Method or setting', 'Clusters', 'Noise', 'ARI'], rows: [{ label: 'DBSCAN ε = 0.3', cells: ['4', '31%', '0.960'] }, { label: 'DBSCAN ε = 0.8', cells: ['2', '3%', '0.529'] }, { label: 'HDBSCAN', cells: ['3', '2%', '0.968'] }, { label: 'DBSCAN agreement with reference', cells: ['2', '30 points', '1.000'] }] } }]} />
+
 
 ## 1. Density, Defined
 
@@ -117,7 +131,11 @@ The expensive parts are the core distances (a $k$-nearest-neighbour query per po
 
 </GoDeeper>
 
-## 6. Minimal Implementation
+## Worked example
+
+A radius-based clusterer can find curved shapes and label isolated points as noise, but one radius struggles when groups have different densities. The measured results in the Worksheet above come from this same experiment.
+
+## Try it yourself
 
 DBSCAN from the definitions in Section 1: radius queries, core points, then breadth-first expansion through core points only. It runs on two half-moons with 40 uniformly scattered noise points and is compared with scikit-learn, followed by the k-distance curve and the varying-density experiment of Section 4:
 
@@ -172,11 +190,13 @@ for eps in [0.2, 0.3, 0.5, 0.8, 1.2]:
     print(f"DBSCAN eps={eps:<4} clusters {lab.max() + 1:>2}   noise {np.mean(lab == -1):>4.0%}   ARI {adjusted_rand_score(yd, lab):.3f}")
 lab = HDBSCAN(min_cluster_size=20).fit_predict(Xd)
 print(f"HDBSCAN          clusters {lab.max() + 1:>2}   noise {np.mean(lab == -1):>4.0%}   ARI {adjusted_rand_score(yd, lab):.3f}")
+
+# Try it: change ε from 0.3 to 0.5 in the sweep; compare cluster count, noise share, and ARI.
 ```
 
 Output (scikit-learn 1.7):
 
-```
+```output
 clusters 2, noise points 30, core points 505
 agreement with scikit-learn: ARI 1.000, same core points True
 agreement with the true moons (non-noise points): ARI 1.000
@@ -194,7 +214,15 @@ HDBSCAN          clusters  3   noise   2%   ARI 0.968
 - **The k-distance curve has its bend between the 90th and 99th percentiles**, where the noise points are, and $\varepsilon = 0.15$ sits at its start.
 - **One radius can't serve two densities (Section 4).** Small $\varepsilon$ labels a third or more of the data noise; at 0.5 there are still 4 clusters instead of 3; from 0.8 the two tight clusters merge (2 clusters). HDBSCAN finds exactly three clusters with 2% noise. (ARI here treats the noise label as one more group, so a run that puts a third of the points into "noise" can still score fairly high; the cluster counts and noise rates tell the story more directly.)
 
-## 7. When *Not* to Use Density-Based Clustering
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Choosing ε from intuition alone | One radius can merge or fragment groups | Inspect the sorted k-distance curve |
+| Assuming DBSCAN handles different densities | A single threshold cannot fit every group | Try HDBSCAN and inspect noise labels |
+| Treating all border assignments as deterministic | A border point may touch two clusters | Check core points and document order dependence |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

@@ -9,6 +9,9 @@ import embDark from './img/embedding-2d.png';
 import IcaCocktailPartyDiagram from '../../../viz/diagrams/IcaCocktailPartyDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # ICA, t-SNE & UMAP
 
@@ -21,6 +24,17 @@ At a party, two microphones in different corners each pick up both of two people
 t-SNE and UMAP solve a different problem: drawing a map of a crowd in which friends stand next to friends. They don't care about exact distances between groups, only that each person's closest friends end up close to them on the map. That makes great pictures of who's near whom, and misleading pictures of how far apart the groups are. Everything below is those ideas made exact.
 
 </ELI5>
+
+## Why it exists
+
+Independent sources need a different goal from compression, and a two-dimensional map should be read for neighbourhoods rather than global distances. The printed experiment shows ICA correlations at 0.996 or above while PCA stays between 0.6808 and 0.8191; t-SNE and UMAP keep local neighbours with trustworthiness near 0.99.
+
+## The big picture
+
+<PenFlow title="Separate sources, then map neighbours" ariaLabel="Separate sources, then map neighbours" rows={[{ steps: { title: 'Mix signals', lines: ['Several independent sources reach each sensor'], tone: 'blue' } }, { steps: { title: 'Unmix rotation', lines: ['Whiten first, then seek non-Gaussian directions'], tone: 'purple' } }, { steps: { title: 'Embed neighbours', lines: ['Match local relationships in two dimensions'], tone: 'orange' } }, { steps: { title: 'Read cautiously', lines: ['Check neighbourhoods; don’t infer cluster distances'], tone: 'green' } }]} caption="ICA recovers independent signals; t-SNE and UMAP preserve local neighbours, not a trustworthy global map." />
+
+<Worksheet title="ICA and embedding results" ariaLabel="ICA and embedding results" stages={[{ tag: 'Measured output', color: 'yellow', note: 'These values come from the runnable example below.', grid: { head: ['', 'Measured value'], rows: [{ label: 'FastICA minimum source correlation', cells: ['0.996'] }, { label: 'PCA source correlation range', cells: ['0.6808–0.8191'] }, { label: 't-SNE trustworthiness', cells: ['0.993'] }, { label: 'UMAP trustworthiness', cells: ['0.988'] }, { label: 't-SNE 10-NN accuracy', cells: ['0.974'] }, { label: 'UMAP centroid-distance correlation', cells: ['0.579'] }] } }]} />
+
 
 ## 1. ICA: The Mixing Model
 
@@ -133,7 +147,11 @@ And Kobak and Linderman (2021) showed that UMAP's better-preserved global layout
 
 </GoDeeper>
 
-## 5. Minimal Implementation
+## Worked example
+
+Independent sources need a different goal from compression, and a two-dimensional map should be read for neighbourhoods rather than global distances. The measured results in the Worksheet above come from this same experiment.
+
+## Try it yourself
 
 FastICA from Section 2 (whitening, the fixed-point step, deflation), checked against scikit-learn and against PCA on three mixed signals; then PCA, t-SNE at two perplexities and UMAP on the digits, measured for neighbourhood preservation and for global layout:
 
@@ -203,11 +221,13 @@ for name, make in [("PCA", lambda: PCA(2, random_state=0)),
     D_low = np.linalg.norm(c2[:, None] - c2[None], axis=-1)[np.triu_indices(10, 1)]
     print(f"{name:23s} {secs:5.1f} s   {trustworthiness(Xd, Y, n_neighbors=10):.3f}            "
           f"{acc:.3f}                  {np.corrcoef(D_high, D_low)[0, 1]:.3f}")
+
+# Try it: change t-SNE perplexity from 30 to 5; compare trustworthiness and the centroid-distance correlation.
 ```
 
 Output (scikit-learn 1.9, umap-learn 0.5; times from one run on a shared machine, UMAP's including its one-time compilation):
 
-```
+```output
 excess kurtosis of each source:       [-1.37 -1.99 -1.17]
 excess kurtosis of each microphone:   [-0.99 -1.66 -0.74]
 ours:  |corr| with true sources        [0.996  1.     0.9998]
@@ -225,7 +245,15 @@ UMAP (15 neighbours)     17.1 s   0.988            0.974                  0.579
 - **Perplexity changed little here**: 5 and 30 give nearly the same numbers on this data. On other data it can change the picture a lot, so try more than one.
 - **Global layout is a separate question.** PCA and PCA-initialized t-SNE keep the arrangement of the digit centres (correlation 0.82); UMAP, on this data and with defaults, kept less (0.58).
 
-## 6. When *Not* to Use These
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Reading map distances as original distances | The objective preserves local neighbours, not global geometry | Measure distances in the original feature space |
+| Treating PCA components as independent sources | Uncorrelated components can still depend on each other | Use ICA only when its source assumptions fit |
+| Trusting one embedding layout | Parameters and initialization can change apparent islands | Compare seeds and neighbourhood settings |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

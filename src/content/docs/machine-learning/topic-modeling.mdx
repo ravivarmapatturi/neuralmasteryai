@@ -9,6 +9,9 @@ import topicsDark from './img/topic-words.png';
 import TopicMixtureDiagram from '../../../viz/diagrams/TopicMixtureDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Topic Modeling: LDA & BERTopic
 
@@ -24,6 +27,17 @@ Topic modeling runs that story backwards. Given only the finished articles, it w
 
 </ELI5>
 
+## Why it exists
+
+A document can discuss several themes at once, so one label per document loses useful structure. In the checked-in run, both collapsed Gibbs sampling and variational Bayes recover the three planted topics; the dominant topic is right for 94.5% and 95.3% of documents, respectively.
+
+## The big picture
+
+<PenFlow title="Infer themes from word counts" ariaLabel="Infer themes from word counts" rows={[{ steps: { title: 'Set topic distributions', lines: ['Each topic assigns probabilities to words'], tone: 'blue' } }, { steps: { title: 'Mix topics per document', lines: ['Each word draws a topic, then a word'], tone: 'purple' } }, { steps: { title: 'Infer hidden assignments', lines: ['Gibbs sampling or variational Bayes'], tone: 'orange' } }, { steps: { title: 'Inspect and name', lines: ['Check top words and example documents'], tone: 'green' } }]} caption="Topic models estimate word themes and document mixtures; people still judge whether the themes make sense." />
+
+<Worksheet title="Check recovered topics" ariaLabel="Check recovered topics" stages={[{ tag: 'Measured output', color: 'yellow', note: 'These values come from the runnable example below.', grid: { head: ['Inference method', 'Main topic correct', 'Mean mixture error'], rows: [{ label: 'Collapsed Gibbs', cells: ['94.5%', '0.068'] }, { label: 'Variational Bayes', cells: ['95.3%', '0.066'] }, { label: 'Topics recovered', cells: ['3 planted topics', '6 top words each'] }] } }]} />
+
+
 ## 1. The Generative Story
 
 ### Latent Dirichlet Allocation (LDA)
@@ -38,7 +52,7 @@ LDA (Blei, Ng and Jordan, 2003) describes how a corpus of $D$ documents over a v
 
 Only the words $w$ are observed. The topics $\boldsymbol{\phi}$, the proportions $\boldsymbol{\theta}$ and every word's topic $z$ are **latent**, and inference means working out what they probably are given the words. The model is **bag-of-words**: word order inside a document is ignored, and only counts matter.
 
-**Why Dirichlet priors.** A Dirichlet distribution is a distribution over probability vectors, and its parameter controls how concentrated they are. With a symmetric parameter $\alpha$ below 1, draws put most of their mass on a few components; above 1, they spread out evenly. So $\alpha \lt  1$ encodes "each document is about a few topics", and $\beta \lt  1$ encodes "each topic uses a fairly small set of words". The Dirichlet is also **conjugate** to the categorical distribution: after observing counts, the posterior is again a Dirichlet, with the counts added to the parameter. That's what makes the inference in Section 2 possible in closed form. Section 5 generates a corpus from this exact process with $\alpha = 0.3$, so the true topics and proportions are known.
+**Why Dirichlet priors.** A Dirichlet distribution is a distribution over probability vectors, and its parameter controls how concentrated they are. With a symmetric parameter $\alpha$ below 1, draws put most of their mass on a few components; above 1, they spread out evenly. So $\alpha \lt  1$ encodes "each document is about a few topics", and beta < 1 encodes "each topic uses a fairly small set of words". The Dirichlet is also **conjugate** to the categorical distribution: after observing counts, the posterior is again a Dirichlet, with the counts added to the parameter. That's what makes the inference in Section 2 possible in closed form. Section 5 generates a corpus from this exact process with $\alpha = 0.3$, so the true topics and proportions are known.
 
 The inference direction is easiest to see in a small case. Fix the topics and estimate one document's mixture from its words:
 
@@ -61,7 +75,7 @@ Each factor is a Dirichlet posterior mean. The second is the probability of word
 **The algorithm**: initialize every $z$ at random; then sweep through every word in the corpus, removing its assignment from the counts, sampling a new topic from the conditional above, and adding it back. After a few hundred sweeps, the assignments are samples from the posterior, and the topics and proportions are read off the counts:
 
 $$
-\hat{\phi}_{kw} = \frac{n_{kw} + \beta}{n_k + V\beta}, \qquad \hat{\theta}_{dk} = \frac{n_{dk} + \alpha}{n_d + K\alpha}
+\hat{\phi}_{kw} = (n_kw + beta)/(n_k + V beta), \qquad \hat{\theta}_{dk} = (n_dk + alpha)/(n_d + K alpha)
 $$
 
 In Section 5, 300 sweeps over 400 documents recover the three planted topics exactly, with the correct dominant topic for 94.5% of documents. scikit-learn's variational method gets 95.3%. Each sweep costs $O(NK)$ for $N$ words, so plain Gibbs sampling is slow on large corpora (the pure-Python version here takes a few minutes); optimized samplers and online variational inference (Hoffman, Blei and Bach, 2010), which processes the corpus in mini-batches, are used at scale.
@@ -115,7 +129,11 @@ LDA adds the Dirichlet priors to pLSA, which regularizes the topic mixtures and 
 
 </GoDeeper>
 
-## 5. Minimal Implementation
+## Worked example
+
+A document can discuss several themes at once, so one label per document loses useful structure. The measured results in the Worksheet above come from this same experiment.
+
+## Try it yourself
 
 A corpus generated by LDA's own story (three topics over a 22-word vocabulary, 400 documents of 60 words, $\alpha = 0.3$), so the true topics and mixtures are known. Then the collapsed Gibbs sampler of Section 2 from scratch, and scikit-learn's variational LDA, each scored against the truth after matching their arbitrarily ordered topics to the real ones:
 
@@ -178,11 +196,13 @@ report("collapsed Gibbs sampling (from scratch)", phi, theta)
 counts = np.array([np.bincount(d, minlength=V) for d in docs])
 lda = LatentDirichletAllocation(K, doc_topic_prior=0.3, topic_word_prior=0.1, random_state=0, max_iter=100).fit(counts)
 report("scikit-learn (variational Bayes)", lda.components_ / lda.components_.sum(1, keepdims=True), lda.transform(counts))
+
+# Try it: change K from 3 to 4 and inspect whether the extra topic divides a planted theme.
 ```
 
 Output (scikit-learn 1.7):
 
-```
+```output
 collapsed Gibbs sampling (from scratch):
    topic 0 score coach team goal league match
    topic 1 market rates bank shares profit investor
@@ -199,7 +219,15 @@ scikit-learn (variational Bayes):
 - **Mixtures are recovered too.** The dominant topic is correct for 94.5% (Gibbs) and 95.3% (variational) of documents. The average error in each document's estimated topic mixture is about 0.07 out of a maximum of 1 (half the summed absolute difference). The errors come mostly from documents whose true mixture is nearly even, where 60 words can't pin it down.
 - **Two inference methods, one model.** Sampling and variational inference reach essentially the same answer here, by very different routes.
 
-## 6. When *Not* to Use Topic Models
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Naming a topic from one top word | A word can be frequent across several themes | Read several top words and example documents |
+| Choosing K by perplexity alone | Likelihood does not measure human interpretability | Compare coherence and inspect topic separation |
+| Treating topic assignments as fixed truth | Inference methods and seeds vary | Report stability across runs and retain mixtures |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
@@ -215,10 +243,10 @@ scikit-learn (variational Bayes):
 | Idea | In one line |
 |---|---|
 | Generative story | Topics are word distributions; documents are topic mixtures; each word picks a topic, then a word |
-| Dirichlet $\alpha \lt  1$ | Documents use few topics; $\beta \lt  1$: topics use few words |
+| Dirichlet alpha < 1 | Documents use few topics; beta < 1: topics use few words |
 | Conjugacy | Dirichlet prior plus counts gives a Dirichlet posterior; enables collapsing |
-| Gibbs update | $P(z = k) \propto (n_{dk} + \alpha)\,\frac{n_{kw} + \beta}{n_k + V\beta}$ |
-| Estimates | $\hat{\phi}_{kw} = \frac{n_{kw} + \beta}{n_k + V\beta}$, $\hat{\theta}_{dk} = \frac{n_{dk} + \alpha}{n_d + K\alpha}$ |
+| Gibbs update | $P(z = k) \propto (n_{dk} + \alpha)\,(n_kw + beta)/(n_k + V beta)$ |
+| Estimates | $\hat{\phi}_{kw} = (n_kw + beta)/(n_k + V beta)$, $\hat{\theta}_{dk} = (n_dk + alpha)/(n_d + K alpha)$ |
 | Topics | Ranked word lists; people supply the names |
 | Choosing $K$ | Coherence and reading the topics; perplexity alone favours less interpretable topics |
 | Bag-of-words limit | Synonyms used in different documents can split into different topics |

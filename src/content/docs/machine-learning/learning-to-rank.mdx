@@ -7,6 +7,9 @@ description: "Ranking derived: why order needs its own losses, the ranking metri
 import NdcgDiagram from '../../../viz/diagrams/NdcgDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Learning-to-Rank
 
@@ -19,6 +22,17 @@ A librarian helping you find books about whales could hand you a pile of a hundr
 Learning to rank teaches a model to be that librarian. What matters isn't how well it grades each book in isolation, but whether the best ones end up on top. Everything below is that idea made exact: how to score an ordering, and how to train a model so that the orderings it produces score well.
 
 </ELI5>
+
+## Why it exists
+
+Search needs the best documents near the top, so a model should be judged by ordering quality. With the same test queries, pointwise trees reach NDCG@10 0.7344, LambdaMART reaches 0.7503, and the noise-free signal ceiling is 0.7786.
+
+## The big picture
+
+<PenFlow title="Train scores to improve the top of each list" ariaLabel="Train scores to improve the top of each list" rows={[{ steps: { title: 'Group by query', lines: ['Each query has candidate documents and relevance labels'], tone: 'blue' } }, { steps: { title: 'Learn comparisons', lines: ['Pointwise, pairwise, or listwise objective'], tone: 'purple' } }, { steps: { title: 'Rank candidates', lines: ['Sort by predicted score'], tone: 'orange' } }, { steps: { title: 'Evaluate the top', lines: ['NDCG@10 rewards relevant results near the top'], tone: 'green' } }]} caption="Ranking losses focus on ordering within each query, and NDCG@10 checks the top of the list." />
+
+<Worksheet title="Compare ranking objectives" ariaLabel="Compare ranking objectives" stages={[{ tag: 'Measured output', color: 'yellow', note: 'These values come from the runnable example below.', grid: { head: ['', 'NDCG@10'], rows: [{ label: 'Random, exponential gain', cells: ['0.2384'] }, { label: 'Pointwise trees', cells: ['0.7344'] }, { label: 'RankNet', cells: ['0.6478'] }, { label: 'LambdaRank', cells: ['0.6565'] }, { label: 'LambdaMART', cells: ['0.7503'] }, { label: 'True signal', cells: ['0.7786'] }] } }]} />
+
 
 ## 1. The Setup
 
@@ -140,7 +154,11 @@ The model matters less than the features. A typical ranker for search combines:
 
 Historical click-through features need care: computed over the same data used for training, they leak the label; computed only from earlier periods, they're legitimate (see [data leakage](/docs/machine-learning/ml-workflow-fundamentals#data-leakage)).
 
-## 7. Minimal Implementation
+## Worked example
+
+Search needs the best documents near the top, so a model should be judged by ordering quality. The measured results in the Worksheet above come from this same experiment.
+
+## Try it yourself
 
 600 synthetic queries with 30 candidates each, 10 features, and graded relevance 0 to 4 from a function with a nonlinear interaction; 400 queries train and 200 test. First a check of NDCG against scikit-learn; then a pointwise boosted regressor, a linear RankNet and its LambdaRank-weighted version written from Section 3 and 4's gradients, and LightGBM's LambdaMART:
 
@@ -209,11 +227,13 @@ ranker.fit(X[tr].reshape(-1, F), rel[tr].ravel(), group=[D] * 400)
 print(f"LambdaMART (LightGBM)             NDCG@10 {mean_ndcg(ranker.predict(X[te].reshape(-1, F)).reshape(-1, D)):.4f}")
 oracle = signal[te]
 print(f"ranking by the true signal        NDCG@10 {mean_ndcg(oracle):.4f}")
+
+# Try it: replace the training split at 400 queries with 300; compare each model’s NDCG@10.
 ```
 
 Output (scikit-learn 1.9, LightGBM 4.7):
 
-```
+```output
 NDCG@10 of random scores, linear gain: ours 0.2948, scikit-learn 0.2948
 NDCG@10 of random scores, 2^rel - 1 gain (used below): 0.2384
 pointwise (regression trees)      NDCG@10 0.7344
@@ -228,7 +248,15 @@ ranking by the true signal        NDCG@10 0.7786
 - **Model class still matters.** Both linear rankers trail the pointwise boosted trees (0.734), because the relevance has a nonlinear interaction a linear score can't represent.
 - **LambdaMART combines both advantages**: trees for the nonlinearity and lambda gradients for the top of the list, reaching 0.750 against a ceiling of 0.779 from the noise-free signal.
 
-## 8. When *Not* to Use Learning to Rank
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Splitting documents randomly across train and test | The same query can leak into both sets | Split by query or time |
+| Optimizing regression error only | Small score errors can reverse the top results | Evaluate NDCG@k for the served list |
+| Ignoring position bias in click logs | High ranks receive more attention | Estimate propensities with controlled randomization |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

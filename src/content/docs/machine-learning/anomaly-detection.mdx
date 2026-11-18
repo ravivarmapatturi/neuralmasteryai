@@ -9,6 +9,9 @@ import anomDark from './img/anomaly-detection.png';
 import IsolationPathLengthDiagram from '../../../viz/diagrams/IsolationPathLengthDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Anomaly Detection: Isolation Forest, LOF & One-Class SVM
 
@@ -21,6 +24,17 @@ At a school assembly, picking out the one student who doesn't belong is easy if 
 The methods below find both kinds. One plays a game of drawing random lines across the yard: someone standing alone gets fenced off after just a couple of lines, while someone in the middle of a crowd needs many. Another compares how crowded it is around each student with how crowded it is around their nearest neighbours. Everything below is those ideas made exact.
 
 </ELI5>
+
+## Why it exists
+
+Anomaly detectors rank unusual observations, but global rarity and local rarity are different problems. Here Isolation Forest has ROC-AUC 0.957, while LOF has average precision 0.806 and places the local anomalies at median rank 12; choose the score for the alert-review task.
+
+## The big picture
+
+<PenFlow title="Score unusual points against their context" ariaLabel="Score unusual points against their context" rows={[{ steps: { title: 'Choose the anomaly type', lines: ['Global distance or local density change'], tone: 'blue' } }, { steps: { title: 'Score observations', lines: ['Isolation paths, neighbour density, or a boundary'], tone: 'purple' } }, { steps: { title: 'Rank alerts', lines: ['Use anomaly labels when available'], tone: 'orange' } }, { steps: { title: 'Inspect the tail', lines: ['Review examples before setting a threshold'], tone: 'green' } }]} caption="Different detectors find different failures; the local ring is easiest for LOF to rank." />
+
+<Worksheet title="Compare anomaly detectors" ariaLabel="Compare anomaly detectors" stages={[{ tag: 'Measured output', color: 'yellow', note: 'These values come from the runnable example below.', grid: { head: ['Detector', 'ROC-AUC', 'Average precision', 'Local anomaly median rank'], rows: [{ label: 'Robust Mahalanobis', cells: ['0.751', '0.209', '474'] }, { label: 'Isolation Forest', cells: ['0.957', '0.542', '68'] }, { label: 'LOF (k=20)', cells: ['0.952', '0.806', '12'] }, { label: 'One-class SVM', cells: ['0.894', '0.520', '40'] }] } }]} />
+
 
 ## 1. The Problem, and How to Score a Detector
 
@@ -142,7 +156,11 @@ The expected depth of an unsuccessful search in a BST built from $\psi$ random i
 
 </GoDeeper>
 
-## 6. Minimal Implementation
+## Worked example
+
+Anomaly detectors rank unusual observations, but global rarity and local rarity are different problems. The measured results in the Worksheet above come from this same experiment.
+
+## Try it yourself
 
 Isolation Forest and LOF from the definitions in Sections 2 and 3, checked against scikit-learn, then four methods compared on 1,000 normal points in a tight cluster and a loose one, with 20 global anomalies scattered widely and 10 local anomalies on a ring just outside the tight cluster:
 
@@ -219,11 +237,13 @@ for name, s in scores.items():
     ranks = (-s).argsort().argsort() + 1                     # 1 = most anomalous
     print(f"{name:32s} {roc_auc_score(y, s):.3f}    {average_precision_score(y, s):.3f}          "
           f"{int(np.median(ranks[is_local == 1]))}")
+
+# Try it: change LOF k from 20 to 50; compare average precision and the local-anomaly median rank.
 ```
 
 Output (scikit-learn 1.7):
 
-```
+```output
 isolation forest: ours vs scikit-learn score correlation 0.989
 LOF:              ours vs scikit-learn max difference    4.3e-09
 method                           ROC-AUC  avg precision   rank of the 10 local anomalies (median, of 1030)
@@ -238,7 +258,15 @@ one-class SVM (RBF)              0.894    0.520          40
 - **Local anomalies separate the methods.** LOF puts the ring around the tight cluster at a median rank of 12; the one-class SVM at 40, Isolation Forest at 68, and robust Mahalanobis distance, which assumes one Gaussian blob, at 474, essentially unflagged.
 - **Some "anomalies" can't be found.** A few of the uniformly scattered anomalies landed inside the loose cluster (visible in the figure), where they look exactly like normal points. No method should flag them, and none does.
 
-## 7. When *Not* to Use Unsupervised Anomaly Detection
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Using ROC-AUC alone on rare alerts | It can hide precision at the top of the list | Report average precision and inspect top-ranked cases |
+| Assuming one detector finds every anomaly type | Global and local anomalies have different geometry | Compare Isolation Forest and LOF on labelled examples |
+| Setting a threshold without a review budget | Scores are rankings until calibrated to a decision | Choose a threshold using labels and operational cost |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
