@@ -8,6 +8,9 @@ import RouterVsSupervisorDiagram from '../../../viz/diagrams/RouterVsSupervisorD
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Routing and the Supervisor Pattern
 
 Once a system has more than one specialist (a billing agent and a technical agent, a cheap model and an expensive one, a SQL tool and a document search), something has to decide which one handles each request. There are two patterns for that decision, and they differ in **how often** it's made. A **router** decides once, up front, and hands the request off. A **supervisor** decides again after every result, for as long as the task needs. This page explains both, runs an embedding-based router and a LangGraph supervisor on the same two-part request so the difference shows, covers routing between models of different cost, and ends with how to choose.
@@ -21,6 +24,17 @@ A supervisor is a project manager. They hand the first part of the job to someon
 Everything below is those two jobs made exact.
 
 </ELI5>
+
+## Why it exists
+
+A router chooses one specialist once, while a supervisor can call several specialists and combine their results. The embedded-similarity router handles six single-topic requests but sends a mixed billing-and-crash request only to technical.
+
+## The big picture
+
+<PenFlow title="Route once or supervise multiple results" ariaLabel="Route once or supervise multiple results" rows={[{ steps: { title: 'Receive request', lines: ['Extract its topics'], tone: 'blue' } }, { steps: { title: 'Router', lines: ['Choose one specialist'], tone: 'purple' } }, { steps: { title: 'Supervisor', lines: ['Reassess after each specialist'], tone: 'orange' } }, { steps: { title: 'Integrate', lines: ['Combine needed answers or escalate'], tone: 'green' } }]} caption="Choose a router for one category and a supervisor when requests can need several specialists." />
+
+<Worksheet title="Router output audit" ariaLabel="Router output audit" stages={[{ tag: 'Seven printed requests', color: 'yellow', note: 'Expected and actual routes copied from execution output.', grid: { head: ['', 'Actual route'], rows: [{ label: 'Six single-topic requests', cells: ['All routed to their expected specialist'] }, { label: 'Mixed invoice + crash', cells: ['technical at similarity 0.45; expected billing + technical'] }] } }]} />
+
 
 ## 1. Two Patterns, One Question
 
@@ -76,7 +90,7 @@ for text, expected in tests:
     print(f"{text:50s} -> {got:10s} (similarity {score})   expected {expected}")
 ```
 
-```text
+```output
 My invoice shows the wrong amount                  -> billing    (similarity 0.3)   expected billing
 Password reset email never arrives                 -> technical  (similarity 0.28)   expected technical
 Is there a discount for nonprofits?                -> sales      (similarity 0.35)   expected sales
@@ -131,7 +145,7 @@ for step in app.stream({"request": "I was charged, and now the export button cra
     print(f"{node:10s} {'added: ' + update['findings'][-1] if update else 'chose the next step'}")
 ```
 
-```text
+```output
 supervisor chose the next step
 billing    added: billing: duplicate charge of $49 refunded
 supervisor chose the next step
@@ -190,7 +204,27 @@ Model routing needs the same safeguards as agent routing: measure quality per ro
 
 Don't default to a supervisor "to be safe". Every supervisor step is a model call, and for single-topic traffic a router gives the same answers faster and cheaper. Measure how often requests really need more than one specialist, and choose from that.
 
-## 7. When *Not* to Route
+## Worked example
+
+The embedding router sends all six single-topic examples to their expected specialist. The mixed request “I was charged, and now the export button crashes” routes to technical at similarity 0.45, although the expected handling needs billing and technical. A single-route decision drops half the request.
+
+## Try it yourself
+
+Add a mixed request and decide whether your design needs a supervisor, multi-label router, or human fallback.
+
+```python
+# Try it: Add a mixed request and decide whether your design needs a supervisor, multi-label router, or human fallback.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat the top similarity as complete intent | One request can span specialists | Detect multi-topic needs or route to a supervisor |
+| Set no confidence fallback | Weak matches still get dispatched | Send low-confidence requests to a person or general agent |
+| Ignore integration ownership | Specialist answers can conflict | Define who combines results and checks completeness |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

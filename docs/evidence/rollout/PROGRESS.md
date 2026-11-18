@@ -217,3 +217,9 @@ Static checks passed on the combined worktree: notebook (4 changed pages/0 viola
 Standardized Context Engineering, No-Code and Low-Code Agent Builders, AI Agents overview, and the Agents roadmap. Worksheets retain the skill-loading token counts, visual-workflow branch traces and prompt diff, long-run input-token/cost outputs, and the roadmap's linked learning route. Scorecard: `agents-3/scorecard.md`.
 
 Static checks passed on the combined worktree: notebook (8 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the low-memory rule. No push.
+
+## Agents batch 4 — four pages
+
+Standardized Plan-and-Execute, Reflection and Self-Critique, Routing and the Supervisor Pattern, and Single-Agent vs Multi-Agent. Worksheets record the failed URL/replanner trace, factorial trial feedback, route classification including its mixed-intent miss, and the one-versus-ten-subtask cost/context/time comparison. Scorecard: `agents-4/scorecard.md`.
+
+Static checks passed on the combined worktree: notebook (12 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser, and build remain deferred under the low-memory rule. No push.

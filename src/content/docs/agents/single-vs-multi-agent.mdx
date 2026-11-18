@@ -8,6 +8,9 @@ import AgentSplitTradeoffDiagram from '../../../viz/diagrams/AgentSplitTradeoffD
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Single-Agent vs Multi-Agent
 
 [Agent Fundamentals](/docs/agents/agent-fundamentals) built one agent: a model in a loop with tools. A common next instinct is to build several, a planner, a researcher, a coder and a reviewer, talking to each other. Sometimes that's exactly right, and Anthropic's research system and most coding agents use sub-agents. Often it isn't, and Cognition, which builds the Devin coding agent, published a widely read essay in 2025 titled "Don't Build Multi-Agents". This page sorts out when each side is right. It covers the three concrete reasons to split an agent, what splitting costs, a cost model that shows both the case for and against with numbers, how multi-agent systems fail, and why every handoff between agents is a security boundary. The default it arrives at: start with one agent, and split only when you can name what the split buys.
@@ -21,6 +24,17 @@ Hiring three researchers to each look into one question and send you a one-page 
 Splitting an agent into many is hiring researchers. It's worth it when the questions really are separate and your desk really is overflowing. Otherwise one careful person does better. Everything below is that judgement made exact.
 
 </ELI5>
+
+## Why it exists
+
+Splitting work can reduce peak context and elapsed time when subtasks are independent, but orchestration introduces extra calls. The page’s cost model compares one growing-context agent with parallel sub-agents over one, three, and ten subtasks.
+
+## The big picture
+
+<PenFlow title="Compare one agent with isolated subtasks" ariaLabel="Compare one agent with isolated subtasks" rows={[{ steps: { title: 'Measure task shape', lines: ['Count independent subtasks'], tone: 'blue' } }, { steps: { title: 'Single agent', lines: ['History grows across all steps'], tone: 'purple' } }, { steps: { title: 'Delegate', lines: ['Fresh context per sub-agent'], tone: 'orange' } }, { steps: { title: 'Compare costs', lines: ['Include orchestration and handoffs'], tone: 'green' } }]} caption="Parallelism pays when subtasks are independent enough to offset coordination." />
+
+<Worksheet title="Ten-subtask model comparison" ariaLabel="Ten-subtask model comparison" stages={[{ tag: 'Printed simulation', color: 'yellow', note: 'Token, context, and time values copied from output.', grid: { head: ['', 'Single agent', 'Orchestrator + sub-agents'], rows: [{ label: 'Input tokens', cells: ['8.22M', '1.04M'] }, { label: 'Peak context', cells: ['204K', '24K'] }, { label: 'Elapsed time', cells: ['480s', '60s'] }] } }]} />
+
 
 ## 1. The Default Is One Agent
 
@@ -82,7 +96,7 @@ for k in (1, 3, 10):
           f" | orchestrator + {k} sub-agents: {(sub_in + orch_in)/1e6:5.2f}M, peak {multi_peak/1e3:4.0f}K, {multi_time:3d}s")
 ```
 
-```text
+```output
 k= 1 subtasks | single agent:  0.10M input tokens, peak context   24K,  48s | orchestrator + 1 sub-agents:  0.11M, peak   24K,  60s
 k= 3 subtasks | single agent:  0.79M input tokens, peak context   64K, 144s | orchestrator + 3 sub-agents:  0.32M, peak   24K,  60s
 k=10 subtasks | single agent:  8.22M input tokens, peak context  204K, 480s | orchestrator + 10 sub-agents:  1.04M, peak   24K,  60s
@@ -135,7 +149,27 @@ Anthropic also reported the costs plainly: about 15 times the tokens of a chat, 
 
 </GoDeeper>
 
-## 7. When *Not* to Use Multiple Agents
+## Worked example
+
+With ten independent subtasks, the printed model gives one agent 8.22M input tokens, 204K peak context, and 480 seconds. The orchestrator and sub-agents use 1.04M tokens, peak at 24K, and take 60 seconds. With one subtask, delegation costs 0.11M tokens and 60 seconds versus 0.10M and 48 seconds for one agent.
+
+## Try it yourself
+
+Change the number of subtasks and compare tokens, peak context, and time. Check whether the subtasks actually can run independently.
+
+```python
+# Try it: Change the number of subtasks and compare tokens, peak context, and time. Check whether the subtasks actually can run independently.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Split one tightly coupled task | Handoffs lose shared context and add calls | Keep one agent when work depends on shared edits |
+| Ignore orchestrator cost | Planning and integration are additional calls | Include orchestration in the comparison |
+| Assume independence without checking | Overlap creates duplicate work | Identify shared state and dependencies first |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

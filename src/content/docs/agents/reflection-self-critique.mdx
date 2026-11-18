@@ -8,6 +8,9 @@ import ReflexionLoopDiagram from '../../../viz/diagrams/ReflexionLoopDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Reflection and Self-Critique
 
 [Plan-and-Execute](/docs/agents/plan-and-execute) changes *when* an agent thinks — all upfront, versus per step. Reflection changes what happens *after* a result comes back: does the agent just move on, or does it actually check its own work first? This page covers the Reflexion architecture and its results, runs a reflection loop against real tests, separates reflection from plain verification, and spends time on the most important practical finding: self-critique works when it has an **external signal** to work from (tests, tool errors, a checker), and often doesn't when the model only re-reads its own answer.
@@ -17,6 +20,17 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 Imagine redoing a homework problem, but before turning it in, you re-read your own work and ask "does this actually answer the question, and where did I probably mess up?" That's reflection: after the agent produces an attempt, a separate step grades it, and if it's wrong, writes down *specifically* what went wrong — not "try again," but "you looked in the wrong drawer, check the desk instead." The agent reads that note before its next attempt. No re-training happens anywhere; the "learning" is just a sentence the agent gets to read next time.
 
 </ELI5>
+
+## Why it exists
+
+Reflection improves a later attempt when the evaluator supplies concrete information the actor can use. The factorial example stores the failing test lesson and corrects the exclusive loop bound on the next trial.
+
+## The big picture
+
+<PenFlow title="Turn evaluator feedback into a reusable lesson" ariaLabel="Turn evaluator feedback into a reusable lesson" rows={[{ steps: { title: 'Actor writes code', lines: ['Factorial loop omits n'], tone: 'blue' } }, { steps: { title: 'Evaluator runs tests', lines: ['2 of 4 pass; solve(3) gives 2'], tone: 'purple' } }, { steps: { title: 'Store lesson', lines: ['Include n in range'], tone: 'orange' } }, { steps: { title: 'Retry', lines: ['4 of 4 tests pass'], tone: 'green' } }]} caption="Reflection is grounded by a new signal from the evaluator." />
+
+<Worksheet title="Reflexion trial record" ariaLabel="Reflexion trial record" stages={[{ tag: 'Printed test results', color: 'yellow', note: 'Trial counts and failure copied from execution output.', grid: { head: ['', 'Observed result'], rows: [{ label: 'Trial 1', cells: ['2/4 tests pass; solve(3) = 2, expected 6'] }, { label: 'Lesson', cells: ['range(1, n) stops before n; include n itself'] }, { label: 'Trial 2', cells: ['4/4 tests pass'] }] } }]} />
+
 
 ## 1. The Real Architecture: Reflexion
 
@@ -83,7 +97,7 @@ for trial in range(1, 4):
     print(f"   lesson stored: {memory[-1]!r}")
 ```
 
-```text
+```output
 trial 1: 2/4 tests pass
    failing: solve(3,) = 2, expected 6
    lesson stored: 'range(1, n) stops before n: include n itself.'
@@ -130,7 +144,27 @@ It's not universal, and the paper says so directly rather than leaving it implie
 
 That last point is the real, honest failure mode worth naming explicitly: self-critique catches the failures the model *can* recognize as failures. A blind spot in the model's judgment is invisible to a critique step running on the same judgment.
 
-## 7. When *Not* to Add Reflection
+## Worked example
+
+Trial 1 passes 2 of 4 tests; factorial of 3 returns 2 instead of 6. Reflection records that range stops before n. Trial 2 includes n and passes all 4 tests.
+
+## Try it yourself
+
+Change the actor’s first attempt or remove the evaluator failure details. Predict whether the stored lesson can identify the loop-bound error.
+
+```python
+# Try it: Change the actor’s first attempt or remove the evaluator failure details. Predict whether the stored lesson can identify the loop-bound error.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Ask the same model to critique without new evidence | The second call may repeat the first call’s blind spot | Use tests, tools, or external feedback |
+| Store vague lessons | They do not constrain the next attempt | Tie each lesson to a specific observed failure |
+| Treat in-context reflection as permanent learning | Memory may disappear after the episode | Persist validated lessons if later tasks need them |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

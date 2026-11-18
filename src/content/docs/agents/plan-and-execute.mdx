@@ -9,6 +9,9 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Plan-and-Execute
 
 [Agent Architectures](/docs/agents/agent-architectures#react-reasoning-acting) covers [ReAct](/docs/agents/agent-architectures#react-reasoning-acting) — reason, act, observe, one step at a time. Plan-and-execute inverts the order: think through the whole task *before* acting on any of it, then execute the resulting plan with far less per-step reasoning. This page covers the three components and the loop that connects them, runs that loop (and asks you to write it), weighs it against ReAct in both directions, shows how plans become graphs that run in parallel, and describes how planning actually shows up in agents in 2026, where it is more often a to-do list the agent keeps than a separate planner.
@@ -18,6 +21,17 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 Think of the difference between planning a road trip turn-by-turn as you drive versus mapping the whole route before leaving the driveway. ReAct is the first: figure out the next move, do it, see what happened, figure out the next move again — useful when the road might be closed and you won't know until you get there. Plan-and-execute is the second: work out the whole route up front, then just follow it — much less thinking per mile, as long as the roads are actually open the way you expected. The "replanner" is what happens when you hit a detour anyway: it doesn't throw out the whole trip, it just re-routes from where you actually are.
 
 </ELI5>
+
+## Why it exists
+
+A plan gives predictable tasks a fixed sequence, while a replanner handles steps invalidated by execution. The runnable example preserves the failed attempt in the trace and inserts an archive fetch after the dead link.
+
+## The big picture
+
+<PenFlow title="Execute a plan and recover at the failed step" ariaLabel="Execute a plan and recover at the failed step" rows={[{ steps: { title: 'Run planned steps', lines: ['Two sources succeed'], tone: 'blue' } }, { steps: { title: 'Record failure', lines: ['Old page returns 404'], tone: 'purple' } }, { steps: { title: 'Replan locally', lines: ['Insert archive fetch'], tone: 'orange' } }, { steps: { title: 'Finish', lines: ['Task completes; failure remains visible'], tone: 'green' } }]} caption="Replanning replaces the next action without hiding the original failure." />
+
+<Worksheet title="Plan recovery trace" ariaLabel="Plan recovery trace" stages={[{ tag: 'Recorded execution', color: 'yellow', note: 'Control-flow facts from the runnable example.', grid: { head: ['', 'Result'], rows: [{ label: 'Search A', cells: ['OK'] }, { label: 'Search B', cells: ['OK'] }, { label: 'Old page', cells: ['FAILED: 404 Not Found'] }, { label: 'Archive fetch', cells: ['OK; task completed true'] }, { label: 'Replanner', cells: ['Invoked 1 time; attempt history includes failure'] }] } }]} />
+
 
 ## 1. The Architecture
 
@@ -165,7 +179,27 @@ The explicit pattern still earns its place when the executor should be a cheaper
 
 Predictable-structure tasks — the ones where you could sketch the steps yourself before starting — are the actual fit: "search three specific sources and synthesize a comparison" has a shape you already know; "debug this failing test" doesn't, since what to do next depends entirely on what the previous step revealed. The general rule from [Agent Architectures](/docs/agents/agent-architectures#react-reasoning-acting) still applies: reach for structure once managing a plain loop by hand gets error-prone, not by default.
 
-## 7. When *Not* to Use Plan-and-Execute
+## Worked example
+
+The plan searches source A and B successfully, then the old blog URL fails with 404. The replanner inserts an archive URL; that fetch succeeds. It is invoked once, task completion is true, and the original failed attempt remains in the results.
+
+## Try it yourself
+
+Make a second planned step fail or make the replanner return no replacement. Track whether the task completes and whether the failed attempt stays visible.
+
+```python
+# Try it: Make a second planned step fail or make the replanner return no replacement. Track whether the task completes and whether the failed attempt stays visible.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Delete a failed step from the trace | A successful retry can hide an unreliable path | Keep the original result and replacement attempt |
+| Replan every fixed step | Planning calls add latency | Replan only when new execution evidence changes the path |
+| Run an unbounded plan | Repeated repairs can continue indefinitely | Bound retries and total steps |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
