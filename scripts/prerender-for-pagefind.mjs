@@ -158,6 +158,7 @@ async function main() {
 
     const distOnlyRoutes = new Set(linkedHiddenPracticeRoutes());
     const routes = [...APP_ROUTES, ...BLOG_ROUTES, ...TRACK_ROUTES, ...routesFromContentTree(), ...distOnlyRoutes];
+    const emptyDocPages = [];
     console.log(`prerender-for-pagefind: snapshotting ${routes.length} route(s)...`);
 
     // 208 routes taken one at a time (each waiting for full network-idle)
@@ -176,7 +177,10 @@ async function main() {
       while (cursor < routes.length) {
         const route = routes[cursor++];
         const isDocRoute = route.startsWith('/docs/');
-        const readySelector = isDocRoute ? 'article.prose h1, article.prose h2, article.prose h3, article.prose' : 'h1, h2, #root';
+        // Doc pages: wait for the page's own heading. The bare 'article.prose' used to be
+        // in this list, but it exists at once holding only the "Loading…" fallback, so
+        // most pages were saved without their content (Google got "Loading…").
+        const readySelector = isDocRoute ? 'article.prose h1, article.prose h2' : 'h1, h2, #root';
 
         let rendered = false;
         let attempts = 0;
@@ -198,6 +202,9 @@ async function main() {
         await page.waitForFunction(() => ![...document.querySelectorAll('[role="status"]')].some((el) => /^Loading/.test(el.textContent ?? '')), undefined, { timeout: 15000 }).catch(() => {});
 
         const html = await page.content();
+        if (isDocRoute && /<article[^>]*>\s*<div[^>]*>Loading…<\/div>\s*<\/article>/.test(html)) {
+          emptyDocPages.push(route);
+        }
 
         if (!distOnlyRoutes.has(route)) {
           const pagefindOutFile = outputPathForRoute(route, PRERENDER_DIR);
@@ -216,6 +223,11 @@ async function main() {
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
     await browser.close();
     console.log(`prerender-for-pagefind: wrote ${routes.length} rendered page(s) to ${relative(ROOT, PRERENDER_DIR)}/ and to ${relative(ROOT, DIST_DIR)}/<route>/`);
+    // Never ship a Learn page whose static HTML is just the loading placeholder:
+    // that is what search engines index first.
+    if (emptyDocPages.length) {
+      throw new Error(`prerender-for-pagefind: ${emptyDocPages.length} doc page(s) were saved before their content loaded, e.g. ${emptyDocPages.slice(0, 5).join(', ')}`);
+    }
   } finally {
     server.kill();
   }

@@ -135,7 +135,7 @@ export default function DocLayout() {
             {page.route.endsWith('/roadmap') && <RoadmapProgressBanner section={page.section} />}
             <SectionSteps key={page.route} />
             <ErrorBoundary level="route">
-              <Suspense fallback={<div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 14 }}>Loading…</div>}>
+              <Suspense fallback={<div role="status" style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 14 }}>Loading…</div>}>
                 <Component />
               </Suspense>
             </ErrorBoundary>
