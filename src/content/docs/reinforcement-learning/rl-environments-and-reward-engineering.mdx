@@ -8,6 +8,9 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import { Remember } from '../../../components/content/Remember';
 import RlhfVsRlvrFlowDiagram from '../../../viz/diagrams/RlhfVsRlvrFlowDiagram';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # RL Environment & Reward Engineering
 
 <ELI5>Training a model with RL is a lot like training a dog: the algorithm that decides how much to adjust behavior after each treat (PPO, GRPO, whatever) matters far less than *what you're actually rewarding it for*. A dog trained with a perfectly-tuned clicker but rewarded for the wrong thing still learns the wrong trick. The environment and the reward are the "what," and getting that right is now the harder, more valuable half of the job.</ELI5>
@@ -84,5 +87,38 @@ Any environment where the verifier means "actually run the model's output" (code
 ## Where This Fits
 
 [GRPO](/docs/llms-genai/training-pipeline#group-relative-policy-optimization-grpo) and the RL algorithms in [Advanced RL](/docs/reinforcement-learning/advanced-rl) are what turns a reward signal into a weight update. Everything on this page is what has to exist *before* that step even runs: a task distribution worth training on, a verifier that measures the real thing instead of a gameable proxy of it, and infrastructure that can execute that verifier safely, deterministically, and at the throughput RL training demands. Algorithm choice is close to solved, reusable infrastructure at this point — the actual differentiator between a strong post-training pipeline and a weak one, in practice, is almost entirely the quality of the environments and rewards feeding it.
+
+## Why it exists
+
+A policy learns whatever the reward checker accepts. If the task or verifier is wrong, more training can make the wrong behavior stronger; the environment must define a real task and check it safely.
+
+## The big picture
+
+<PenFlow ariaLabel="reinforcement-learning/rl-environments-and-reward-engineering overview" rows={[{ steps: { title: 'Define task and actions', lines: ['what may the agent do?'], tone: 'blue' } }, { steps: { title: 'Check outcomes', lines: ['verifier accepts valid results'], tone: 'purple' } }, { steps: { title: 'Attack the verifier', lines: ['test shortcuts and edge cases'], tone: 'orange' } }, { steps: { title: 'Execute safely', lines: ['timeouts, memory caps, isolation'], tone: 'green' } }]} caption="what may the agent do?." />
+
+<Worksheet title="Coding task contract" ariaLabel="Coding task contract" stages={[{ tag: "Inputs", color: "yellow", note: "The page example uses a 20-tool-call budget and a regression check for previously passing tests.", grid: { head: ['', 'contract'], rows: [{ label: 'tool-call limit', cells: ['20'] }, { label: 'success check', cells: ['target tests pass'] }, { label: 'regression check', cells: ['previous tests remain passing'] }, { label: 'stop conditions', cells: ['success, budget exhausted, or done action'] }] } }]} />
+
+## Worked example
+
+A coding task permits up to 20 tool calls. Success requires the target tests to pass without breaking prior passing tests; reaching the limit or a done action also ends the episode.
+
+## Try it yourself
+
+# Try it: The task, verifier and termination conditions must be explicit before policy training.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Checking only visible tests | The policy can special-case them | Add held-out and adversarial cases |
+| Exact-string grading | Correct equivalent answers can fail | Use semantic or numeric equivalence where valid |
+| Running untrusted code without limits | A submission can read files, use network or loop forever | Isolate it and enforce time and memory limits |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The reward cannot be checked safely | Use supervised preference data or build a safe verifier first |
+| The task is a one-time static prediction | Use supervised learning |
 
 Next: [Multi-Armed & Contextual Bandits](/docs/reinforcement-learning/bandits) — the degenerate, single-state special case of everything in this section, and the actual production answer to the explore/exploit problem this site's recommendation-system material has been gesturing at.

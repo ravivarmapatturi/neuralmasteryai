@@ -4,7 +4,6 @@ sidebar_position: 4
 description: "DQN, policy gradients, and PPO -- what happens once a state space is too large for a lookup table or an action space becomes continuous."
 ---
 
-
 import OverestimationBiasDiagram from '../../../viz/diagrams/OverestimationBiasDiagram';
 import SacEntropyDiagram from '../../../viz/diagrams/SacEntropyDiagram';
 import OfflineRlExtrapolationDiagram from '../../../viz/diagrams/OfflineRlExtrapolationDiagram';
@@ -12,6 +11,9 @@ import CompoundingErrorDiagram from '../../../viz/diagrams/CompoundingErrorDiagr
 import RlhfMappingDiagram from '../../../viz/diagrams/RlhfMappingDiagram';
 import WorldModelDiagram from '../../../viz/diagrams/WorldModelDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Advanced RL
 
@@ -120,5 +122,38 @@ def td3_target(critic1, critic2, target_actor, reward, next_state, gamma, noise_
     target_q = reward + gamma * torch.min(q1, q2)  # the twin-critic min, not a single critic's estimate
     return target_q
 ```
+
+## Why it exists
+
+A tabular value table cannot represent huge observation spaces or continuous actions. Deep RL generalizes with neural networks, but it introduces estimation error, distribution shift and dependence on data collection assumptions.
+
+## The big picture
+
+<PenFlow ariaLabel="reinforcement-learning/advanced-rl overview" rows={[{ steps: { title: 'Large state or action space', lines: ['replace a table with networks'], tone: 'blue' } }, { steps: { title: 'Choose method by assumption', lines: ['DQN, policy gradient, SAC or TD3'], tone: 'purple' } }, { steps: { title: 'Check data access', lines: ['online, model-based or offline'], tone: 'orange' } }, { steps: { title: 'Set reward source', lines: ['imitation, inverse RL or RLHF'], tone: 'green' } }]} caption="replace a table with networks." />
+
+<Worksheet title="TD3 target ingredients" ariaLabel="TD3 target ingredients" stages={[{ tag: "Inputs", color: "yellow", note: "The source function uses two critics, clipped smoothing noise and gamma discounting.", grid: { head: ['', 'value'], rows: [{ label: 'noise standard deviation', cells: ['0.2'] }, { label: 'noise clamp', cells: ['-0.5 to 0.5'] }, { label: 'critic target', cells: ['minimum of q1 and q2'] }, { label: 'discount', cells: ['gamma'] }] } }]} />
+
+## Worked example
+
+TD3 uses the minimum of two critic estimates in its target. Its code adds noise with standard deviation 0.2, clips that noise to [-0.5, 0.5], and discounts the target by gamma.
+
+## Try it yourself
+
+# Try it: The twin-critic minimum counters the upward bias caused by taking a maximum over noisy estimates.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Using offline data as if exploration were free | The policy can exploit unsupported actions | Use conservative offline methods and check action coverage |
+| Trusting one noisy critic | Maximization can overestimate values | Use twin critics as in TD3 |
+| Training only on imagined transitions | Model errors compound over steps | Validate against real environment outcomes |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| State and action spaces are small and discrete | A tabular method may be simpler |
+| No reward or expert demonstrations exist | Define feedback before selecting an RL algorithm |
 
 Next: [RL Environment & Reward Engineering](/docs/reinforcement-learning/rl-environments-and-reward-engineering) — the algorithms above only matter as much as the environment and reward function they're trained against, which is where most of the real engineering work in a modern post-training pipeline actually lives.

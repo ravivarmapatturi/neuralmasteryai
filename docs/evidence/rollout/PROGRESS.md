@@ -269,3 +269,9 @@ Static gates passed on the combined worktree: notebook (16 changed pages/0 viola
 Standardized CS Fundamentals roadmap and Linux/Git/tooling; Human & Adversarial Evaluation; LLM, RAG & Agent Evaluation; and Reinforcement Learning overview, roadmap, fundamentals, and bandits. Added page-specific explanations, PenFlow drawings, Worksheets/practice examples based on printed or explicitly stated values, concrete `# Try it:` edits, mistake tables, and use-case boundaries. Existing source examples and printed values were retained. The statsmodels power snippet could not run because statsmodels is unavailable; no output was invented.
 
 Static checks passed: notebook (24 changed pages/0 violations), math, MDX (2,019/2,019), links (2,147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Browser checks, full Vitest, and build were deferred under the low-memory rule. See `rest-3/scorecard.md`. No push.
+
+## Rest batch 4 — eight pages
+
+Standardized CS Fundamentals overview and Software Engineering Practice; RL Environment & Reward Engineering and Advanced RL; Mathematics overview, roadmap, Linear Algebra, and Probability & Statistics. Worksheets and worked examples use page-stated values, including the 20-call RL environment, TD3 smoothing settings, vector norm arithmetic, and bootstrap settings. Added page-specific PenFlows, concrete `# Try it:` edits, Common mistakes, and When not to use it.
+
+Static checks passed: notebook (8 changed pages/0 violations), math, MDX (2,019/2,019), links (2,147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Browser checks, full Vitest, and build deferred under the low-memory rule. See `rest-4/scorecard.md`. No push.

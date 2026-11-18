@@ -4,10 +4,18 @@ sidebar_position: 1
 description: "The operating systems, networking, and software-engineering fundamentals most ML curricula skip entirely, and most AI engineering jobs actually require."
 ---
 
-
 import SystemStackFailureDiagram from '../../../viz/diagrams/SystemStackFailureDiagram';
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # CS Fundamentals for AI Engineers — Overview
+
+<ELI5>
+
+A model call crosses several layers: Python, operating system, accelerator runtime, network and service. Knowing those layers helps locate failures that model theory alone cannot explain.
+
+</ELI5>
 
 Someone who understands Transformers deeply but doesn't understand what actually happens between "I called `model.generate()`" and "a token appeared" isn't yet an AI systems engineer — they're someone who understands one layer of a much taller stack. Click a layer below to see the specific kind of real-world failure it explains:
 
@@ -28,3 +36,34 @@ None of that is ML theory — it's computer science, and this section exists bec
 Every later section in this site assumes you can read a stack trace, reason about why a process hung, and understand what "the network call timed out" actually means at the socket level. This section is the one prerequisite layer beneath [Mathematics for AI](/docs/mathematics-for-ai/roadmap) — not because you need it to understand an equation, but because you need it to understand why that equation runs the way it does on real hardware.
 
 See the [roadmap](/docs/cs-fundamentals/roadmap) for the full ordered path through this section.
+
+## Why it exists
+
+A model call crosses several layers: Python, operating system, accelerator runtime, network and service. Knowing those layers helps locate failures that model theory alone cannot explain.
+
+## The big picture
+
+<PenFlow ariaLabel="cs-fundamentals/overview overview" rows={[{ steps: { title: 'Application', lines: ['model.generate() and data flow'], tone: 'blue' } }, { steps: { title: 'Runtime', lines: ['Python, libraries and kernels'], tone: 'purple' } }, { steps: { title: 'Host', lines: ['processes, memory and devices'], tone: 'orange' } }, { steps: { title: 'Service boundary', lines: ['network and production behavior'], tone: 'green' } }]} caption="model.generate() and data flow." />
+
+## Worked example
+
+Trace one model call from the application down to the hardware and service boundary.
+
+## Try it yourself
+
+# Try it: The overview connects AI software behavior to the operating-system and network layers below it.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Assuming model knowledge explains every failure | Systems issues can occur outside model code | Trace the whole stack |
+| Treating all systems topics as optional | Training and serving depend on them | Follow the roadmap |
+| Debugging only at the application layer | The fault may live in runtime or host behavior | Check logs, resources and network boundaries |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| You need model mathematics | Use the Machine Learning or Deep Learning track |
+| You need one command reference | Use the CLI reference pages |

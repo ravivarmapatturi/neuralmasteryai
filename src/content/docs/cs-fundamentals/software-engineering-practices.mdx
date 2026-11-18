@@ -4,13 +4,21 @@ sidebar_position: 7
 description: "Design patterns that actually show up in ML codebases (Strategy, Factory), testing philosophy, profiling, and debugging -- general engineering skill, not ML theory."
 ---
 
-
 import DesignPatternDiagram from '../../../viz/diagrams/DesignPatternDiagram';
 import TestingPyramidDiagram from '../../../viz/diagrams/TestingPyramidDiagram';
 import FlameGraphDiagram from '../../../viz/diagrams/FlameGraphDiagram';
 import GitBisectDiagram from '../../../viz/diagrams/GitBisectDiagram';
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Software Engineering Practice
+
+<ELI5>
+
+ML code becomes difficult to change when training, data access, evaluation and deployment are tightly coupled. Testing, profiling and debugging practices make changes safer and reveal the actual bottleneck.
+
+</ELI5>
 
 Everything on this page is language- and domain-agnostic — it's general engineering skill, not ML theory. [Engineering Foundations for ML](/docs/mlops/engineering-foundations) covers the ML-specific *testing taxonomy* (data validation tests, model tests, and the rest); this page covers the general practice underneath: design patterns, testing philosophy, profiling, and debugging.
 
@@ -86,5 +94,36 @@ git bisect run pytest tests/test_regression.py -x   # runs this at every midpoin
 ```
 - **Isolate variables**: strip a failing case down to the smallest input/configuration that still reproduces the bug — removing everything not strictly necessary to trigger it. A bug that only reproduces with the full training pipeline running is far harder to reason about than the same bug reproduced with a five-line script.
 - **Print debugging vs. a real debugger**: `print`/logging is fast to add and fine for straightforward "what value is this" questions; an interactive debugger (`pdb`, an IDE debugger) earns its overhead when you need to inspect state at a specific point, step through logic, or the bug depends on complex object state that's tedious to log completely.
+
+## Why it exists
+
+ML code becomes difficult to change when training, data access, evaluation and deployment are tightly coupled. Testing, profiling and debugging practices make changes safer and reveal the actual bottleneck.
+
+## The big picture
+
+<PenFlow ariaLabel="cs-fundamentals/software-engineering-practices overview" rows={[{ steps: { title: 'Separate behavior', lines: ['patterns reduce coupling'], tone: 'blue' } }, { steps: { title: 'Test boundaries', lines: ['many fast tests; fewer system tests'], tone: 'purple' } }, { steps: { title: 'Measure cost', lines: ['profile CPU, memory and GPU wait'], tone: 'orange' } }, { steps: { title: 'Narrow failures', lines: ['reproduce, bisect, isolate'], tone: 'green' } }]} caption="patterns reduce coupling." />
+
+## Worked example
+
+A reported GPU utilization of 40% can mean the device is waiting on data loading; profile the data path before changing hardware.
+
+## Try it yourself
+
+# Try it: The page moves from code structure to testing, measurement and diagnosis.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Writing only end-to-end tests | Slow feedback makes tests less useful | Build a broad unit base with fewer integration checks |
+| Optimizing by intuition | The apparent bottleneck may not dominate runtime | Profile before rewriting |
+| Changing many things while debugging | The cause becomes hard to isolate | Reproduce and reduce to one variable |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| You need ML data/model test categories | Use Engineering Foundations for ML |
+| You need distributed system design | Use Software System Design |
 
 Next: [Mathematics for AI](/docs/mathematics-for-ai/roadmap) — with the systems layer in place, the math this section runs on.

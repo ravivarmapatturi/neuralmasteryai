@@ -4,7 +4,6 @@ sidebar_position: 5
 description: "Distributions, Bayes' theorem, and hypothesis testing -- what a model's probabilistic output actually means, and how to tell a real improvement from noise."
 ---
 
-
 import DistributionExplorerDiagram from '../../../viz/diagrams/DistributionExplorerDiagram';
 import BayesUpdateDiagram from '../../../viz/diagrams/BayesUpdateDiagram';
 import MleVsMapDiagram from '../../../viz/diagrams/MleVsMapDiagram';
@@ -14,6 +13,9 @@ import BootstrapDiagram from '../../../viz/diagrams/BootstrapDiagram';
 import ConfounderDiagram from '../../../viz/diagrams/ConfounderDiagram';
 import EntropyKlDiagram from '../../../viz/diagrams/EntropyKlDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Probability & Statistics for AI
 
@@ -208,5 +210,38 @@ def bootstrap_ci(data: np.ndarray, statistic=np.median, n_resamples=1000, ci=0.9
 | Hypothesis testing | A/B testing new models in production |
 | Bootstrap / permutation tests | Distribution-free confidence intervals and significance tests |
 | Causal inference | Distinguishing "correlated with" from "caused by" in production data |
+
+## Why it exists
+
+Models output uncertain predictions, and finite samples make evaluation numbers noisy. Probability describes outcomes; statistics tells us what the observed evidence supports.
+
+## The big picture
+
+<PenFlow ariaLabel="mathematics-for-ai/probability-statistics overview" rows={[{ steps: { title: 'Describe outcomes', lines: ['random variables and distributions'], tone: 'blue' } }, { steps: { title: 'Update beliefs', lines: ['Bayes and likelihood'], tone: 'purple' } }, { steps: { title: 'Measure variation', lines: ['sampling and confidence'], tone: 'orange' } }, { steps: { title: 'Compare claims', lines: ['tests, bootstrap and causal checks'], tone: 'green' } }]} caption="random variables and distributions." />
+
+<Worksheet title="Bootstrap settings from the example" ariaLabel="Bootstrap settings from the example" stages={[{ tag: "Inputs", color: "yellow", note: "The page code resamples with replacement and uses 1,000 resamples for a 95% interval.", grid: { head: ['', 'setting'], rows: [{ label: 'resampling count', cells: ['1,000'] }, { label: 'interval coverage', cells: ['0.95'] }, { label: 'tail fraction each side', cells: ['0.025'] }, { label: 'sampling method', cells: ['with replacement'] }] } }]} />
+
+## Worked example
+
+The bootstrap code draws 1,000 resamples with replacement. For a 95% interval, it takes the 2.5th and 97.5th percentiles of the resampled statistic.
+
+## Try it yourself
+
+# Try it: The percentile bounds reflect uncertainty from repeatedly resampling the observed data.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Reading one p-value as effect size | Significance and magnitude are different | Report an effect estimate and interval |
+| Resampling without replacement | The bootstrap approximates repeated samples from observed data | Sample with replacement |
+| Ignoring sampling bias | A large dataset can still misrepresent the target population | Audit who is missing and how data were collected |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| You need a causal claim from observational data alone | Use a design and assumptions that identify causality |
+| You need only descriptive counts | Summarize the observed sample directly |
 
 Next: [Algorithms & Data Structures](/docs/mathematics-for-ai/algorithms-data-structures) — the CS fundamentals that show up in every ML engineering interview alongside the math.
