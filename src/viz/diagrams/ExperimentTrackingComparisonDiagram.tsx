@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { simulateSweep, type Run } from '../lib/experimentTracking';
 
@@ -20,7 +20,9 @@ const RUN_COLORS = ['#5b8def', '#21A374', '#f0ad4e', '#9b59b6', '#d9534f'];
 export default function ExperimentTrackingComparisonDiagram() {
   const t = useVizTokens();
   const [runs] = useState<Run[]>(() => simulateSweep());
-  const [selected, setSelected] = useState<string>(runs[3].id); // start on the actual best run
+  const { value: autoIdx, pick: setAutoIdx, stop } = useAutoCycle(runs.length, 2800, 3);
+  const [userSelected, setUserSelected] = useState<string | null>(null);
+  const selected = userSelected ?? runs[autoIdx].id; // start on the actual best run
   const [sortByFinal, setSortByFinal] = useState(true);
 
   const color = getConceptColor(t, 'attention');
@@ -86,7 +88,11 @@ export default function ExperimentTrackingComparisonDiagram() {
           return (
             <button
               key={r.id}
-              onClick={() => setSelected(r.id)}
+              onClick={() => {
+                stop();
+                setUserSelected(r.id);
+                setAutoIdx(i);
+              }}
               style={{
                 cursor: 'pointer',
                 display: 'flex',

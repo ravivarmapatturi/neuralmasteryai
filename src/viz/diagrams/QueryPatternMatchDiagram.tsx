@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Store = 'relational' | 'vector' | 'graph';
@@ -18,7 +17,7 @@ const QUERIES: { text: string; store: Store }[] = [
  * preference. */
 export default function QueryPatternMatchDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(0);
+  const { value: selected, pick: setSelected, stop } = useAutoCycle(QUERIES.length, 2800, 0);
   const colorFor = (s: Store) => (s === 'relational' ? getConceptColor(t, 'query') : s === 'vector' ? getConceptColor(t, 'attention') : t.accentWarn);
   const labelFor = (s: Store) => (s === 'relational' ? 'Relational' : s === 'vector' ? 'Vector' : 'Graph');
 
@@ -31,7 +30,10 @@ export default function QueryPatternMatchDiagram() {
           return (
             <div
               key={i}
-              onClick={() => setSelected(i)}
+              onClick={() => {
+                stop();
+                setSelected(i);
+              }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '0.55rem 0.8rem', borderRadius: 7,
                 background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.25px solid ${isSelected ? color : t.border}`,

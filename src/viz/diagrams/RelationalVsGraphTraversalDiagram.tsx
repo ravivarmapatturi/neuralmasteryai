@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const FANOUT = 3; // avg matching rows per join hop -- representative, not universal
@@ -16,9 +16,13 @@ function graphCost(hops: number): number {
   return hops * 2; // following a pointer to a node's neighbors is a local, ~constant-time step
 }
 
+const HOP_PRESETS = [3, 1, 5, 2];
+
 export default function RelationalVsGraphTraversalDiagram() {
   const t = useVizTokens();
-  const [hops, setHops] = useState(3);
+  const { value: autoIdx, stop } = useAutoCycle(HOP_PRESETS.length, 3000, 0);
+  const [userHops, setUserHops] = useState<number | null>(null);
+  const hops = userHops ?? HOP_PRESETS[autoIdx];
 
   const relColor = t.accentDanger;
   const graphColor = getConceptColor(t, 'attention');
@@ -43,7 +47,17 @@ export default function RelationalVsGraphTraversalDiagram() {
     <VisualizationContainer
       footer={`At ${hops} hop${hops === 1 ? '' : 's'}: a relational join chain (assuming ~${FANOUT} matching rows per hop) examines on the order of ${relationalCost(hops).toLocaleString()} rows, while a graph traversal touches roughly ${graphCost(hops)} -- following a relationship pointer is a local, near-constant-time step regardless of how large the overall graph is, while each additional JOIN multiplies the previous step's result set.`}
     >
-      <Slider label={`Hops (relationship depth)`} value={hops} onChange={setHops} min={1} max={6} format={(v) => `${v}`} />
+      <Slider
+        label={`Hops (relationship depth)`}
+        value={hops}
+        onChange={(v) => {
+          stop();
+          setUserHops(v);
+        }}
+        min={1}
+        max={6}
+        format={(v) => `${v}`}
+      />
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={PAD_L} y1={20 + plotH} x2={PAD_L + plotW} y2={20 + plotH} stroke={t.border} strokeWidth={1} />
         {barsFor(relationalCost, relColor, 0)}

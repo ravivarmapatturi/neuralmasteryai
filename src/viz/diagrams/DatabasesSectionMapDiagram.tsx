@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const PAGES = [
@@ -14,7 +13,7 @@ const PAGES = [
  * the reading path in the prose without just re-listing links. */
 export default function DatabasesSectionMapDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(0);
+  const { value: selected, pick: setSelected, stop } = useAutoCycle(PAGES.length, 3000, 0);
   const color = getConceptColor(t, 'attention');
   const width = 600;
 
@@ -43,7 +42,17 @@ export default function DatabasesSectionMapDiagram() {
                   markerEnd="url(#dbmap-arrow)"
                 />
               )}
-              <g onClick={() => setSelected(i)} onMouseEnter={() => setSelected(i)} style={{ cursor: 'pointer' }}>
+              <g
+                onClick={() => {
+                  stop();
+                  setSelected(i);
+                }}
+                onMouseEnter={() => {
+                  stop();
+                  setSelected(i);
+                }}
+                style={{ cursor: 'pointer' }}
+              >
                 <rect x={x - 55} y={25} width={110} height={40} rx={8} fill={isSelected ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isSelected ? 2.5 : 1.5} />
                 {p.label.includes('(') ? (
                   <>

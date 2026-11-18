@@ -800,6 +800,69 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  13: [
+    {
+      route: '/docs/databases/graph/overview',
+      diagrams: [
+        { name: 'CypherPatternMatchDiagram', match: 'MATCH (p1:Person)' },
+        { name: 'DatabaseChoiceDecisionDiagram', match: 'Real systems typically use all three' },
+        { name: 'PropertyGraphDiagram', match: 'WROTE' },
+        { name: 'RelationalVsGraphTraversalDiagram', match: 'Relational JOIN chain' },
+      ],
+    },
+    {
+      route: '/docs/databases/overview',
+      diagrams: [
+        { name: 'ConsistencyVsApproximationDiagram', match: 'ANN search scope' },
+        { name: 'DataShapeDecisionDiagram', match: 'Do you need exact rows' },
+        { name: 'DatabasesSectionMapDiagram', match: 'Relational Databases' },
+        { name: 'IndexingPhilosophyDiagram', match: 'Relational: B-tree index' },
+        { name: 'PolyglotArchitectureDiagram', match: 'User asks a question' },
+        { name: 'QueryPatternMatchDiagram', match: 'Find all orders placed' },
+        { name: 'ScaleCharacteristicsDiagram', match: 'Query traverses' },
+        { name: 'ThreeStoreComparisonDiagram', match: 'Good at:' },
+      ],
+    },
+    {
+      route: '/docs/databases/relational/overview',
+      diagrams: [
+        { name: 'IndexScanComparisonDiagram', match: 'table size = 10^' },
+        { name: 'JoinTypesDiagram', match: 'INNER JOIN' },
+      ],
+    },
+    {
+      route: '/docs/databases/relational/postgresql',
+      diagrams: [
+        { name: 'SqlExecutionOrderDiagram', match: 'You write it' },
+      ],
+    },
+    {
+      route: '/docs/databases/vector/overview',
+      diagrams: [
+        { name: 'AnnVsExactTradeoffDiagram', match: 'ef (candidates examined per search)' },
+        { name: 'EmbeddingSimilaritySearchDiagram', match: 'Distance metric' },
+        { name: 'VectorDbToolComparisonDiagram', match: 'ChromaDB' },
+      ],
+    },
+    {
+      route: '/docs/domain-applications/healthcare-ai',
+      diagrams: [
+        { name: 'CostWeightedThresholdDiagram', match: 'cost(missed case) / cost(false alarm)' },
+      ],
+    },
+    {
+      route: '/docs/domain-applications/other-domain-applications',
+      diagrams: [
+        { name: 'SimToRealGapDiagram', match: 'true real-world friction' },
+      ],
+    },
+    {
+      route: '/docs/frameworks/core-ml-dl-frameworks',
+      diagrams: [
+        { name: 'ExperimentTrackingComparisonDiagram', match: 'Runs, click to highlight' },
+      ],
+    },
+  ],
 };
 
 async function main() {

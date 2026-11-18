@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Pattern = 'structured' | 'semantic' | 'connected';
@@ -26,17 +25,27 @@ const PATTERNS: Record<Pattern, { question: string; answer: string; example: str
   },
 };
 
+const PATTERN_KEYS = Object.keys(PATTERNS) as Pattern[];
+
 export default function DatabaseChoiceDecisionDiagram() {
   const t = useVizTokens();
-  const [pattern, setPattern] = useState<Pattern>('connected');
+  const { value: patIdx, pick: setPatIdx, stop } = useAutoCycle(PATTERN_KEYS.length, 3500, 2);
+  const pattern = PATTERN_KEYS[patIdx];
   const info = PATTERNS[pattern];
   const color = getConceptColor(t, info.concept);
 
   return (
     <VisualizationContainer footer="Real systems typically use all three side by side -- Postgres for accounts and transactions, a vector index (or pgvector, inside that same Postgres) for retrieval, a graph database for the relationship-heavy slice of the problem. The question is never 'which one database should this whole system use' so much as 'which store does this specific query pattern belong in.'">
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        {(Object.keys(PATTERNS) as Pattern[]).map((k) => (
-          <VizButton key={k} variant={pattern === k ? 'primary' : 'secondary'} onClick={() => setPattern(k)}>
+        {PATTERN_KEYS.map((k, idx) => (
+          <VizButton
+            key={k}
+            variant={pattern === k ? 'primary' : 'secondary'}
+            onClick={() => {
+              stop();
+              setPatIdx(idx);
+            }}
+          >
             {PATTERNS[k].question.split('"')[1].slice(0, 24)}...
           </VizButton>
         ))}

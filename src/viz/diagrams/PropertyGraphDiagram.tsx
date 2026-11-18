@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 interface GNode {
@@ -35,7 +35,9 @@ const HEIGHT = 260;
 
 export default function PropertyGraphDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<string | null>('ada');
+  const { value: autoIdx, pick: setAutoIdx, stop } = useAutoCycle(NODES.length, 3000, 0);
+  const [userSelected, setUserSelected] = useState<string | null>(null);
+  const selected = userSelected ?? NODES[autoIdx].id;
   const node = NODES.find((n) => n.id === selected);
 
   const personColor = getConceptColor(t, 'query');
@@ -75,11 +77,19 @@ export default function PropertyGraphDiagram() {
             </g>
           );
         })}
-        {NODES.map((n) => {
+        {NODES.map((n, i) => {
           const color = n.type === 'Person' ? personColor : docColor;
           const isSelected = n.id === selected;
           return (
-            <g key={n.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(n.id)}>
+            <g
+              key={n.id}
+              style={{ cursor: 'pointer' }}
+              onClick={() => {
+                stop();
+                setUserSelected(n.id);
+                setAutoIdx(i);
+              }}
+            >
               <circle cx={n.x} cy={n.y} r={isSelected ? 30 : 26} fill={`${color}22`} stroke={color} strokeWidth={isSelected ? 3 : 1.5} />
               <text x={n.x} y={n.y - 2} textAnchor="middle" fontSize={11} fontWeight={700} fill={color}>
                 {n.label}

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
+
+const LOG_PRESETS = [4, 2, 5.5, 3];
 
 /** Real comparison operations: a full table scan checks every row (n);
  * a B-tree index lookup checks roughly log2(n) rows on its path down the
@@ -9,7 +11,9 @@ import { DIAGRAM_TYPE } from './diagramSystem';
  * hardcoded pair of numbers. */
 export default function IndexScanComparisonDiagram() {
   const t = useVizTokens();
-  const [logRows, setLogRows] = useState(4); // 10^logRows rows
+  const { value: autoIdx, stop } = useAutoCycle(LOG_PRESETS.length, 3000, 0);
+  const [userLog, setUserLog] = useState<number | null>(null);
+  const logRows = userLog ?? LOG_PRESETS[autoIdx]; // 10^logRows rows
 
   const n = Math.round(10 ** logRows);
   const scanOps = n;
@@ -28,7 +32,17 @@ export default function IndexScanComparisonDiagram() {
 
   return (
     <VisualizationContainer footer={`Real op counts at n = ${n.toLocaleString()} rows: full scan checks all ${scanOps.toLocaleString()} rows; a B-tree index checks ~log2(n) = ${indexOps} rows on its path down the tree -- a ${speedup >= 1000 ? `${(speedup / 1000).toFixed(1)}k` : speedup.toFixed(0)}x fewer comparisons. The gap only widens as the table grows, which is exactly why indexes matter more on large tables and barely matter on tiny ones.`}>
-      <Slider label={`table size = 10^${logRows.toFixed(1)} ≈ ${n.toLocaleString()} rows`} value={logRows} onChange={setLogRows} min={1} max={6} step={0.1} />
+      <Slider
+        label={`table size = 10^${logRows.toFixed(1)} ≈ ${n.toLocaleString()} rows`}
+        value={logRows}
+        onChange={(v) => {
+          stop();
+          setUserLog(v);
+        }}
+        min={1}
+        max={6}
+        step={0.1}
+      />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 10 }}>
         <line x1={0} y1={height - 5} x2={width} y2={height - 5} stroke={t.border} strokeWidth={1} />

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
 const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type JoinType = 'inner' | 'left' | 'right' | 'full';
+const JOIN_TYPES: JoinType[] = ['inner', 'left', 'right', 'full'];
 
 const CUSTOMERS = [
   { id: 1, name: 'Ada' },
@@ -92,15 +93,25 @@ function MiniTable({ title, columns, rows }: { title: string; columns: string[];
 
 export default function JoinTypesDiagram() {
   const t = useVizTokens();
-  const [type, setType] = useState<JoinType>('inner');
+  const { value: typeIdx, pick: setTypeIdx, stop } = useAutoCycle(JOIN_TYPES.length, 3500, 0);
+  const [userType, setUserType] = useState<JoinType | null>(null);
+  const type = userType ?? JOIN_TYPES[typeIdx];
   const rows = computeJoin(type);
   const meta = JOIN_META[type];
 
   return (
     <VisualizationContainer footer={meta.note}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        {(['inner', 'left', 'right', 'full'] as JoinType[]).map((jt) => (
-          <VizButton key={jt} variant={type === jt ? 'primary' : 'secondary'} onClick={() => setType(jt)}>
+        {JOIN_TYPES.map((jt, idx) => (
+          <VizButton
+            key={jt}
+            variant={type === jt ? 'primary' : 'secondary'}
+            onClick={() => {
+              stop();
+              setUserType(jt);
+              setTypeIdx(idx);
+            }}
+          >
             {JOIN_META[jt].sql}
           </VizButton>
         ))}

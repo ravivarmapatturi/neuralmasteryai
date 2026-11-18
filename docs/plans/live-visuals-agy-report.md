@@ -449,6 +449,38 @@ Pages covered:
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 34 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-12/`.
 
+## Batch 13 Report
+
+### Motion Rationales:
+1. `CypherPatternMatchDiagram.tsx`: Autocycles (3000ms) through steps 0-3 of the Cypher pattern match (`MATCH (p1:Person)-[:WROTE]->(d1:Document)<-[:CITES]-(d2:Document)<-[:WROTE]-(p2:Person)`), showing how graph pattern matching navigates multi-hop citation relationships directly.
+2. `DatabaseChoiceDecisionDiagram.tsx`: Autocycles (3500ms) across structured, semantic, and connected query archetypes, showing how distinct query questions route to Relational (Postgres), Vector, or Graph (Neo4j) database engines.
+3. `PropertyGraphDiagram.tsx`: Autocycles (3000ms) across Ada, Paper A, Paper B, and Grace nodes, displaying each node's first-class properties and highlighting how relationships carry native attributes.
+4. `RelationalVsGraphTraversalDiagram.tsx`: Autocycles (3000ms) across relationship depth presets [3, 1, 5, 2] hops, demonstrating that multi-hop relational join chains suffer exponential combinatorial explosion while graph pointer traversals scale near-linearly.
+5. `ConsistencyVsApproximationDiagram.tsx`: Autocycles (3000ms) ANN search scope presets [30%, 10%, 80%, 50%], showing how approximate vector search trades a small tunable recall drop for flat latency against relational exactness.
+6. `DataShapeDecisionDiagram.tsx`: Autocycles (3500ms) across the three core query criteria (exact condition matching, semantic similarity, and multi-hop relationship depth), emphasizing that query shape dictates the optimal database engine.
+7. `DatabasesSectionMapDiagram.tsx`: Autocycles (3000ms) across Relational, PostgreSQL deep dive, Vector Databases, and Graph Databases modules, illustrating the structured curriculum reading order.
+8. `IndexingPhilosophyDiagram.tsx`: Autocycles (3200ms) across B-tree, HNSW/IVF, and native adjacency indexes, demonstrating how each engine formulates a distinct geometric or topological definition of data "proximity".
+9. `PolyglotArchitectureDiagram.tsx`: Autocycles (3000ms) across User request, Relational session lookup, Vector chunk retrieval, Graph multi-hop traversal, and App synthesis, demonstrating a concrete request lifecycle across specialized polyglot stores.
+10. `QueryPatternMatchDiagram.tsx`: Autocycles (2800ms) across six real-world query patterns, teaching which storage engine naturally answers each query based on its underlying shape.
+11. `ScaleCharacteristicsDiagram.tsx`: Autocycles (3000ms) across relationship hop presets [3, 1, 5, 2], showing how relational join costs scale exponentially with relationship depth compared to graph pointer traversals.
+12. `ThreeStoreComparisonDiagram.tsx`: Autocycles (3500ms) across Relational, Vector, and Graph stores, showcasing what each engine is optimized to answer and what it sacrifices.
+13. `IndexScanComparisonDiagram.tsx`: Autocycles (3000ms) across table size presets [10^4, 10^2, 10^5.5, 10^3], illustrating how the logarithmic O(log n) efficiency advantage of B-tree indexes widens exponentially as datasets grow.
+14. `JoinTypesDiagram.tsx`: Autocycles (3500ms) across INNER, LEFT, RIGHT, and FULL joins, demonstrating how outer joins systematically preserve unmatched rows with explicit NULL padding.
+15. `SqlExecutionOrderDiagram.tsx`: Autocycles (2800ms) through query clauses with animated FlowDots tracing the transition from written order to Postgres execution order, demonstrating why WHERE cannot reference SELECT aliases but ORDER BY can.
+16. `AnnVsExactTradeoffDiagram.tsx`: Autocycles (3000ms) across candidate search parameter presets [40, 10, 150, 80], demonstrating how tuning `ef` navigates the Pareto frontier between recall and latency.
+17. `EmbeddingSimilaritySearchDiagram.tsx`: Autocycles (3500ms) across Cosine, Euclidean, and Dot product distance metrics, demonstrating how geometric distance definitions alter nearest-neighbor retrieval sets for identical query points.
+18. `VectorDbToolComparisonDiagram.tsx`: Autocycles (3500ms) across ChromaDB, Pinecone, Weaviate, pgvector, and Milvus, summarizing operational trade-offs from local embedded prototypes to distributed billion-scale clusters.
+19. `CostWeightedThresholdDiagram.tsx`: Autocycles (3000ms) across false-negative cost penalty ratios [10:1, 2:1, 25:1, 5:1], illustrating how clinical and high-stakes loss matrices shift decision thresholds well below the default 0.5 cutoff.
+20. `SimToRealGapDiagram.tsx`: Autocycles (3000ms) across real-world friction presets [1.2, 0.9, 1.5, 0.7], proving that domain-randomized policies hedge against physical parameter shifts where nominal simulation-tuned policies fail.
+21. `ExperimentTrackingComparisonDiagram.tsx`: Autocycles (2800ms) across 5 hyperparameter sweep runs, highlighting loss curves to demonstrate how experiment tracking dashboards distinguish fast-converging configurations from diverging runs.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 21 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-13/`.
+
+
 
 
 

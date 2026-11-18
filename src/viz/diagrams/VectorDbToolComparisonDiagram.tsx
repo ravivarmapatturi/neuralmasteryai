@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 
 type Tool = 'chroma' | 'pinecone' | 'weaviate' | 'pgvector' | 'milvus';
 
@@ -42,9 +41,12 @@ const TOOLS: Record<Tool, { name: string; deployment: string; indexing: string; 
   },
 };
 
+const TOOL_KEYS = Object.keys(TOOLS) as Tool[];
+
 export default function VectorDbToolComparisonDiagram() {
   const t = useVizTokens();
-  const [tool, setTool] = useState<Tool>('chroma');
+  const { value: toolIdx, pick: setToolIdx, stop } = useAutoCycle(TOOL_KEYS.length, 3500, 0);
+  const tool = TOOL_KEYS[toolIdx];
   const info = TOOLS[tool];
 
   const rows: [string, string][] = [
@@ -57,8 +59,15 @@ export default function VectorDbToolComparisonDiagram() {
   return (
     <VisualizationContainer footer="pgvector is covered in more depth in PostgreSQL — pgvector and the AI Stack; this table is about picking between it and a dedicated vector database, not how to use it.">
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        {(Object.keys(TOOLS) as Tool[]).map((k) => (
-          <VizButton key={k} variant={tool === k ? 'primary' : 'secondary'} onClick={() => setTool(k)}>
+        {TOOL_KEYS.map((k, idx) => (
+          <VizButton
+            key={k}
+            variant={tool === k ? 'primary' : 'secondary'}
+            onClick={() => {
+              stop();
+              setToolIdx(idx);
+            }}
+          >
             {TOOLS[k].name}
           </VizButton>
         ))}

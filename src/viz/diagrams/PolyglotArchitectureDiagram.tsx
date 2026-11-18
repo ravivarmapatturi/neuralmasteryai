@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Step = 'user' | 'app' | 'relational' | 'vector' | 'graph';
@@ -17,7 +16,8 @@ const STEPS: { key: Step; label: string; desc: string }[] = [
  * an abstract term. Click a stage for what it's responsible for. */
 export default function PolyglotArchitectureDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<Step>('vector');
+  const { value: autoIdx, pick: setAutoIdx, stop } = useAutoCycle(STEPS.length, 3000, 2);
+  const active = STEPS[autoIdx].key;
   const width = 600;
   const height = 200;
 
@@ -60,13 +60,24 @@ export default function PolyglotArchitectureDiagram() {
             markerEnd={`url(#pg-arrow-${k})`}
           />
         ))}
-        {STEPS.map((s) => {
+        {STEPS.map((s, i) => {
           const p = pos[s.key];
           const isActive = active === s.key;
           const color = colorFor(s.key);
           const w = s.key === 'user' || s.key === 'app' ? userAppW : storeW;
           return (
-            <g key={s.key} onClick={() => setActive(s.key)} onMouseEnter={() => setActive(s.key)} style={{ cursor: 'pointer' }}>
+            <g
+              key={s.key}
+              onClick={() => {
+                stop();
+                setAutoIdx(i);
+              }}
+              onMouseEnter={() => {
+                stop();
+                setAutoIdx(i);
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               <rect x={p.x - w / 2} y={p.y - 16} width={w} height={32} rx={7} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
               <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={10} fontWeight={isActive ? 700 : 500} fill={color}>{s.label}</text>
             </g>

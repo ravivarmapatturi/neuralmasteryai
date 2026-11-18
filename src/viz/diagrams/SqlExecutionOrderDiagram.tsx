@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, FlowDots } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_ANIMATION } from './diagramSystem';
 import { SketchPath, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -30,7 +30,9 @@ const ROWS = 8;
 
 export default function SqlExecutionOrderDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<string | null>(null);
+  const { value: autoIdx, pick: setAutoIdx, stop } = useAutoCycle(CLAUSES.length, 2800, 0);
+  const [userSelected, setUserSelected] = useState<string | null>(null);
+  const selected = userSelected ?? CLAUSES[autoIdx].key;
 
   const width = 620;
   const boxW = 148;
@@ -51,7 +53,7 @@ export default function SqlExecutionOrderDiagram() {
         <span>Postgres executes it</span>
       </div>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', maxWidth: width, margin: '0 auto' }}>
-        {CLAUSES.map((c) => {
+        {CLAUSES.map((c, i) => {
           const isActive = selected === c.key;
           const dim = selected !== null && !isActive;
           const wy = topPad + (c.writtenOrder - 1) * rowGap;
@@ -60,24 +62,37 @@ export default function SqlExecutionOrderDiagram() {
           const y1 = wy + boxH / 2;
           const x2 = rightX;
           const y2 = ey + boxH / 2;
+          const pathD = `M ${x1},${y1} C ${midX},${y1} ${midX},${y2} ${x2},${y2}`;
           return (
             <g
               key={`path-${c.key}`}
               opacity={dim ? 0.18 : isActive ? 1 : 0.4}
               style={{ transition: `opacity ${DIAGRAM_ANIMATION.normal}ms ${DIAGRAM_ANIMATION.easing}`, cursor: 'pointer' }}
-              onClick={() => setSelected(isActive ? null : c.key)}
+              onClick={() => {
+                stop();
+                setUserSelected(c.key);
+                setAutoIdx(i);
+              }}
             >
               <SketchPath
-                d={`M ${x1},${y1} C ${midX},${y1} ${midX},${y2} ${x2},${y2}`}
+                d={pathD}
                 color={isActive ? t.accentPrimary : t.textMuted}
                 strokeWidth={isActive ? 2.5 : 1.25}
                 id={`sql-path-${c.key}`}
               />
+              {isActive && (
+                <FlowDots
+                  d={pathD}
+                  color={t.accentPrimary}
+                  count={3}
+                  r={2.5}
+                />
+              )}
             </g>
           );
         })}
 
-        {CLAUSES.map((c) => {
+        {CLAUSES.map((c, i) => {
           const isActive = selected === c.key;
           const dim = selected !== null && !isActive;
           const wy = topPad + (c.writtenOrder - 1) * rowGap;
@@ -86,7 +101,11 @@ export default function SqlExecutionOrderDiagram() {
               key={`written-${c.key}`}
               style={{ cursor: 'pointer', transition: `opacity ${DIAGRAM_ANIMATION.normal}ms ${DIAGRAM_ANIMATION.easing}` }}
               opacity={dim ? 0.35 : 1}
-              onClick={() => setSelected(isActive ? null : c.key)}
+              onClick={() => {
+                stop();
+                setUserSelected(c.key);
+                setAutoIdx(i);
+              }}
             >
               <rect x={leftX} y={wy} width={boxW} height={boxH} rx={8} fill={isActive ? `${t.accentPrimary}22` : t.surfaceAlt} stroke="none" />
               <SketchRect x={leftX} y={wy} width={boxW} height={boxH} color={isActive ? t.accentPrimary : t.border} strokeWidth={isActive ? 2 : 1.25} id={`sql-w-${c.key}`} />
@@ -96,7 +115,7 @@ export default function SqlExecutionOrderDiagram() {
           );
         })}
 
-        {CLAUSES.map((c) => {
+        {CLAUSES.map((c, i) => {
           const isActive = selected === c.key;
           const dim = selected !== null && !isActive;
           const ey = topPad + (c.execOrder - 1) * rowGap;
@@ -105,7 +124,11 @@ export default function SqlExecutionOrderDiagram() {
               key={`exec-${c.key}`}
               style={{ cursor: 'pointer', transition: `opacity ${DIAGRAM_ANIMATION.normal}ms ${DIAGRAM_ANIMATION.easing}` }}
               opacity={dim ? 0.35 : 1}
-              onClick={() => setSelected(isActive ? null : c.key)}
+              onClick={() => {
+                stop();
+                setUserSelected(c.key);
+                setAutoIdx(i);
+              }}
             >
               <rect x={rightX} y={ey} width={boxW} height={boxH} rx={8} fill={isActive ? `${t.accentPrimary}22` : t.surfaceAlt} stroke="none" />
               <SketchRect x={rightX} y={ey} width={boxW} height={boxH} color={isActive ? t.accentPrimary : t.border} strokeWidth={isActive ? 2 : 1.25} id={`sql-e-${c.key}`} />

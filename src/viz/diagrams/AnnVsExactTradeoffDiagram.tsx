@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const DATASET_SIZE = 10_000_000;
@@ -19,9 +19,13 @@ const PAD_L = 45;
 const PAD_B = 30;
 const MAX_LATENCY = EXACT_LATENCY_MS;
 
+const EF_PRESETS = [40, 10, 150, 80];
+
 export default function AnnVsExactTradeoffDiagram() {
   const t = useVizTokens();
-  const [ef, setEf] = useState(40);
+  const { value: autoIdx, stop } = useAutoCycle(EF_PRESETS.length, 3000, 0);
+  const [userEf, setUserEf] = useState<number | null>(null);
+  const ef = userEf ?? EF_PRESETS[autoIdx];
 
   const recall = recallFor(ef);
   const latency = latencyFor(ef);
@@ -42,7 +46,17 @@ export default function AnnVsExactTradeoffDiagram() {
 
   return (
     <VisualizationContainer footer={`At ef=${ef}: ~${recall.toFixed(0)}% recall in ~${latency.toFixed(0)}ms. Exact (brute-force) search over ${(DATASET_SIZE / 1_000_000).toFixed(0)}M vectors guarantees 100% recall but costs ~${EXACT_LATENCY_MS}ms per query -- ANN trades a small, tunable amount of recall for roughly 10-100x lower latency, which is the entire reason approximate search exists at this scale.`}>
-      <Slider label={`ef (candidates examined per search)`} value={ef} onChange={setEf} min={1} max={300} format={(v) => `${v}`} />
+      <Slider
+        label={`ef (candidates examined per search)`}
+        value={ef}
+        onChange={(v) => {
+          stop();
+          setUserEf(v);
+        }}
+        min={1}
+        max={300}
+        format={(v) => `${v}`}
+      />
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={PAD_L} y1={20} x2={PAD_L} y2={20 + plotH} stroke={t.border} strokeWidth={1} />
         <line x1={PAD_L} y1={20 + plotH} x2={PAD_L + plotW} y2={20 + plotH} stroke={t.border} strokeWidth={1} />

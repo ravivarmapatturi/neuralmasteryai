@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Store = 'relational' | 'vector' | 'graph';
@@ -15,21 +14,28 @@ const STORES: { key: Store; label: string; question: string; goodAt: string; bad
  * well, not a feature checklist. Click a card for what it trades away. */
 export default function ThreeStoreComparisonDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<Store>('relational');
+  const { value: autoIdx, pick: setAutoIdx, stop } = useAutoCycle(STORES.length, 3500, 0);
   const colorFor = (s: Store) => (s === 'relational' ? getConceptColor(t, 'query') : s === 'vector' ? getConceptColor(t, 'attention') : t.accentWarn);
-  const active = STORES.find((s) => s.key === selected)!;
+  const active = STORES[autoIdx];
+  const selected = active.key;
 
   return (
     <VisualizationContainer footer={`Good at: ${active.goodAt}`}>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        {STORES.map((s) => {
+        {STORES.map((s, i) => {
           const color = colorFor(s.key);
           const isSelected = selected === s.key;
           return (
             <div
               key={s.key}
-              onClick={() => setSelected(s.key)}
-              onMouseEnter={() => setSelected(s.key)}
+              onClick={() => {
+                stop();
+                setAutoIdx(i);
+              }}
+              onMouseEnter={() => {
+                stop();
+                setAutoIdx(i);
+              }}
               style={{
                 flex: '1 1 160px', cursor: 'pointer', padding: '0.9rem 1rem', borderRadius: 10,
                 background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}`,

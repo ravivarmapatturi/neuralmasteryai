@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Answer = 'exact' | 'similar' | 'connected';
@@ -15,20 +14,24 @@ const QUESTIONS: { key: Answer; q: string; store: string; why: string }[] = [
  * to and why. */
 export default function DataShapeDecisionDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<Answer>('similar');
+  const { value: autoIdx, pick: setAutoIdx, stop } = useAutoCycle(QUESTIONS.length, 3500, 1);
   const colorFor = (k: Answer) => (k === 'exact' ? getConceptColor(t, 'query') : k === 'similar' ? getConceptColor(t, 'attention') : t.accentWarn);
-  const active = QUESTIONS.find((q) => q.key === selected)!;
+  const active = QUESTIONS[autoIdx];
+  const selected = active.key;
 
   return (
     <VisualizationContainer footer={active.why}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {QUESTIONS.map((q) => {
+        {QUESTIONS.map((q, i) => {
           const isSelected = selected === q.key;
           const color = colorFor(q.key);
           return (
             <div
               key={q.key}
-              onClick={() => setSelected(q.key)}
+              onClick={() => {
+                stop();
+                setAutoIdx(i);
+              }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '0.7rem 0.9rem', borderRadius: 8,
                 background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}`,

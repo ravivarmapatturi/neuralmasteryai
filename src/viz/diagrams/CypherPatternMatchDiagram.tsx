@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 // Same graph as PropertyGraphDiagram, redefined locally (each diagram is
@@ -30,7 +30,9 @@ const HEIGHT = 260;
 
 export default function CypherPatternMatchDiagram() {
   const t = useVizTokens();
-  const [stepIdx, setStepIdx] = useState(0);
+  const { value: autoStep, pick: setAutoStep, stop } = useAutoCycle(STEPS.length, 3000, 0);
+  const [userStep, setUserStep] = useState<number | null>(null);
+  const stepIdx = userStep ?? autoStep;
   const step = STEPS[stepIdx];
   const matchColor = getConceptColor(t, 'attention');
 
@@ -46,7 +48,15 @@ export default function CypherPatternMatchDiagram() {
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         {STEPS.map((_, i) => (
-          <VizButton key={i} variant={stepIdx === i ? 'primary' : 'secondary'} onClick={() => setStepIdx(i)}>
+          <VizButton
+            key={i}
+            variant={stepIdx === i ? 'primary' : 'secondary'}
+            onClick={() => {
+              stop();
+              setUserStep(i);
+              setAutoStep(i);
+            }}
+          >
             Step {i + 1}
           </VizButton>
         ))}

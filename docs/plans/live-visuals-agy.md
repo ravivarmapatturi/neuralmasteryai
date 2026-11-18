@@ -411,34 +411,34 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 13
 - `src/content/docs/databases/graph/overview.mdx`
-  - [ ] `src/viz/diagrams/CypherPatternMatchDiagram.tsx`
-  - [ ] `src/viz/diagrams/DatabaseChoiceDecisionDiagram.tsx`
-  - [ ] `src/viz/diagrams/PropertyGraphDiagram.tsx`
-  - [ ] `src/viz/diagrams/RelationalVsGraphTraversalDiagram.tsx`
+  - [x] `src/viz/diagrams/CypherPatternMatchDiagram.tsx`
+  - [x] `src/viz/diagrams/DatabaseChoiceDecisionDiagram.tsx`
+  - [x] `src/viz/diagrams/PropertyGraphDiagram.tsx`
+  - [x] `src/viz/diagrams/RelationalVsGraphTraversalDiagram.tsx`
 - `src/content/docs/databases/overview.mdx`
-  - [ ] `src/viz/diagrams/ConsistencyVsApproximationDiagram.tsx`
-  - [ ] `src/viz/diagrams/DataShapeDecisionDiagram.tsx`
-  - [ ] `src/viz/diagrams/DatabasesSectionMapDiagram.tsx`
-  - [ ] `src/viz/diagrams/IndexingPhilosophyDiagram.tsx`
-  - [ ] `src/viz/diagrams/PolyglotArchitectureDiagram.tsx`
-  - [ ] `src/viz/diagrams/QueryPatternMatchDiagram.tsx`
-  - [ ] `src/viz/diagrams/ScaleCharacteristicsDiagram.tsx`
-  - [ ] `src/viz/diagrams/ThreeStoreComparisonDiagram.tsx`
+  - [x] `src/viz/diagrams/ConsistencyVsApproximationDiagram.tsx`
+  - [x] `src/viz/diagrams/DataShapeDecisionDiagram.tsx`
+  - [x] `src/viz/diagrams/DatabasesSectionMapDiagram.tsx`
+  - [x] `src/viz/diagrams/IndexingPhilosophyDiagram.tsx`
+  - [x] `src/viz/diagrams/PolyglotArchitectureDiagram.tsx`
+  - [x] `src/viz/diagrams/QueryPatternMatchDiagram.tsx`
+  - [x] `src/viz/diagrams/ScaleCharacteristicsDiagram.tsx`
+  - [x] `src/viz/diagrams/ThreeStoreComparisonDiagram.tsx`
 - `src/content/docs/databases/relational/overview.mdx`
-  - [ ] `src/viz/diagrams/IndexScanComparisonDiagram.tsx`
-  - [ ] `src/viz/diagrams/JoinTypesDiagram.tsx`
+  - [x] `src/viz/diagrams/IndexScanComparisonDiagram.tsx`
+  - [x] `src/viz/diagrams/JoinTypesDiagram.tsx`
 - `src/content/docs/databases/relational/postgresql.mdx`
-  - [ ] `src/viz/diagrams/SqlExecutionOrderDiagram.tsx`
+  - [x] `src/viz/diagrams/SqlExecutionOrderDiagram.tsx`
 - `src/content/docs/databases/vector/overview.mdx`
-  - [ ] `src/viz/diagrams/AnnVsExactTradeoffDiagram.tsx`
-  - [ ] `src/viz/diagrams/EmbeddingSimilaritySearchDiagram.tsx`
-  - [ ] `src/viz/diagrams/VectorDbToolComparisonDiagram.tsx`
+  - [x] `src/viz/diagrams/AnnVsExactTradeoffDiagram.tsx`
+  - [x] `src/viz/diagrams/EmbeddingSimilaritySearchDiagram.tsx`
+  - [x] `src/viz/diagrams/VectorDbToolComparisonDiagram.tsx`
 - `src/content/docs/domain-applications/healthcare-ai.mdx`
-  - [ ] `src/viz/diagrams/CostWeightedThresholdDiagram.tsx`
+  - [x] `src/viz/diagrams/CostWeightedThresholdDiagram.tsx`
 - `src/content/docs/domain-applications/other-domain-applications.mdx`
-  - [ ] `src/viz/diagrams/SimToRealGapDiagram.tsx`
+  - [x] `src/viz/diagrams/SimToRealGapDiagram.tsx`
 - `src/content/docs/frameworks/core-ml-dl-frameworks.mdx`
-  - [ ] `src/viz/diagrams/ExperimentTrackingComparisonDiagram.tsx`
+  - [x] `src/viz/diagrams/ExperimentTrackingComparisonDiagram.tsx`
 
 ## Batch 14
 - `src/content/docs/frameworks/llm-agent-frameworks.mdx`

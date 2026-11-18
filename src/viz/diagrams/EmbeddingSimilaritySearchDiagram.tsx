@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Metric = 'cosine' | 'euclidean' | 'dot';
+const METRICS: Metric[] = ['cosine', 'euclidean', 'dot'];
 const K = 3;
 
 // Fixed synthetic 2D "embeddings" (toy stand-ins for high-dimensional
@@ -37,7 +38,8 @@ function dist(ax: number, ay: number, bx: number, by: number, metric: Metric): n
 
 export default function EmbeddingSimilaritySearchDiagram() {
   const t = useVizTokens();
-  const [metric, setMetric] = useState<Metric>('cosine');
+  const { value: metIdx, pick: setMetricIdx, stop } = useAutoCycle(METRICS.length, 3500, 0);
+  const metric = METRICS[metIdx];
   const [query, setQuery] = useState({ x: 240, y: 130 });
 
   const ranked = POINTS.map((p) => ({ ...p, d: dist(query.x, query.y, p.x, p.y, metric) })).sort((a, b) => a.d - b.d);
@@ -57,7 +59,11 @@ export default function EmbeddingSimilaritySearchDiagram() {
       <PillSelect<Metric>
         label="Distance metric"
         value={metric}
-        onChange={setMetric}
+        onChange={(val) => {
+          const v = typeof val === 'function' ? val(metric) : val;
+          stop();
+          setMetricIdx(METRICS.indexOf(v));
+        }}
         options={[
           { value: 'cosine', label: 'Cosine' },
           { value: 'euclidean', label: 'Euclidean' },

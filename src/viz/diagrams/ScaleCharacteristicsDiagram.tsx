@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+
+const HOP_PRESETS = [3, 1, 5, 2];
 
 /** How query cost actually grows with data/relationship size, per engine
  * -- a relational multi-hop join degrades with EVERY extra hop, a graph
@@ -11,7 +13,9 @@ import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
  * from graph for connected queries. */
 export default function ScaleCharacteristicsDiagram() {
   const t = useVizTokens();
-  const [hops, setHops] = useState(3);
+  const { value: autoIdx, stop } = useAutoCycle(HOP_PRESETS.length, 3000, 0);
+  const [userHops, setUserHops] = useState<number | null>(null);
+  const hops = userHops ?? HOP_PRESETS[autoIdx];
   const relColor = getConceptColor(t, 'query');
   const graphColor = t.accentWarn;
 
@@ -27,7 +31,17 @@ export default function ScaleCharacteristicsDiagram() {
 
   return (
     <VisualizationContainer footer="Drag the hop count -- relational join cost compounds with every additional hop (each hop is another join across the whole table); graph traversal cost barely moves, because it's just following pointers to neighbors regardless of overall graph size. This is specifically about RELATIONSHIP depth -- a flat, single-table relational query doesn't have this problem at all.">
-      <Slider label={`Query traverses ${hops} relationship hop${hops !== 1 ? 's' : ''} (e.g. "friends of friends of friends...")`} min={1} max={6} step={1} value={hops} onChange={setHops} />
+      <Slider
+        label={`Query traverses ${hops} relationship hop${hops !== 1 ? 's' : ''} (e.g. "friends of friends of friends...")`}
+        min={1}
+        max={6}
+        step={1}
+        value={hops}
+        onChange={(v) => {
+          stop();
+          setUserHops(v);
+        }}
+      />
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={40} y1={chartBottom} x2={width - 20} y2={chartBottom} stroke={t.border} strokeWidth={1} />
         <g>

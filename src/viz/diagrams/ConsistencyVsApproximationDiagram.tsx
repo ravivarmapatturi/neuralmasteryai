@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+
+const SCOPE_PRESETS = [30, 10, 80, 50];
 
 /** ANN's actual tradeoff, made concrete: recall (chance of finding the
  * TRUE nearest neighbor) traded against query latency, as the search
@@ -10,7 +12,9 @@ import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
  * something up," shown as two different curves. */
 export default function ConsistencyVsApproximationDiagram() {
   const t = useVizTokens();
-  const [searchScope, setSearchScope] = useState(30); // % of candidates actually compared
+  const { value: autoIdx, stop } = useAutoCycle(SCOPE_PRESETS.length, 3000, 0);
+  const [userScope, setUserScope] = useState<number | null>(null);
+  const searchScope = userScope ?? SCOPE_PRESETS[autoIdx]; // % of candidates actually compared
   const relColor = getConceptColor(t, 'query');
   const vecColor = getConceptColor(t, 'attention');
 
@@ -28,7 +32,17 @@ export default function ConsistencyVsApproximationDiagram() {
 
   return (
     <VisualizationContainer footer="Relational stays exact always (100% correct), the cost shows up as join latency growing with relationship depth instead. Vector search trades a small, tunable miss-rate for latency that stays flat as the collection grows -- widen the search scope and recall climbs back up, at a latency cost.">
-      <Slider label={`ANN search scope: compare against ${searchScope}% of candidate cluster`} min={5} max={100} step={5} value={searchScope} onChange={setSearchScope} />
+      <Slider
+        label={`ANN search scope: compare against ${searchScope}% of candidate cluster`}
+        min={5}
+        max={100}
+        step={5}
+        value={searchScope}
+        onChange={(v) => {
+          stop();
+          setUserScope(v);
+        }}
+      />
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={50} y1={chartBottom} x2={width - 20} y2={chartBottom} stroke={t.border} strokeWidth={1} />
         <line x1={50} y1={chartTop} x2={50} y2={chartBottom} stroke={t.border} strokeWidth={1} />

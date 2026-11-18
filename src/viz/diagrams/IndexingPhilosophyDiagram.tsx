@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Engine = 'relational' | 'vector' | 'graph';
@@ -15,20 +14,24 @@ const ENGINES: { key: Engine; label: string; structure: string; whatNearMeans: s
  * each engine, which is why the structures look nothing alike. */
 export default function IndexingPhilosophyDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<Engine>('vector');
+  const { value: autoIdx, pick: setAutoIdx, stop } = useAutoCycle(ENGINES.length, 3200, 1);
   const colorFor = (k: Engine) => (k === 'relational' ? getConceptColor(t, 'query') : k === 'vector' ? getConceptColor(t, 'attention') : t.accentWarn);
-  const active = ENGINES.find((e) => e.key === selected)!;
+  const active = ENGINES[autoIdx];
+  const selected = active.key;
 
   return (
     <VisualizationContainer footer={`Without this index: ${active.without}.`}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {ENGINES.map((e) => {
+        {ENGINES.map((e, i) => {
           const isSelected = selected === e.key;
           const color = colorFor(e.key);
           return (
             <div
               key={e.key}
-              onClick={() => setSelected(e.key)}
+              onClick={() => {
+                stop();
+                setAutoIdx(i);
+              }}
               style={{ flex: '1 1 150px', cursor: 'pointer', padding: '0.7rem 0.85rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}
             >
               <div style={{ fontWeight: 700, fontSize: 12.5, color }}>{e.label}</div>
