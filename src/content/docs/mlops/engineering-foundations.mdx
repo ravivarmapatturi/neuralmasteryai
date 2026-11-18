@@ -8,6 +8,8 @@ import NotebookVsPipelineDiagram from '../../../viz/diagrams/NotebookVsPipelineD
 import ConfigVsHardcodedDiagram from '../../../viz/diagrams/ConfigVsHardcodedDiagram';
 import DependencyPinningDiagram from '../../../viz/diagrams/DependencyPinningDiagram';
 import OnboardingStandardDiagram from '../../../viz/diagrams/OnboardingStandardDiagram';
+import PenFlow from '../../../components/notebook/PenFlow';
+import RunnableCode from '../../../components/content/RunnableCode';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
@@ -25,7 +27,7 @@ Everything below is how each of those is done for ML code.
 
 </ELI5>
 
-## 1. Why Notebooks Break as Systems
+## Why it exists
 
 Notebooks are excellent for exploration: fast feedback, plots next to code, easy to try ideas. They're poor as the home of a system that other people and machines run, for specific reasons:
 
@@ -37,25 +39,28 @@ Notebooks are excellent for exploration: fast feedback, plots next to code, easy
 
 <NotebookVsPipelineDiagram />
 
-The fix isn't to stop using notebooks. It's to move code that matters into a package as soon as it works, and have notebooks import from it. Exploration stays fast, and everything that will be run again lives somewhere it can be tested, versioned and reviewed.
+The fix is to move code that matters into a package as soon as it works, then have notebooks import from it. Exploration stays fast, and everything that will be run again lives somewhere it can be tested, versioned and reviewed.
+
+## The big picture
+
+Keep exploration flexible, then make each repeated step explicit: package the code, record its settings and dependencies, test its behavior, and measure the service before release.
+
+<PenFlow ariaLabel="Engineering path from notebook exploration to a tested and measurable machine learning service" rows={[
+  { steps: { title: 'Explore', lines: ['Try ideas in a notebook'], tone: 'blue' } },
+  { steps: { title: 'Package', lines: ['Move repeatable code into modules'], tone: 'purple' } },
+  { steps: [{ title: 'Configure', lines: ['Type and record settings'], tone: 'orange' }, { title: 'Lock', lines: ['Install fixed dependencies'], tone: 'green' }] },
+  { steps: { title: 'Test and measure', lines: ['Check behavior and service limits'], tone: 'red' } },
+]} caption="Each step makes a hidden assumption visible before the model becomes a service." />
 
 ## 2. Structure: A Package with Clear Responsibilities
 
 A minimal, conventional layout for an ML project:
 
-```text
-fraud-model/
-├── pyproject.toml          # metadata, dependencies, tool settings
-├── uv.lock                 # exact versions of everything installed
-├── src/fraud_model/
-│   ├── __init__.py
-│   ├── config.py           # typed settings
-│   ├── features.py         # pure feature functions
-│   ├── scoring.py          # glue: fetch features, call the model
-│   └── train.py            # training entry point
-├── tests/                  # one test file per module
-└── configs/                # per-environment overrides
-```
+<PenFlow ariaLabel="ML project package structure separating configuration, source code, tests, and environment files" rows={[
+  { steps: { title: 'Project metadata', lines: ['pyproject.toml · uv.lock'], tone: 'blue' } },
+  { steps: [{ title: 'src/fraud_model', lines: ['config · features · scoring · train'], tone: 'green' }, { title: 'tests', lines: ['one test file per module'], tone: 'purple' }] },
+  { steps: { title: 'configs', lines: ['per-environment overrides'], tone: 'orange' } },
+]} caption="The source package owns reusable behavior; tests and configuration stay easy to find." />
 
 The **`src/` layout** means tests import the *installed* package rather than files that happen to be on the path, which catches packaging mistakes before anyone else does.
 
@@ -124,11 +129,11 @@ dev = [
 
 2. **A lock file** recording the exact version and hash of every package, including transitive dependencies, resolved from those ranges. `uv add scikit-learn` updates both files; the lock entry it wrote for scikit-learn begins:
 
-```toml
-name = "scikit-learn"
-version = "1.9.1"
-source = { registry = "https://pypi.org/simple" }
-```
+| Lock entry | Recorded value |
+| --- | --- |
+| Package | `scikit-learn` |
+| Version | `1.9.1` |
+| Source | Python package index |
 
 `uv sync` installs exactly what the lock file says, on any machine, in CI and in the Docker build. Upgrades become a deliberate, reviewable change: `uv lock --upgrade` (or `--upgrade-package numpy`), run the tests and the [model gate](/docs/mlops/cicd-and-ml-cicd#4-a-model-gate-that-accounts-for-noise), commit the new lock file.
 
@@ -208,11 +213,11 @@ def test_risk_band_never_silently_accepts_out_of_range(score):
 
 The third test earns its place. An earlier version of `risk_band` had no range check, and returned `"high"` for any score above 0.8, including impossible ones like 2.0 that only appear when something upstream is broken. Running the property test against that version, Hypothesis finds a counterexample and shrinks it to a simple one:
 
-```text
-E           Failed: DID NOT RAISE ValueError
-E               score=2.0,
-FAILED tests/test_features.py::test_risk_band_never_silently_accepts_out_of_range
-```
+| Test result | Value |
+| --- | --- |
+| Failure | Expected `ValueError`, but no exception was raised |
+| Counterexample | `score = 2.0` |
+| Failing test | `test_risk_band_never_silently_accepts_out_of_range` |
 
 **Mocks** replace slow or external dependencies (a feature store, a database, an LLM API) with stand-ins, so tests are fast, deterministic and runnable without network access. Because `score_user` receives its dependencies as arguments (section 2), the test simply passes fakes in and checks how they were used:
 
@@ -235,11 +240,11 @@ def test_score_user_uses_feature_store_and_model():
 
 The full suite, including a test that an environment variable overrides the config default, runs in under two seconds:
 
-```text
-$ uv run pytest -q
-........                                                                 [100%]
-8 passed in 1.75s
-```
+| Test run | Result |
+| --- | --- |
+| Command | `uv run pytest -q` |
+| Tests passed | 8 |
+| Runtime | 1.75 seconds |
 
 The usual shape is a **test pyramid**: many fast unit tests like these, fewer integration tests that run real components together (the preprocessing pipeline producing the model's expected input shape, the API with a real small model), and a handful of end-to-end tests that run the whole pipeline on a small fixture dataset. Mocks are for unit tests; an integration test that mocks everything tests nothing.
 
@@ -272,14 +277,19 @@ class ModelApiUser(HttpUser):
 
 Run headless for 30 seconds against the FastAPI service from [APIs & Model Serving](/docs/mlops/model-serving#3-a-production-shaped-service-with-fastapi), with two Uvicorn workers on a laptop, ramping to 50 users (Locust 2.47):
 
-```text
-$ locust -f locustfile.py --headless --host http://127.0.0.1:8799 -u 50 -r 10 -t 30s --only-summary
-Type     Name           # reqs      # fails |    Avg     Min     Max    Med |   req/s  failures/s
-POST     /v1/predict      7347     0(0.00%) |     10       1     375      6 |  331.59        0.00
+Run Locust headless for 30 seconds with 50 users, ramping by 10 users per second:
 
-Type     Name              50%    66%    75%    80%    90%    95%    98%    99%  99.9% 99.99%   100%
-POST     /v1/predict         6      9     12     14     22     29     41     62    190    380    380
+```bash
+locust -f locustfile.py --headless --host http://127.0.0.1:8799 -u 50 -r 10 -t 30s --only-summary
 ```
+
+| Request | Count | Failures | Average latency | P99 latency | Throughput |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `POST /v1/predict` | 7,347 | 0 | 10 ms | 62 ms | 331.59 requests/s |
+
+| Percentile | 50th | 90th | 95th | 99th | 99.9th | 100th |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Latency | 6 ms | 22 ms | 29 ms | 62 ms | 190 ms | 380 ms |
 
 Read it the way section 5 of the serving page suggests: 332 requests a second with no failures, a median of 6 ms, but a p99 of 62 ms and a maximum of 380 ms. The tail is ten times the median even with no errors, which is the number to compare against the latency budget. Repeat with more users until the p99 breaks the budget or failures appear; that point, minus headroom, is the service's capacity per replica, and it feeds autoscaling settings.
 
@@ -312,10 +322,53 @@ All of this adds up to a standard worth stating plainly:
   explanation="The bug is hidden state: the value that determined the result lived in a notebook session, not in code or configuration. A package entry point with an explicit, typed configuration that is logged with every run means the scheduled job and the experiment use the same declared values, and any difference is visible in the run records."
 />
 
-## 8. When *Not* to Engineer This Much
+## Worked example
+
+The `clean_amount` function from the feature module accepts a formatted positive amount, preserves zero, and rejects negative or unparseable input. These are the same cases used by the page's parameterized unit test.
+
+| Input | Expected result | Reason |
+| --- | ---: | --- |
+| ` $1,200.50 ` | `1200.50` | Currency mark and separators are removed |
+| `0` | `0.0` | Zero is a valid amount |
+| `-42` | `None` | Negative amount is invalid |
+| `N/A` | `None` | Input cannot be parsed as a number |
+
+## Try it yourself
+
+Run the same cases, then add one input to the list and decide whether it should produce a number or `None`.
+
+<RunnableCode code={`import re
+
+def clean_amount(raw):
+    text = re.sub(r"[\\s$,]", "", raw)
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+cases = [" $1,200.50 ", "0", "-42", "N/A"]
+for raw in cases:
+    print(raw, "->", clean_amount(raw))
+
+# Try it:
+# Add "12.75" to cases and check the result.
+`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better practice |
+| --- | --- | --- |
+| Keep production logic only in notebook cells | Hidden execution order makes results hard to reproduce | Move repeatable logic into importable modules |
+| Read settings from globals | A scheduled run may use different hidden values | Pass one typed configuration object |
+| Install from ranges without a lock | A later build can resolve different packages | Commit and install from the lock file |
+| Test only the happy path | Invalid inputs can silently become plausible values | Add boundary and property-based tests |
+| Skip load testing | Tail latency and capacity remain unknown until release | Measure a production-like service before deployment |
+
+## When not to use it
 
 | Situation | Proportionate approach |
-|---|---|
+| --- | --- |
 | A one-off exploration that answers a question and ends | A notebook with a fixed seed, committed; no package needed |
 | A prototype to show a stakeholder next week | A small script with a config dict and a pinned environment; package it if it survives |
 | A model that will be retrained or served by anyone other than its author | Everything on this page |
@@ -325,7 +378,7 @@ All of this adds up to a standard worth stating plainly:
 ## Remember
 
 | Idea | In one line |
-|---|---|
+| --- | --- |
 | Notebooks | Great for exploring, poor as systems: hidden state, no interface, untestable |
 | Package layout | `src/` package, one responsibility per module, pure feature functions |
 | Configuration | One typed, frozen, overridable object, logged with every run; secrets elsewhere |
