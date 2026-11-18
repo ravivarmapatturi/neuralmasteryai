@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const SAMPLE_RATE = 16000; // Hz, standard for speech
@@ -16,9 +16,13 @@ const WIDTH = 460;
 const HEIGHT = 160;
 const PAD_L = 120;
 
+const DURATION_PRESETS = [1, 3, 5, 8];
+
 export default function RawAudioCompressionDiagram() {
   const t = useVizTokens();
-  const [duration, setDuration] = useState(3);
+  const { value: autoIdx } = useAutoCycle(DURATION_PRESETS.length, 2800);
+  const [userDuration, setUserDuration] = useState<number | null>(null);
+  const duration = userDuration ?? DURATION_PRESETS[autoIdx];
 
   const rawSamples = duration * SAMPLE_RATE;
   const frames = frameCount(duration);
@@ -32,7 +36,7 @@ export default function RawAudioCompressionDiagram() {
 
   return (
     <VisualizationContainer footer={`${duration}s of audio at ${(SAMPLE_RATE / 1000).toFixed(0)}kHz is ${rawSamples.toLocaleString()} raw amplitude samples -- far too long and low-level a sequence to feed a Transformer directly. Framing it into ${WINDOW_MS}ms windows every ${HOP_MS}ms (the same STFT framing from Audio Fundamentals) collapses that down to ${frames.toLocaleString()} frames -- a ${reduction.toFixed(0)}x reduction, and the actual reason a spectrogram (not the raw waveform) is what gets modeled.`}>
-      <Slider label={`Audio duration`} value={duration} onChange={setDuration} min={1} max={10} format={(v) => `${v}s`} />
+      <Slider label={`Audio duration`} value={duration} onChange={setUserDuration} min={1} max={10} format={(v) => `${v}s`} />
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ display: 'block', marginTop: 8 }}>
         <text x={PAD_L - 10} y={44} textAnchor="end" fontSize={11} fill={t.textSecondary}>Raw samples</text>
         <rect x={PAD_L} y={30} width={barW(rawSamples)} height={24} fill={rawColor} rx={3} />

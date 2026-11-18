@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 // Toy 2D speaker-embedding space (real embeddings are far higher-
@@ -15,9 +15,13 @@ const CANDIDATES = [
 const WIDTH = 420;
 const HEIGHT = 240;
 
+const THRESH_PRESETS = [35, 60, 95, 130];
+
 export default function SpeakerVerificationDiagram() {
   const t = useVizTokens();
-  const [threshold, setThreshold] = useState(60);
+  const { value: autoIdx } = useAutoCycle(THRESH_PRESETS.length, 2800);
+  const [userThreshold, setUserThreshold] = useState<number | null>(null);
+  const threshold = userThreshold ?? THRESH_PRESETS[autoIdx];
 
   const enrolledColor = getConceptColor(t, 'query');
   const acceptColor = t.accentPrimary;
@@ -27,7 +31,7 @@ export default function SpeakerVerificationDiagram() {
 
   return (
     <VisualizationContainer footer={`Threshold = ${threshold}: a candidate is verified as the enrolled speaker only if its embedding distance is below this cutoff. ${results.filter((r) => r.dist < threshold).map((r) => r.id).join(', ') || 'none'} accepted; ${results.filter((r) => r.dist >= threshold).map((r) => r.id).join(', ') || 'none'} rejected. Set the threshold too low and real matches get rejected (false rejects); too high and impostors get accepted (false accepts) -- the same precision/recall tradeoff any threshold-based binary decision faces.`}>
-      <Slider label="Acceptance threshold" value={threshold} onChange={setThreshold} min={10} max={150} format={(v) => `${v}`} />
+      <Slider label="Acceptance threshold" value={threshold} onChange={setUserThreshold} min={10} max={150} format={(v) => `${v}`} />
       <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="nm-fit-svg" style={{ display: 'block', marginTop: 8 }}>
         <circle cx={ENROLLED.x} cy={ENROLLED.y} r={threshold} fill={`${enrolledColor}12`} stroke={enrolledColor} strokeWidth={1} strokeDasharray="4 3" />
         <circle cx={ENROLLED.x} cy={ENROLLED.y} r={8} fill={enrolledColor} />

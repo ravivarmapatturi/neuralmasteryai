@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Task = 'asr' | 'tts' | 'diarization' | 'classification';
@@ -14,7 +14,10 @@ const TASKS: Record<Task, { label: string; input: string; output: string; descri
 
 export default function AudioTaskIODiagram() {
   const t = useVizTokens();
-  const [task, setTask] = useState<Task>('asr');
+  const TASK_KEYS: Task[] = ['asr', 'tts', 'diarization', 'classification'];
+  const { value: autoIdx } = useAutoCycle(TASK_KEYS.length, 3200);
+  const [userTask, setUserTask] = useState<Task | null>(null);
+  const task = userTask ?? TASK_KEYS[autoIdx];
   const info = TASKS[task];
   const inColor = getConceptColor(t, 'query');
   const outColor = getConceptColor(t, 'attention');
@@ -23,7 +26,7 @@ export default function AudioTaskIODiagram() {
     <VisualizationContainer footer={info.description}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         {(Object.keys(TASKS) as Task[]).map((k) => (
-          <VizButton key={k} variant={task === k ? 'primary' : 'secondary'} onClick={() => setTask(k)}>
+          <VizButton key={k} variant={task === k ? 'primary' : 'secondary'} onClick={() => setUserTask(k)}>
             {TASKS[k].label}
           </VizButton>
         ))}

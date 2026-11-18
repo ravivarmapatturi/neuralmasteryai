@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 // One illustrative frame's Mel-band energies -- a plausible voiced-speech
@@ -36,7 +36,9 @@ const PAD = 30;
 
 export default function MfccPipelineDiagram() {
   const t = useVizTokens();
-  const [stage, setStage] = useState<Stage>('mel');
+  const { value: autoIdx } = useAutoCycle(STAGES.length, 3000);
+  const [userStage, setUserStage] = useState<Stage | null>(null);
+  const stage = userStage ?? STAGES[autoIdx].key;
 
   const logMel = MEL_ENERGIES.map((v) => Math.log(v + 1e-3));
   const coeffs = dctII(logMel);
@@ -59,7 +61,7 @@ export default function MfccPipelineDiagram() {
     <VisualizationContainer footer={descriptions[stage]}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         {STAGES.map((s) => (
-          <VizButton key={s.key} variant={stage === s.key ? 'primary' : 'secondary'} onClick={() => setStage(s.key)}>
+          <VizButton key={s.key} variant={stage === s.key ? 'primary' : 'secondary'} onClick={() => setUserStage(s.key)}>
             {s.label}
           </VizButton>
         ))}

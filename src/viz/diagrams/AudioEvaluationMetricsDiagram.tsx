@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 
 type Task = 'asr' | 'tts' | 'diarization' | 'classification';
 
@@ -13,14 +13,17 @@ const METRICS: Record<Task, { task: string; metric: string; measures: string; di
 
 export default function AudioEvaluationMetricsDiagram() {
   const t = useVizTokens();
-  const [task, setTask] = useState<Task>('asr');
+  const TASK_KEYS: Task[] = ['asr', 'tts', 'diarization', 'classification'];
+  const { value: autoIdx } = useAutoCycle(TASK_KEYS.length, 3200);
+  const [userTask, setUserTask] = useState<Task | null>(null);
+  const task = userTask ?? TASK_KEYS[autoIdx];
   const info = METRICS[task];
 
   return (
     <VisualizationContainer footer="Every task here needs its own metric because 'correct' means something different each time -- exact text match, perceived naturalness, correct speaker attribution, and correct label are four genuinely different notions of success.">
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         {(Object.keys(METRICS) as Task[]).map((k) => (
-          <VizButton key={k} variant={task === k ? 'primary' : 'secondary'} onClick={() => setTask(k)}>
+          <VizButton key={k} variant={task === k ? 'primary' : 'secondary'} onClick={() => setUserTask(k)}>
             {METRICS[k].task}
           </VizButton>
         ))}

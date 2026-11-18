@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Stage = 'text' | 'phonemes' | 'mel' | 'waveform';
@@ -22,14 +22,16 @@ const HEIGHT = 110;
 
 export default function TtsPipelineDiagram() {
   const t = useVizTokens();
-  const [stage, setStage] = useState<Stage>('text');
+  const { value: autoIdx } = useAutoCycle(STAGES.length, 2800);
+  const [userStage, setUserStage] = useState<Stage | null>(null);
+  const stage = userStage ?? STAGES[autoIdx].key;
   const color = getConceptColor(t, 'attention');
 
   return (
     <VisualizationContainer footer={EXPLAIN[stage]}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
         {STAGES.map((s) => (
-          <VizButton key={s.key} variant={stage === s.key ? 'primary' : 'secondary'} onClick={() => setStage(s.key)}>
+          <VizButton key={s.key} variant={stage === s.key ? 'primary' : 'secondary'} onClick={() => setUserStage(s.key)}>
             {s.label}
           </VizButton>
         ))}

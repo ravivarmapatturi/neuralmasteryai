@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const TERMS = [
@@ -14,7 +14,9 @@ const TERMS = [
 
 export default function RlhfMappingDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(0);
+  const { value: autoIdx } = useAutoCycle(TERMS.length, 2800);
+  const [userSelected, setUserSelected] = useState<number | null>(null);
+  const selected = userSelected ?? autoIdx;
   const active = TERMS[selected];
 
   return (
@@ -25,7 +27,7 @@ export default function RlhfMappingDiagram() {
           return (
             <div
               key={term.rl}
-              onClick={() => setSelected(i)}
+              onClick={() => setUserSelected(i)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '0.55rem 0.8rem', borderRadius: 8,
                 background: isSelected ? `${t.accentPrimary}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? t.accentPrimary : t.border}`,

@@ -1,4 +1,5 @@
-import React, { useId } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { VizVisibleContext } from './vizVisibility';
 import { useVizTokens, SPACING, FONT_FAMILY } from '../../theme/vizTokens';
 import Watermark from '../../components/notebook/Watermark';
 
@@ -27,9 +28,43 @@ export default function VisualizationContainer({
 }) {
   const t = useVizTokens();
   const footerId = useId();
+  // Live diagrams must never make the page jump: (1) they pause while off
+  // screen, and (2) the frame never shrinks, it keeps the tallest height it has
+  // reached, so cycling between states of different heights can't move the page.
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(true);
+  const [minH, setMinH] = useState(0);
+  const [frozenH, setFrozenH] = useState(0);
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return undefined;
+    let io: IntersectionObserver | undefined;
+    let ro: ResizeObserver | undefined;
+    if (typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver(([e]) => {
+        // leaving the screen: freeze at the current height so nothing inside can move the page
+        if (!e.isIntersecting) setFrozenH(Math.ceil(el.getBoundingClientRect().height));
+        setVisible(e.isIntersecting);
+      }, { rootMargin: '0px' });
+      io.observe(el);
+    }
+    if (typeof ResizeObserver !== 'undefined') {
+      let lastW = 0;
+      ro = new ResizeObserver(() => {
+        const r = el.getBoundingClientRect();
+        // a real width change (window resized, rotated) starts the measure afresh
+        if (Math.abs(r.width - lastW) > 20) { lastW = r.width; setMinH(0); return; }
+        setMinH((m) => (r.height > m + 1 ? Math.ceil(r.height) : m));
+      });
+      ro.observe(el);
+    }
+    return () => { io?.disconnect(); ro?.disconnect(); };
+  }, []);
 
   return (
+    <VizVisibleContext.Provider value={visible}>
     <div
+      ref={frameRef}
       role="group"
       aria-label={title}
       aria-describedby={footer ? footerId : undefined}
@@ -45,6 +80,13 @@ export default function VisualizationContainer({
         color: t.textPrimary,
         maxWidth: '100%',
         boxSizing: 'border-box',
+        minHeight: minH || undefined,
+        // never let the browser anchor scrolling on a moving diagram; it anchors on the text
+        // around it instead, so a diagram growing above the reader can't shift what they read
+        overflowAnchor: 'none',
+        // while off screen the frame keeps a fixed height and clips, so an
+        // animation inside it can never push the page up or down
+        ...(!visible && frozenH ? { height: frozenH, overflow: 'hidden' as const } : {}),
       }}
     >
       <div className="nm-viz-content" style={{ overflowX: 'auto', maxWidth: '100%', WebkitOverflowScrolling: 'touch' }}>
@@ -67,5 +109,6 @@ export default function VisualizationContainer({
       )}
       <Watermark />
     </div>
+    </VizVisibleContext.Provider>
   );
 }

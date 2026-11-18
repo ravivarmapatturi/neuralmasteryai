@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const WIDTH = 560;
@@ -20,7 +20,9 @@ function toXY(t: number, y: number): [number, number] {
 
 export default function BitDepthQuantizationDiagram() {
   const t = useVizTokens();
-  const [bits, setBits] = useState<number>(3);
+  const { value: autoIdx } = useAutoCycle(BIT_OPTIONS.length, 2800);
+  const [userBits, setUserBits] = useState<number | null>(null);
+  const bits = userBits ?? BIT_OPTIONS[autoIdx];
 
   const levels = 2 ** bits;
   const step = 2 / levels;
@@ -56,7 +58,7 @@ export default function BitDepthQuantizationDiagram() {
         </>
       }
     >
-      <PillSelect<number> label="Bit depth" value={bits} onChange={setBits} options={BIT_OPTIONS.map((b) => ({ value: b, label: `${b}-bit` }))} />
+      <PillSelect<number> label="Bit depth" value={bits} onChange={(b) => setUserBits(Number(b))} options={BIT_OPTIONS.map((b) => ({ value: b, label: `${b}-bit` }))} />
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ display: 'block', marginTop: 8 }}>
         {Array.from({ length: levels + 1 }, (_, i) => {
           const y = -1 + i * step;

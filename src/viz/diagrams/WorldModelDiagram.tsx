@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 /** Model-free RL only ever updates from real environment transitions. A
@@ -10,7 +10,10 @@ import { getConceptColor } from './diagramSystem';
  * now only as good as the model it's dreaming inside. */
 export default function WorldModelDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'model-free' | 'model-based'>('model-based');
+  const MODES: ('model-free' | 'model-based')[] = ['model-free', 'model-based'];
+  const { value: autoIdx } = useAutoCycle(MODES.length, 3400);
+  const [userMode, setUserMode] = useState<('model-free' | 'model-based') | null>(null);
+  const mode = userMode ?? MODES[autoIdx];
   const envColor = getConceptColor(t, 'token');
   const modelColor = t.accentDanger;
   const policyColor = t.accentPrimary;
@@ -27,13 +30,13 @@ export default function WorldModelDiagram() {
         {(['model-free', 'model-based'] as const).map((m) => (
           <div
             key={m}
-            onClick={() => setMode(m)}
+            onClick={() => setUserMode(m)}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                setMode(m);
+                setUserMode(m);
               }
             }}
             style={{

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const SOURCE_SENTENCES = [
@@ -17,7 +17,10 @@ type Mode = 'extractive' | 'abstractive';
 
 export default function ExtractiveVsAbstractiveDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('extractive');
+  const MODES: Mode[] = ['extractive', 'abstractive'];
+  const { value: autoIdx } = useAutoCycle(MODES.length, 3500);
+  const [userMode, setUserMode] = useState<Mode | null>(null);
+  const mode = userMode ?? MODES[autoIdx];
 
   return (
     <VisualizationContainer footer={
@@ -25,7 +28,7 @@ export default function ExtractiveVsAbstractiveDiagram() {
         ? 'Every word in the summary came directly from the highlighted source sentences -- guaranteed factually grounded (it\'s literally a subset of the source), but reads as two disconnected facts rather than a composed narrative.'
         : 'Reads fluently as one composed sentence -- but check it against the source: it says "three new markets," the source said "two." A real, planted hallucination, exactly the faithfulness risk abstractive summarization structurally can\'t rule out the way extractive summarization can.'
     }>
-      <PillSelect label="Summary type" value={mode} onChange={(v) => setMode(v as Mode)} options={[
+      <PillSelect label="Summary type" value={mode} onChange={(v) => setUserMode(v as Mode)} options={[
         { value: 'extractive', label: 'Extractive' },
         { value: 'abstractive', label: 'Abstractive' },
       ]} />

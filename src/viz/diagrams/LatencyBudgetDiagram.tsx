@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 interface Zone {
@@ -21,7 +21,10 @@ const MAX_SLIDER = 6000;
 
 export default function LatencyBudgetDiagram() {
   const t = useVizTokens();
-  const [budget, setBudget] = useState(300);
+  const BUDGET_PRESETS = [200, 750, 2500, 6000];
+  const { value: autoIdx } = useAutoCycle(BUDGET_PRESETS.length, 3000);
+  const [userBudget, setUserBudget] = useState<number | null>(null);
+  const budget = userBudget ?? BUDGET_PRESETS[autoIdx];
 
   const isOffline = budget >= MAX_SLIDER;
   const zone = isOffline ? ZONES[ZONES.length - 1] : ZONES.find((z) => budget <= z.maxMs) ?? ZONES[ZONES.length - 1];
@@ -32,7 +35,7 @@ export default function LatencyBudgetDiagram() {
       <Slider
         label="Latency budget"
         value={budget}
-        onChange={setBudget}
+        onChange={setUserBudget}
         min={50}
         max={MAX_SLIDER}
         step={50}

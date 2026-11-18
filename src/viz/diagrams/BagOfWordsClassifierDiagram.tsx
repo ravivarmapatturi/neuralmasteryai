@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect, VisualizationMath } from '../primitives';
+import { VisualizationContainer, PillSelect, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { bagOfWordsScore } from '../lib/nlpTasks';
 
@@ -12,12 +12,14 @@ const EXAMPLES = [
 
 export default function BagOfWordsClassifierDiagram() {
   const t = useVizTokens();
-  const [idx, setIdx] = useState(0);
+  const { value: autoIdx } = useAutoCycle(EXAMPLES.length, 3200);
+  const [userIdx, setUserIdx] = useState<number | null>(null);
+  const idx = userIdx ?? autoIdx;
   const { score, probability, contributions } = useMemo(() => bagOfWordsScore(EXAMPLES[idx]), [idx]);
 
   return (
     <VisualizationContainer footer={`Real sum of per-word sentiment weights = ${score.toFixed(2)}, passed through a real sigmoid = ${(probability * 100).toFixed(1)}% positive. This entire classifier is one dot product between a bag-of-words vector and a learned weight vector -- exactly what a real logistic-regression sentiment classifier computes, just with hand-set weights here instead of ones learned from data.`}>
-      <PillSelect label="Sentence" value={idx} onChange={(v) => setIdx(v as number)} options={EXAMPLES.map((_, i) => ({ value: i, label: `Example ${i + 1}` }))} />
+      <PillSelect label="Sentence" value={idx} onChange={(v) => setUserIdx(v as number)} options={EXAMPLES.map((_, i) => ({ value: i, label: `Example ${i + 1}` }))} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
         {contributions.map((c, i) => (

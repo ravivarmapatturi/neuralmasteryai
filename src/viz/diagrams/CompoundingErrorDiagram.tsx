@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { compoundingErrorTrace } from '../lib/advancedRl';
 
@@ -8,7 +8,10 @@ const STEPS = 30;
 
 export default function CompoundingErrorDiagram() {
   const t = useVizTokens();
-  const [seed, setSeed] = useState(3);
+  const SEEDS = [1, 2, 3, 4, 5];
+  const { value: autoIdx } = useAutoCycle(SEEDS.length, 3000);
+  const [userSeed, setUserSeed] = useState<number | null>(null);
+  const seed = userSeed ?? SEEDS[autoIdx];
   const { compounding, corrected } = useMemo(() => compoundingErrorTrace(STEPS, seed, 0.12), [seed]);
 
   const width = 460;
@@ -34,7 +37,7 @@ export default function CompoundingErrorDiagram() {
         <span><span style={{ color: t.accentPrimary }}>⬤</span> with expert correction (bounded)</span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
-        <VizButton onClick={() => setSeed((s) => s + 1)}>Re-run with new random errors</VizButton>
+        <VizButton onClick={() => setUserSeed((seed % 5) + 1)}>Re-run with new random errors</VizButton>
       </div>
     </VisualizationContainer>
   );

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const WIDTH = 560;
@@ -29,7 +29,9 @@ function toXY(t: number, y: number, height: number): [number, number] {
 
 export default function FourierSumOfSinesDiagram() {
   const t = useVizTokens();
-  const [maxK, setMaxK] = useState<number>(5);
+  const { value: autoIdx } = useAutoCycle(HARMONIC_OPTIONS.length, 2500);
+  const [userHarmonics, setUserHarmonics] = useState<number | null>(null);
+  const maxK = userHarmonics ?? HARMONIC_OPTIONS[autoIdx];
 
   const N = 400;
   const wavePath = Array.from({ length: N }, (_, i) => {
@@ -48,7 +50,7 @@ export default function FourierSumOfSinesDiagram() {
 
   return (
     <VisualizationContainer footer="Every added harmonic is a pure sine wave at a higher frequency, weighted 4/(k·π) -- summing more of them converges toward a square wave, with the persistent overshoot at each edge (Gibbs phenomenon) never fully disappearing no matter how many harmonics are added. This is literally what the Fourier transform decomposes a signal back into, run in reverse.">
-      <PillSelect<number> label="Harmonics included (odd k = 1..N)" value={maxK} onChange={setMaxK} options={HARMONIC_OPTIONS.map((k) => ({ value: k, label: `k ≤ ${k}` }))} />
+      <PillSelect<number> label="Harmonics included (odd k = 1..N)" value={maxK} onChange={(k) => setUserHarmonics(Number(k))} options={HARMONIC_OPTIONS.map((k) => ({ value: k, label: `k ≤ ${k}` }))} />
 
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, marginTop: 8, marginBottom: 2 }}>Time domain: the reconstructed wave</div>
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${WAVE_H}`} style={{ display: 'block' }}>

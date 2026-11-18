@@ -53,9 +53,14 @@ export function LoveNudge({ route }: { route: string }) {
     setShow(false);
     if (readFlag(key)) return;
     const onScroll = () => {
-      const h = document.documentElement;
-      const pct = (window.scrollY + window.innerHeight) / h.scrollHeight;
-      if (pct > 0.5 && h.scrollHeight > window.innerHeight * 2) { setShow(true); window.removeEventListener('scroll', onScroll); }
+      // Show only once the reader has actually scrolled past the middle of the
+      // article itself (not the page while it is still loading and short).
+      const art = document.querySelector('article.prose');
+      if (!art || window.scrollY < 400) return;
+      const r = art.getBoundingClientRect();
+      if (r.height > window.innerHeight * 2 && r.top + r.height / 2 < window.innerHeight * 0.5) {
+        setShow(true); window.removeEventListener('scroll', onScroll);
+      }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
@@ -71,7 +76,7 @@ export function LoveNudge({ route }: { route: string }) {
         background: 'var(--nm-surface, #fff)', color: 'var(--nm-text-primary, #1f2937)', border: '2px solid currentColor',
         borderRadius: '16px 10px 18px 12px', padding: '12px 16px', boxShadow: '0 12px 32px rgba(30,41,90,.18)', animation: 'nmNudgeIn .4s ease' }}>
       <div style={{ fontSize: 19, fontWeight: 700 }}>Enjoying this page? <span style={{ color: RED }}>♥</span></div>
-      <div style={{ fontSize: 16, margin: '2px 0 10px' }}>You're past halfway. If it's helping, send it some love so others find it too.</div>
+      <div style={{ fontSize: 16, margin: '2px 0 10px' }}>If it's helping, send it some love so others find it too.</div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <span onClickCapture={() => writeFlag(key)}><LoveButton route={route} size="lg" /></span>
         <button type="button" onClick={close} style={{ fontFamily: HAND, fontSize: 16, background: 'transparent', color: 'inherit', border: 'none', textDecoration: 'underline', cursor: 'pointer' }}>Not now</button>

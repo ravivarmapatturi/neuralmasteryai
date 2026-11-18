@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens, type VizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 
 const TOKENS = [
@@ -25,14 +25,16 @@ function groupEntities(tokens: typeof TOKENS) {
 
 export default function NerBioTaggingDiagram() {
   const t = useVizTokens();
-  const [hovered, setHovered] = useState<number | null>(null);
+  const { value: autoIdx } = useAutoCycle(TOKENS.length, 1800);
+  const [userHovered, setUserHovered] = useState<number | null>(null);
+  const hovered = userHovered ?? autoIdx;
   const spans = groupEntities(TOKENS);
 
   return (
     <VisualizationContainer footer="B-(begin) and I-(inside) are what let the scheme tell 'two separate one-word entities back to back' apart from 'one multi-word entity' -- a plain 'is this token part of an entity' binary tag couldn't make that distinction at all.">
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {TOKENS.map((tok, i) => (
-          <div key={i} onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)} style={{ textAlign: 'center', cursor: 'default' }}>
+          <div key={i} onMouseEnter={() => setUserHovered(i)} onMouseLeave={() => setUserHovered(null)} style={{ textAlign: 'center', cursor: 'default' }}>
             <div style={{ padding: '5px 10px', borderRadius: DIAGRAM_RADIUS.chip, background: `${colorFor(t, tok.tag)}18`, border: `1.5px solid ${hovered === i ? t.accentWarn : colorFor(t, tok.tag)}`, fontFamily: 'monospace', fontSize: 13 }}>
               {tok.word}
             </div>

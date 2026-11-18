@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const BLANK = '-';
@@ -30,7 +30,10 @@ const CELL = 26;
 
 export default function CtcAlignmentDiagram() {
   const t = useVizTokens();
-  const [example, setExample] = useState<keyof typeof EXAMPLES>('hello');
+  const EXAMPLE_KEYS = Object.keys(EXAMPLES);
+  const { value: autoIdx } = useAutoCycle(EXAMPLE_KEYS.length, 3200);
+  const [userExample, setUserExample] = useState<string | null>(null);
+  const example = (userExample ?? EXAMPLE_KEYS[autoIdx]) as keyof typeof EXAMPLES;
   const frames = EXAMPLES[example];
   const { afterMerge, final } = collapse(frames);
   const color = getConceptColor(t, 'attention');
@@ -43,7 +46,7 @@ export default function CtcAlignmentDiagram() {
       <PillSelect<string>
         label="Example"
         value={example}
-        onChange={(v) => setExample(v as keyof typeof EXAMPLES)}
+        onChange={(v) => setUserExample(v)}
         options={[
           { value: 'hello', label: '"HELLO"' },
           { value: 'speed', label: '"SPEED"' },

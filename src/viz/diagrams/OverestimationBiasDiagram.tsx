@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { overestimationBiasSimulation } from '../lib/advancedRl';
 
 export default function OverestimationBiasDiagram() {
   const t = useVizTokens();
-  const [seed, setSeed] = useState(1);
+  const SEEDS = [1, 2, 3, 4, 5];
+  const { value: autoIdx } = useAutoCycle(SEEDS.length, 2800);
+  const [userSeed, setUserSeed] = useState<number | null>(null);
+  const seed = userSeed ?? SEEDS[autoIdx];
   const result = useMemo(() => overestimationBiasSimulation(400, seed), [seed]);
 
   const rows = [
@@ -40,7 +43,7 @@ export default function OverestimationBiasDiagram() {
         <div style={{ fontSize: 11, color: t.textMuted }}>true optimal value (at the real best action): <strong style={{ color: t.textPrimary }}>{result.trueOptimal.toFixed(3)}</strong></div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-        <VizButton onClick={() => setSeed((s) => s + 1)}>Re-run with a new noise seed</VizButton>
+        <VizButton onClick={() => setUserSeed((seed % 5) + 1)}>Re-run with a new noise seed</VizButton>
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 6 }}>
         The gap isn't a fluke of one bad run -- re-running with a fresh seed keeps producing a real gap for the single critic, because taking a max over noisy estimates is a statistically biased estimator of the max of the true values, regardless of which specific noise was drawn.

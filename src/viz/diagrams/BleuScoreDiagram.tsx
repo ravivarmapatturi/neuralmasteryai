@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { ngramPrecision, simpleBleu } from '../lib/nlpTasks';
 
@@ -13,7 +13,9 @@ const CANDIDATES = [
 
 export default function BleuScoreDiagram() {
   const t = useVizTokens();
-  const [idx, setIdx] = useState(1);
+  const { value: autoIdx } = useAutoCycle(CANDIDATES.length, 3200);
+  const [userIdx, setUserIdx] = useState<number | null>(null);
+  const idx = userIdx ?? autoIdx;
   const candidate = CANDIDATES[idx];
 
   const { p1, p2, bleu } = useMemo(() => ({
@@ -24,7 +26,7 @@ export default function BleuScoreDiagram() {
 
   return (
     <VisualizationContainer footer={`Real unigram precision (fraction of candidate words found in the reference) = ${(p1 * 100).toFixed(0)}%; real bigram precision = ${(p2 * 100).toFixed(0)}%; BLEU-style score (geometric mean) = ${(bleu * 100).toFixed(1)}%. ${idx === 1 ? 'A genuinely valid paraphrase still scores well below 100% -- BLEU rewards n-gram overlap with ONE specific reference wording, not meaning.' : idx === 2 ? 'Rearranged words score deceptively high on unigram overlap alone -- bigram precision is what catches the reordering, which is exactly why BLEU uses multiple n-gram orders, not just unigrams.' : ''}`}>
-      <PillSelect label="Candidate translation" value={idx} onChange={(v) => setIdx(v as number)} options={CANDIDATES.map((c, i) => ({ value: i, label: c.label }))} />
+      <PillSelect label="Candidate translation" value={idx} onChange={(v) => setUserIdx(v as number)} options={CANDIDATES.map((c, i) => ({ value: i, label: c.label }))} />
 
       <div style={{ marginTop: 10, fontFamily: 'monospace', fontSize: 13 }}>
         <div style={{ color: t.textMuted }}>reference: <span style={{ color: t.textPrimary }}>{REFERENCE}</span></div>

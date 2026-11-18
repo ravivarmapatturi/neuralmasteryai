@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, valueColor } from './diagramSystem';
 
 const SR = 64;
@@ -61,7 +61,9 @@ const PAD_TOP = 14;
 
 export default function StftWindowTradeoffDiagram() {
   const t = useVizTokens();
-  const [window, setWindow] = useState<number>(16);
+  const { value: autoIdx } = useAutoCycle(WINDOW_OPTIONS.length, 3000);
+  const [userWindow, setUserWindow] = useState<number | null>(null);
+  const window = userWindow ?? WINDOW_OPTIONS[autoIdx];
 
   const signal = useMemo(generateSignal, []);
   const { frames, freqBins } = useMemo(() => computeSpectrogram(signal, window), [signal, window]);
@@ -84,7 +86,7 @@ export default function StftWindowTradeoffDiagram() {
         )
       }
     >
-      <PillSelect<number> label="STFT window size (samples)" value={window} onChange={setWindow} options={WINDOW_OPTIONS.map((w) => ({ value: w, label: `${w}` }))} />
+      <PillSelect<number> label="STFT window size (samples)" value={window} onChange={setUserWindow} options={WINDOW_OPTIONS.map((w) => ({ value: w, label: `${w}` }))} />
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT + PAD_TOP}`} style={{ display: 'block', marginTop: 8 }}>
         <text x={PAD_L + plotW / 2} y={10} textAnchor="middle" fontSize={9} fill={t.textMuted}>tone 2 actually starts here</text>
         {frames.map((mags, fi) =>

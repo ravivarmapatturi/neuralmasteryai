@@ -558,3 +558,45 @@ Pages covered:
 - Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
 - Layer 3 (`check:notebook`): 0 violations.
 - Visual inspection: Verified all 46 components maintain proper SVG viewBox bounds, responsive containers, and zero text/label overlaps.
+
+## Codex batch 10 (done by agy)
+
+### Motion Rationales:
+1. `DependencyVsConstituencyDiagram.tsx`: Autocycles between dependency grammar (directed relations from head "chases" to subject and object) and constituency phrase tree hierarchy.
+2. `NerBioTaggingDiagram.tsx`: Autocycles hovered token position across the sentence, demonstrating sequential BIO tag evaluation and entity span grouping.
+3. `StemmingVsLemmatizationDiagram.tsx`: Autocycles across test words, highlighting comparative rows where blind suffix stripping fails on irregulars while vocabulary lemmatization succeeds.
+4. `TokenizationAmbiguityDiagram.tsx`: Autocycles across text examples to contrast naive whitespace token splitting against rule-based sentence and abbreviation boundary handling.
+5. `BagOfWordsClassifierDiagram.tsx`: Autocycles sentiment text examples, computing live word weight accumulation and passing sum through sigmoid activation.
+6. `BleuScoreDiagram.tsx`: Autocycles translation candidate sentences (exact match, paraphrase, word-order permutation), computing n-gram precision and BLEU score degradation.
+7. `ExtractiveQaSpanDiagram.tsx`: Autocycles passage question presets, computing live start and end token softmax probabilities to extract exact answer spans without hallucination.
+8. `ExtractiveVsAbstractiveDiagram.tsx`: Autocycles between extractive sentence subset selection and abstractive generative composition containing a planted factual distortion.
+9. `NegativeSamplingCostDiagram.tsx`: Autocycles vocabulary size presets [10,000, 30,000, 50,000, 100,000, 200,000], visualizing the widening constant k+1 versus linear O(V) compute gap.
+10. `BitDepthQuantizationDiagram.tsx`: Autocycles bit depth quantization levels [2, 3, 4, 8 bits], visualizing stair-step rounding error against the analog sinusoid.
+11. `FourierSumOfSinesDiagram.tsx`: Autocycles harmonic counts [1, 3, 5, 9, 15, 25], demonstrating Fourier synthesis convergence toward a square wave with Gibbs phenomenon edge ringing.
+12. `MelScaleDiagram.tsx`: Autocycles probe frequencies across the Mel curve, illustrating non-linear compression where lower frequencies claim disproportionate perceptual bandwidth.
+13. `MfccPipelineDiagram.tsx`: Autocycles MFCC pipeline stages (Mel filterbank -> log compression -> DCT decorrelation -> low-order coefficient truncation).
+14. `SamplingNyquistDiagram.tsx`: Autocycles sample counts across the window, demonstrating Nyquist sampling threshold crossing and the emergence of lower-frequency folding aliases.
+15. `StftWindowTradeoffDiagram.tsx`: Autocycles STFT window sample sizes [8, 16, 32, 64], displaying the fundamental Gabor uncertainty trade-off between time resolution and frequency resolution.
+16. `WaveformSpectrogramDiagram.tsx`: Animates a synchronized playback scanline traversing the time-domain waveform and time-frequency STFT spectrogram in lockstep.
+17. `AudioEvaluationMetricsDiagram.tsx`: Autocycles audio task evaluation frameworks (ASR WER, TTS MOS, Diarization DER, Audio Classification F1), detailing operational metrics.
+18. `AudioTaskIODiagram.tsx`: Autocycles audio task types (ASR, TTS, Diarization, Audio Classification), illustrating transformation modalities across waveform and symbolic text.
+19. `LatencyBudgetDiagram.tsx`: Autocycles latency budgets from turn-taking voice assistants (200ms) to offline batch transcription (6000ms), highlighting streaming vs batch architectural tradeoffs.
+20. `RawAudioCompressionDiagram.tsx`: Autocycles audio duration presets, demonstrating the 160:1 sample-to-frame data reduction ratio achieved by 25ms STFT framing at 10ms hops.
+21. `CtcAlignmentDiagram.tsx`: Autocycles CTC alignment examples ("hello", "speed"), showing consecutive character deduplication followed by blank symbol removal.
+22. `DiarizationTimelineDiagram.tsx`: Autocycles active speech segment selection along the conversational timeline, identifying speaker A, speaker B, and inter-turn silence boundaries.
+23. `SpeakerVerificationDiagram.tsx`: Autocycles embedding distance acceptance thresholds, showing candidate speaker enrollment verification circles dynamically separating genuine from imposter speakers.
+24. `SpeechEnhancementDiagram.tsx`: Autocycles acoustic noise levels [0.1, 0.4, 0.7, 0.95], showing clean signal, additive noise corruption, and denoised spectral reconstruction.
+25. `TtsPipelineDiagram.tsx`: Autocycles text-to-speech synthesis stages (raw text -> phoneme sequence -> Mel spectrogram acoustic model -> neural vocoder waveform).
+26. `CompoundingErrorDiagram.tsx`: Autocycles random simulation seeds, illustrating behavioral cloning error trajectory divergence contrasting against bounded DAgger expert corrections.
+27. `OfflineRlExtrapolationDiagram.tsx`: Autocycles polynomial value function fitting degrees, contrasting standard unconstrained OOD peak extrapolation against regularized conservative value estimation.
+28. `OverestimationBiasDiagram.tsx`: Autocycles simulation seeds, demonstrating positive maximization noise in single-critic Q-learning contrasted against clipped double Q-learning (TD3).
+29. `RlhfMappingDiagram.tsx`: Autocycles RL-to-LLM conceptual mappings (policy, state, action, reward model, environment, PPO/GRPO updates).
+30. `SacEntropyDiagram.tsx`: Autocycles temperature entropy coefficient alpha across the critical crossover threshold alpha*, flipping the Soft Actor-Critic objective between greedy and exploratory policies.
+31. `WorldModelDiagram.tsx`: Autocycles between sample-expensive real environment model-free RL and learned world model internal rollout dreaming.
+32. `BanditRegretRaceDiagram.tsx`: Autocycles trial horizon pulls [200, 800, 2000, 4500], illustrating UCB1's initial exploration penalty transitioning to sublinear regret dominance over linear epsilon-greedy.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Visual inspection: Verified all 32 components maintain proper SVG viewBox bounds, responsive containers, and zero text/label overlaps.

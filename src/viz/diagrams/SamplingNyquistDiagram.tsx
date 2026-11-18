@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath, Slider } from '../primitives';
+import { VisualizationContainer, VisualizationMath, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const TRUE_FREQ = 6; // cycles across the window -- the "real" tone being sampled
@@ -29,9 +29,13 @@ function aliasedFrequency(trueFreq: number, samplesPerWindow: number): number {
   return folded;
 }
 
+const SAMPLE_PRESETS = [24, 16, 12, 8, 6];
+
 export default function SamplingNyquistDiagram() {
   const t = useVizTokens();
-  const [samplesPerWindow, setSamplesPerWindow] = useState(20);
+  const { value: autoIdx } = useAutoCycle(SAMPLE_PRESETS.length, 2800);
+  const [userSamples, setUserSamples] = useState<number | null>(null);
+  const samplesPerWindow = userSamples ?? SAMPLE_PRESETS[autoIdx];
 
   const nyquistRate = 2 * TRUE_FREQ;
   const aliased = samplesPerWindow < nyquistRate;
@@ -73,7 +77,7 @@ export default function SamplingNyquistDiagram() {
         )
       }
     >
-      <Slider label="Sampling rate (samples per window)" value={samplesPerWindow} onChange={setSamplesPerWindow} min={3} max={40} format={(v) => `${v}`} />
+      <Slider label="Sampling rate (samples per window)" value={samplesPerWindow} onChange={setUserSamples} min={3} max={40} format={(v) => `${v}`} />
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={PAD} y1={HEIGHT / 2} x2={WIDTH - PAD} y2={HEIGHT / 2} stroke={t.border} strokeWidth={1} />
         <path d={truePath} fill="none" stroke={signalColor} strokeWidth={1.5} strokeOpacity={0.5} />

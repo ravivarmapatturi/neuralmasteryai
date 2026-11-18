@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 interface Segment {
@@ -25,7 +25,9 @@ const ROW_H = 44;
 
 export default function DiarizationTimelineDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState<number | null>(null);
+  const { value: autoIdx } = useAutoCycle(SEGMENTS.length, 2200);
+  const [userSelected, setUserSelected] = useState<number | null>(null);
+  const selected = userSelected ?? autoIdx;
   const colorA = getConceptColor(t, 'query');
   const colorB = getConceptColor(t, 'key');
   const colorFor = (s: Segment['speaker']) => (s === 'A' ? colorA : s === 'B' ? colorB : t.textMuted);
@@ -57,7 +59,7 @@ export default function DiarizationTimelineDiagram() {
               stroke={isSelected ? colorFor(s.speaker) : 'transparent'}
               strokeWidth={2}
               style={{ cursor: 'pointer' }}
-              onClick={() => setSelected(i)}
+              onClick={() => setUserSelected(i)}
             />
           );
         })}

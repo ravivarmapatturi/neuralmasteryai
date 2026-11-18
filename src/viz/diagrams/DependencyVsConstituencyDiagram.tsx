@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 type Mode = 'dependency' | 'constituency';
@@ -8,7 +8,10 @@ const SENTENCE = ['The', 'dog', 'chases', 'the', 'cat'];
 
 export default function DependencyVsConstituencyDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('dependency');
+  const MODES: Mode[] = ['dependency', 'constituency'];
+  const { value: autoIdx } = useAutoCycle(MODES.length, 3500);
+  const [userMode, setUserMode] = useState<Mode | null>(null);
+  const mode = userMode ?? MODES[autoIdx];
 
   const wordX = (i: number) => 40 + i * 90;
   const baseY = 140;
@@ -19,7 +22,7 @@ export default function DependencyVsConstituencyDiagram() {
         ? '"chases" is the root -- both "dog" (subject) and "cat" (object) depend directly on it, "The"/"the" depend on their nouns. A directed graph exposing "who did what to whom" directly, useful for information extraction.'
         : 'Nested phrase structure: [S [NP The dog] [VP chases [NP the cat]]] -- a formal-grammar tree, the structure a sentence diagram represents, made rigorous.'
     }>
-      <PillSelect label="Representation" value={mode} onChange={(v) => setMode(v as Mode)} options={[
+      <PillSelect label="Representation" value={mode} onChange={(v) => setUserMode(v as Mode)} options={[
         { value: 'dependency', label: 'Dependency parse' },
         { value: 'constituency', label: 'Constituency parse' },
       ]} />

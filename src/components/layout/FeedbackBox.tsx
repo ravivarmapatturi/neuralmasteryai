@@ -29,7 +29,7 @@ export default function FeedbackBox({ route }: { route: string }) {
     }
   };
 
-  const box = { fontFamily: HAND, border: '2px solid var(--nm-text-primary)', borderRadius: '16px 10px 18px 12px', padding: '14px 18px', margin: '1.5rem auto 0.5rem', maxWidth: 820, color: 'var(--nm-text-primary)' } as const;
+  const box = { fontFamily: HAND, border: '2px solid var(--nm-text-primary)', borderRadius: '16px 10px 18px 12px', padding: '14px 18px', margin: '1.5rem auto 0.5rem', maxWidth: 860, color: 'var(--nm-text-primary)' } as const;
   if (state === 'sent') {
     return <div style={box} role="status"><b>Thank you.</b> Your note went straight to the person who writes these pages.</div>;
   }

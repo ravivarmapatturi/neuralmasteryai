@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { entropy, expectedValue } from '../lib/advancedRl';
 
@@ -18,9 +18,13 @@ function Bars({ probs, color }: { probs: number[]; color: string }) {
   );
 }
 
+const ALPHA_PRESETS = [0.05, 0.12, 0.22, 0.38];
+
 export default function SacEntropyDiagram() {
   const t = useVizTokens();
-  const [alpha, setAlpha] = useState(0.15);
+  const { value: autoIdx } = useAutoCycle(ALPHA_PRESETS.length, 3000);
+  const [userAlpha, setUserAlpha] = useState<number | null>(null);
+  const alpha = userAlpha ?? ALPHA_PRESETS[autoIdx];
 
   const { meanQA, HA, meanQB, HB, alphaStar } = useMemo(() => {
     const meanQA = expectedValue(POLICY_PEAKED, ACTION_Q);
@@ -37,7 +41,7 @@ export default function SacEntropyDiagram() {
 
   return (
     <VisualizationContainer footer={`J = E[Q] + α·H(π). At α=${alpha.toFixed(2)}: J(peaked) = ${meanQA.toFixed(3)} + ${alpha.toFixed(2)}×${HA.toFixed(3)} = ${objA.toFixed(3)}; J(spread) = ${meanQB.toFixed(3)} + ${alpha.toFixed(2)}×${HB.toFixed(3)} = ${objB.toFixed(3)}. SAC's objective currently prefers policy ${winner}. Real crossover at α* = ${alphaStar.toFixed(3)} -- push the slider past it and the winner flips.`}>
-      <Slider label="entropy coefficient α" value={alpha} onChange={setAlpha} min={0} max={0.5} step={0.01} />
+      <Slider label="entropy coefficient α" value={alpha} onChange={setUserAlpha} min={0} max={0.5} step={0.01} />
 
       <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 180, padding: 10, borderRadius: 8, background: winner === 'A' ? `${t.accentPrimary}18` : t.surfaceAlt, border: `1.5px solid ${winner === 'A' ? t.accentPrimary : t.border}` }}>

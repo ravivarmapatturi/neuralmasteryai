@@ -11,3 +11,4 @@ export { default as VisualizationMath } from './VisualizationMath';
 export { default as SelectableRow } from './SelectableRow';
 export { FlowDots, Pulse, PulseRect, line } from './LiveFlow';
 export { useAutoCycle } from './useAutoCycle';
+export { VizVisibleContext, useVizVisible } from './vizVisibility';

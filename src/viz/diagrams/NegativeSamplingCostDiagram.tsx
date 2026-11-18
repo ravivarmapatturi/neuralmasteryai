@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 // Real per-training-step operation counts: full softmax needs one
@@ -10,9 +10,13 @@ import { DIAGRAM_TYPE } from './diagramSystem';
 function fullSoftmaxOps(vocabSize: number): number { return vocabSize; }
 function negativeSamplingOps(k: number): number { return k + 1; }
 
+const VOCAB_PRESETS = [10000, 30000, 50000, 100000, 200000];
+
 export default function NegativeSamplingCostDiagram() {
   const t = useVizTokens();
-  const [vocabSize, setVocabSize] = useState(50000);
+  const { value: autoIdx } = useAutoCycle(VOCAB_PRESETS.length, 2800);
+  const [userVocab, setUserVocab] = useState<number | null>(null);
+  const vocabSize = userVocab ?? VOCAB_PRESETS[autoIdx];
   const [k, setK] = useState(10);
 
   const fullOps = useMemo(() => fullSoftmaxOps(vocabSize), [vocabSize]);
@@ -26,7 +30,7 @@ export default function NegativeSamplingCostDiagram() {
   return (
     <VisualizationContainer footer={`Real per-step operation count: full softmax = vocabulary size = ${fullOps.toLocaleString()} scored words, every single training step. Negative sampling = k+1 = ${nsOps} scored words (1 true context word + ${k} negative samples). Real speedup: ${speedup.toFixed(0)}x fewer scored words per step -- this is the actual mechanism behind "a large practical speedup," not a vague claim.`}>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <Slider label="vocabulary size" value={vocabSize} onChange={setVocabSize} min={1000} max={200000} step={1000} format={(v) => v.toLocaleString()} />
+        <Slider label="vocabulary size" value={vocabSize} onChange={setUserVocab} min={1000} max={200000} step={1000} format={(v) => v.toLocaleString()} />
         <Slider label="negative samples (k)" value={k} onChange={setK} min={2} max={30} step={1} />
       </div>
 

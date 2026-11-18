@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, VizButton, ControlRow } from '../primitives';
+import { VisualizationContainer, Slider, VizButton, ControlRow, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { N_ARMS, OPTIMAL_PROB, simulateBandits, TRUE_PROBS } from '../lib/bandits';
 
@@ -16,7 +16,10 @@ const PAD = 36;
  * regret eventually overtakes epsilon-greedy's linear regret. */
 export default function BanditRegretRaceDiagram() {
   const t = useVizTokens();
-  const [horizon, setHorizon] = useState(500);
+  const HORIZON_PRESETS = [200, 800, 2000, 4500];
+  const { value: autoIdx } = useAutoCycle(HORIZON_PRESETS.length, 3000);
+  const [userHorizon, setUserHorizon] = useState<number | null>(null);
+  const horizon = userHorizon ?? HORIZON_PRESETS[autoIdx];
   const [seed, setSeed] = useState(42);
 
   const trace = useMemo(() => simulateBandits(5000, seed), [seed]);
@@ -58,7 +61,7 @@ export default function BanditRegretRaceDiagram() {
     <VisualizationContainer footer={footer} title="Cumulative regret: epsilon-greedy vs UCB1 vs Thompson Sampling">
       <ControlRow>
         <div style={{ minWidth: 220 }}>
-          <Slider label="Pulls (horizon)" value={horizon} onChange={setHorizon} min={20} max={5000} step={20} format={(v) => String(v)} />
+          <Slider label="Pulls (horizon)" value={horizon} onChange={setUserHorizon} min={20} max={5000} step={20} format={(v) => String(v)} />
         </div>
         <VizButton variant="secondary" onClick={() => setSeed((s) => s + 1)}>Re-run with a new seed</VizButton>
       </ControlRow>

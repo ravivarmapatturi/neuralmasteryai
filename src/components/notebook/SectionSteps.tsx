@@ -81,7 +81,7 @@ export default function SectionSteps() {
 
   return (
     <nav ref={boxRef} aria-label="Page steps" className="nm-section-steps not-prose"
-      style={{ position: 'sticky', top: 56, zIndex: 20, margin: '0 0 28px', padding: '10px 0 14px', maxWidth: 820,
+      style={{ position: 'sticky', top: 56, zIndex: 20, margin: '0 auto 28px', padding: '10px 0 14px', maxWidth: 860,
         background: paper, boxShadow: `0 -12px 0 ${paper}`, fontFamily: FONT_FAMILY, color: t.textPrimary }}>
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px 9px', background: t.surface,
         border: `1.8px solid ${t.textPrimary}`, borderRadius: '14px 9px 15px 10px', overflow: 'hidden',

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_RADIUS } from './diagramSystem';
 import { naiveWhitespaceTokenize, ruleBasedTokenize } from '../lib/classicalNlp';
 
@@ -24,7 +24,9 @@ function TokenRow({ tokens, color }: { tokens: string[]; color: string }) {
 
 export default function TokenizationAmbiguityDiagram() {
   const t = useVizTokens();
-  const [exampleIdx, setExampleIdx] = useState(0);
+  const { value: autoIdx } = useAutoCycle(EXAMPLES.length, 3400);
+  const [userExampleIdx, setUserExampleIdx] = useState<number | null>(null);
+  const exampleIdx = userExampleIdx ?? autoIdx;
   const text = EXAMPLES[exampleIdx];
 
   const naive = naiveWhitespaceTokenize(text);
@@ -32,7 +34,7 @@ export default function TokenizationAmbiguityDiagram() {
 
   return (
     <VisualizationContainer footer={`Naive whitespace split produces ${naive.length} tokens; the rule-based tokenizer produces ${ruled.length} -- it correctly keeps "Dr." intact (not splitting the abbreviation's period as a separate sentence-ending token) while still separating the trailing period after "arrive" and the contraction "didn't"/"can't" as single tokens. Real string processing, not a picture of the concept.`}>
-      <PillSelect label="Example" value={exampleIdx} onChange={(v) => setExampleIdx(v as number)} options={EXAMPLES.map((_, i) => ({ value: i, label: `Example ${i + 1}` }))} />
+      <PillSelect label="Example" value={exampleIdx} onChange={(v) => setUserExampleIdx(v as number)} options={EXAMPLES.map((_, i) => ({ value: i, label: `Example ${i + 1}` }))} />
 
       <div style={{ fontFamily: 'monospace', fontSize: 13, color: t.textSecondary, margin: '8px 0' }}>"{text}"</div>
 

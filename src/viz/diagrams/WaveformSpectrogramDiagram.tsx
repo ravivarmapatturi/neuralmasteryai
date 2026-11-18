@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor, valueColor } from './diagramSystem';
 
 const SR = 64; // samples/sec, arbitrary demo units
@@ -87,6 +87,8 @@ export default function WaveformSpectrogramDiagram() {
 
   const cellW = plotW / frames.length;
   const cellH = SPEC_H / FREQ_BINS;
+  const { value: activeFrame } = useAutoCycle(frames.length, 140);
+  const cursorX = PAD_L + (activeFrame / Math.max(1, frames.length - 1)) * plotW;
 
   return (
     <VisualizationContainer footer="Two steady tones are invisible as distinct things in the raw waveform (top -- just a busy oscillating line) but appear as two clean, constant horizontal bands in the spectrogram (bottom). The rising diagonal band is the chirp: a linearly increasing frequency, unreadable in the waveform but immediately obvious once you're looking at the frequency domain. Every cell below is a real magnitude computed by a short-time DFT over that time window -- this is what an STFT actually produces, not an illustration of one.">
@@ -94,6 +96,7 @@ export default function WaveformSpectrogramDiagram() {
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${WAVE_H}`} style={{ display: 'block' }}>
         <line x1={PAD_L} y1={WAVE_H / 2} x2={WIDTH - PAD_R} y2={WAVE_H / 2} stroke={t.border} strokeWidth={1} />
         <path d={wavePath} fill="none" stroke={waveColor} strokeWidth={1} />
+        <line x1={cursorX} y1={0} x2={cursorX} y2={WAVE_H} stroke={t.accentWarn} strokeWidth={1.5} opacity={0.8} />
       </svg>
 
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, marginTop: 10, marginBottom: 2 }}>Spectrogram (frequency domain, via STFT)</div>

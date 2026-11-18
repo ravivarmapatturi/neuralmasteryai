@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const N = 200;
@@ -17,9 +17,13 @@ function noiseAt(i: number): number {
 const WIDTH = 460;
 const ROW_H = 90;
 
+const NOISE_PRESETS = [0.1, 0.4, 0.7, 0.95];
+
 export default function SpeechEnhancementDiagram() {
   const t = useVizTokens();
-  const [noiseLevel, setNoiseLevel] = useState(0.4);
+  const { value: autoIdx } = useAutoCycle(NOISE_PRESETS.length, 2800);
+  const [userNoise, setUserNoise] = useState<number | null>(null);
+  const noiseLevel = userNoise ?? NOISE_PRESETS[autoIdx];
 
   const cleanColor = getConceptColor(t, 'attention');
   const noisyColor = t.accentDanger;
@@ -35,7 +39,7 @@ export default function SpeechEnhancementDiagram() {
 
   return (
     <VisualizationContainer footer="Speech enhancement is trained as exactly this mapping: given the noisy waveform (or its spectrogram), predict the clean one. The training pairs are synthetic on purpose -- take real clean speech, mix in real or synthetic noise at a controlled level, and train the model to recover the (known) clean original -- which is why the noise slider above changes the difficulty of the reconstruction the model has to learn.">
-      <Slider label="Noise level" value={noiseLevel} onChange={setNoiseLevel} min={0} max={1} step={0.05} format={(v) => v.toFixed(2)} />
+      <Slider label="Noise level" value={noiseLevel} onChange={setUserNoise} min={0} max={1} step={0.05} format={(v) => v.toFixed(2)} />
 
       <div style={{ fontSize: DIAGRAM_TYPE.secondaryLabel.size, color: t.textMuted, margin: '8px 0 2px' }}>Noisy input</div>
       <svg width={WIDTH} height={ROW_H} viewBox={`0 0 ${WIDTH} ${ROW_H}`} className="nm-fit-svg" style={{ display: 'block', border: `1px solid ${t.border}`, borderRadius: 6 }}>
