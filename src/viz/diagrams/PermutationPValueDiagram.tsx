@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generateGroups, permutationTest } from '../lib/probstat';
 
+const EFFECT_PRESETS = [0.05, 0.25, 0.55, 0.90];
+
 export default function PermutationPValueDiagram() {
   const t = useVizTokens();
-  const [effect, setEffect] = useState(0.3);
+  const { value: autoIdx } = useAutoCycle(EFFECT_PRESETS.length, 3000);
+  const [userEffect, setUserEffect] = useState<number | null>(null);
+  const effect = userEffect ?? EFFECT_PRESETS[autoIdx];
 
   const { pValue, observed, permutedDiffs } = useMemo(() => {
     const { groupA, groupB } = generateGroups(11, 40, 40, 0, effect, 1);
@@ -22,7 +26,7 @@ export default function PermutationPValueDiagram() {
 
   return (
     <VisualizationContainer footer={`Real observed difference in means = ${observed.toFixed(3)}. 500 real permutations (shuffling group labels, recomputing the difference each time) build the histogram below -- the REAL empirical null distribution, no Gaussian assumption. p-value = fraction of permuted differences at least as extreme as observed = ${pValue.toFixed(3)}. This is the exact mechanism, not a formula plugged into a table.`}>
-      <Slider label="real underlying effect size" value={effect} onChange={setEffect} min={0} max={1} step={0.02} />
+      <Slider label="real underlying effect size" value={effect} onChange={setUserEffect} min={0} max={1} step={0.02} />
 
       <div style={{ position: 'relative', height: 140, marginTop: 12 }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: '100%' }}>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { symmetricEigenvalues2, type Mat2 } from '../lib/linalg';
 
@@ -12,9 +12,13 @@ const HESSIANS: Record<Kind, Mat2> = {
 };
 const LABELS: Record<Kind, string> = { min: 'local minimum', max: 'local maximum', saddle: 'saddle point' };
 
+const KINDS: Kind[] = ['saddle', 'min', 'max'];
+
 export default function HessianCurvatureDiagram() {
   const t = useVizTokens();
-  const [kind, setKind] = useState<Kind>('saddle');
+  const { value: autoIdx } = useAutoCycle(KINDS.length, 3000);
+  const [userKind, setUserKind] = useState<Kind | null>(null);
+  const kind = userKind ?? KINDS[autoIdx];
   const H = HESSIANS[kind];
   const [l1, l2] = symmetricEigenvalues2(H);
 
@@ -23,7 +27,7 @@ export default function HessianCurvatureDiagram() {
 
   return (
     <VisualizationContainer footer={`Real eigenvalues of this Hessian: λ = [${l1.toFixed(1)}, ${l2.toFixed(1)}]. ${l1 > 0 && l2 > 0 ? 'Both positive → positive definite → local MINIMUM.' : l1 < 0 && l2 < 0 ? 'Both negative → negative definite → local MAXIMUM.' : 'Mixed signs → indefinite → SADDLE POINT: a minimum along one axis, a maximum along the other, simultaneously -- flat gradient (∇f=0), but not actually a minimum.'}`}>
-      <PillSelect label="Critical point type" value={kind} onChange={(v) => setKind(v as Kind)} options={[
+      <PillSelect label="Critical point type" value={kind} onChange={(v) => setUserKind(v as Kind)} options={[
         { value: 'min', label: 'Minimum' },
         { value: 'max', label: 'Maximum' },
         { value: 'saddle', label: 'Saddle' },

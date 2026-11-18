@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Pattern = 'vertical' | 'horizontal' | 'diagonal';
+
+const PATTERNS: Pattern[] = ['diagonal', 'vertical', 'horizontal'];
 
 const IMG_SIZE = 12;
 const CELL_PX = 4; // pixels per HOG cell
@@ -45,7 +47,9 @@ const CELL_DRAW = 44;
 
 export default function HogFeatureDiagram() {
   const t = useVizTokens();
-  const [pattern, setPattern] = useState<Pattern>('diagonal');
+  const { value: autoIdx } = useAutoCycle(PATTERNS.length, 3000);
+  const [userPattern, setUserPattern] = useState<Pattern | null>(null);
+  const pattern = userPattern ?? PATTERNS[autoIdx];
   const img = buildImage(pattern);
   const cells = computeCellHistograms(img);
   const maxMag = Math.max(...cells.flat(2), 1e-6);
@@ -56,7 +60,7 @@ export default function HogFeatureDiagram() {
       <PillSelect<Pattern>
         label="Edge pattern"
         value={pattern}
-        onChange={setPattern}
+        onChange={setUserPattern}
         options={[
           { value: 'vertical', label: 'Vertical edge' },
           { value: 'horizontal', label: 'Horizontal edge' },

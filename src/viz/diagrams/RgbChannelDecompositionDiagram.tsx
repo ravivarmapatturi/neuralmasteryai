@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 type View = 'rgb' | 'r' | 'g' | 'b' | 'gray';
+
+const VIEWS: View[] = ['rgb', 'r', 'g', 'b', 'gray'];
 
 const SIZE = 6;
 const CELL = 34;
@@ -19,7 +21,9 @@ function pixelAt(r: number, c: number): [number, number, number] {
 
 export default function RgbChannelDecompositionDiagram() {
   const t = useVizTokens();
-  const [view, setView] = useState<View>('rgb');
+  const { value: autoIdx } = useAutoCycle(VIEWS.length, 2800);
+  const [userView, setUserView] = useState<View | null>(null);
+  const view = userView ?? VIEWS[autoIdx];
 
   const colorFor = (r: number, c: number): string => {
     const [red, green, blue] = pixelAt(r, c);
@@ -36,7 +40,7 @@ export default function RgbChannelDecompositionDiagram() {
       <PillSelect<View>
         label="Channel view"
         value={view}
-        onChange={setView}
+        onChange={setUserView}
         options={[
           { value: 'rgb', label: 'RGB (all channels)' },
           { value: 'r', label: 'Red only' },

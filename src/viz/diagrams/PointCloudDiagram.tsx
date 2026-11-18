@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const R = 55; // torus major radius
@@ -34,9 +35,13 @@ const POINTS = buildTorus();
 const WIDTH = 320;
 const HEIGHT = 280;
 
+const ANGLES = [35, 80, 135, 190, 250, 310];
+
 export default function PointCloudDiagram() {
   const t = useVizTokens();
-  const [angle, setAngle] = useState(35);
+  const { value: autoIdx } = useAutoCycle(ANGLES.length, 2200);
+  const [userAngle, setUserAngle] = useState<number | null>(null);
+  const angle = userAngle ?? ANGLES[autoIdx];
 
   const projected = useMemo(() => {
     const rad = (angle * Math.PI) / 180;
@@ -55,7 +60,7 @@ export default function PointCloudDiagram() {
 
   return (
     <VisualizationContainer footer="A LiDAR scan is exactly this: thousands of (x, y, z) points with no grid structure connecting them -- point A has no inherent 'neighbor' the way a pixel does. That's precisely why standard convolution doesn't apply directly, and why point-cloud architectures (PointNet and successors) are built around operations that don't assume any particular point ordering.">
-      <Slider label="Rotation" value={angle} onChange={setAngle} min={0} max={360} format={(v) => `${v}°`} />
+      <Slider label="Rotation" value={angle} onChange={setUserAngle} min={0} max={360} format={(v) => `${v}°`} />
       <svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="nm-fit-svg" style={{ display: 'block', marginTop: 8 }}>
         {projected.map((p, i) => {
           const depthT = (p.depth - minDepth) / (maxDepth - minDepth || 1);

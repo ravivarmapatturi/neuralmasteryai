@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 interface Track {
@@ -20,6 +20,8 @@ const TRACKS: Track[] = [
 const WIDTH = 380;
 const HEIGHT = 170;
 
+const FRAMES = [0, 1, 2];
+
 function predict(track: Track, frame: number) {
   const prev = track.positions[frame - 1];
   const prevPrev = track.positions[frame - 2];
@@ -28,7 +30,9 @@ function predict(track: Track, frame: number) {
 
 export default function TrackingAssociationDiagram() {
   const t = useVizTokens();
-  const [frame, setFrame] = useState(0);
+  const { value: autoIdx } = useAutoCycle(FRAMES.length, 2600);
+  const [userFrame, setUserFrame] = useState<number | null>(null);
+  const frame = userFrame ?? FRAMES[autoIdx];
 
   return (
     <VisualizationContainer
@@ -40,7 +44,7 @@ export default function TrackingAssociationDiagram() {
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         {[0, 1, 2].map((f) => (
-          <VizButton key={f} variant={frame === f ? 'primary' : 'secondary'} onClick={() => setFrame(f)}>
+          <VizButton key={f} variant={frame === f ? 'primary' : 'secondary'} onClick={() => setUserFrame(f)}>
             Frame {f + 1}
           </VizButton>
         ))}

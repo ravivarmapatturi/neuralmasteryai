@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { constrainedSolution } from '../lib/calculus';
 
@@ -11,9 +11,13 @@ type Mode = 'active' | 'inactive';
 // becomes ACTIVE, and the real solution moves onto the boundary line.
 const TARGETS: Record<Mode, number> = { active: -2, inactive: 2 };
 
+const MODES: Mode[] = ['active', 'inactive'];
+
 export default function LagrangeKktDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('active');
+  const { value: autoIdx } = useAutoCycle(MODES.length, 3400);
+  const [userMode, setUserMode] = useState<Mode | null>(null);
+  const mode = userMode ?? MODES[autoIdx];
   const target = TARGETS[mode];
   const unconstrainedMin: [number, number] = [0, 0];
   const violatesConstraint = unconstrainedMin[0] + unconstrainedMin[1] > target;
@@ -36,7 +40,7 @@ export default function LagrangeKktDiagram() {
         ? `Constraint ACTIVE: the unconstrained minimum (0,0) violates x+y ≤ ${target}, so the real solution sits exactly ON the boundary at (${solution.x.toFixed(2)}, ${solution.y.toFixed(2)}), with a real λ=${solution.lambda.toFixed(2)} > 0 -- complementary slackness's "constraint tight, multiplier nonzero" case.`
         : `Constraint INACTIVE: the unconstrained minimum (0,0) already satisfies x+y ≤ ${target}, so the constraint contributes nothing -- real λ=0, complementary slackness's "constraint slack, multiplier zero" case. This is exactly why non-support-vector points don't affect an SVM's decision boundary.`
     }>
-      <PillSelect label="Constraint state" value={mode} onChange={(v) => setMode(v as Mode)} options={[
+      <PillSelect label="Constraint state" value={mode} onChange={(v) => setUserMode(v as Mode)} options={[
         { value: 'active', label: 'Active (binding)' },
         { value: 'inactive', label: 'Inactive (slack)' },
       ]} />

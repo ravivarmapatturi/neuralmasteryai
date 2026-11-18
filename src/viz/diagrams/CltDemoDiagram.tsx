@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { cltSampleMeans } from '../lib/probstat';
 
+const BATCH_PRESETS = [1, 5, 20, 60, 100];
+
 export default function CltDemoDiagram() {
   const t = useVizTokens();
-  const [batchSize, setBatchSize] = useState(1);
+  const { value: autoIdx } = useAutoCycle(BATCH_PRESETS.length, 2800);
+  const [userBatchSize, setUserBatchSize] = useState<number | null>(null);
+  const batchSize = userBatchSize ?? BATCH_PRESETS[autoIdx];
 
   const means = useMemo(() => cltSampleMeans(batchSize, 2000, 42), [batchSize]);
   const bins = 30;
@@ -20,7 +24,7 @@ export default function CltDemoDiagram() {
 
   return (
     <VisualizationContainer footer={`2000 real batches drawn from a genuinely skewed source distribution (exponential-like, heavily right-tailed), each batch of size ${batchSize} averaged. At batch size 1, the histogram IS the skewed source. Increase batch size and watch the histogram of batch MEANS become visibly bell-shaped -- the real Central Limit Theorem, happening live, not asserted.`}>
-      <Slider label="batch size (n averaged per sample)" value={batchSize} onChange={setBatchSize} min={1} max={100} step={1} />
+      <Slider label="batch size (n averaged per sample)" value={batchSize} onChange={setUserBatchSize} min={1} max={100} step={1} />
 
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 140, marginTop: 12 }}>
         {hist.map((c, i) => (

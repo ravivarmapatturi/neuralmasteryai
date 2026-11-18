@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, valueColor } from './diagramSystem';
 
 type KernelName = 'sobelX' | 'sobelY' | 'blur' | 'sharpen';
@@ -57,12 +57,23 @@ function convolve(input: number[][], kernel: number[][]): number[][] {
 
 const CELL = 22;
 const KCELL = 26;
-const HIGHLIGHT_R = 4;
-const HIGHLIGHT_C = 4; // a window straddling the edge -- always a meaningful example
+
+const SLIDE_STEPS: [number, number][] = [
+  [1, 1],
+  [1, 4],
+  [3, 2],
+  [4, 4],
+  [5, 1],
+  [5, 5],
+];
 
 export default function ConvolutionSlideDiagram() {
   const t = useVizTokens();
   const [kernelName, setKernelName] = useState<KernelName>('sobelX');
+  const { value: autoIdx } = useAutoCycle(SLIDE_STEPS.length, 2400);
+  const [userSlide, setUserSlide] = useState<[number, number] | null>(null);
+  const [highlightR, highlightC] = userSlide ?? SLIDE_STEPS[autoIdx];
+
   const kernel = KERNELS[kernelName];
   const output = convolve(INPUT, kernel);
 
@@ -70,11 +81,11 @@ export default function ConvolutionSlideDiagram() {
   const outMax = Math.max(...output.flat());
   const norm = (v: number) => (outMax === outMin ? 0.5 : (v - outMin) / (outMax - outMin));
 
-  const highlightVal = output[HIGHLIGHT_R][HIGHLIGHT_C];
+  const highlightVal = output[highlightR][highlightC];
   const terms: string[] = [];
   for (let kr = 0; kr < 3; kr++) {
     for (let kc = 0; kc < 3; kc++) {
-      const iv = INPUT[HIGHLIGHT_R + kr][HIGHLIGHT_C + kc];
+      const iv = INPUT[highlightR + kr][highlightC + kc];
       const kv = kernel[kr][kc];
       if (kv !== 0) terms.push(`${iv.toFixed(2)}×${kv.toFixed(2)}`);
     }
@@ -84,7 +95,7 @@ export default function ConvolutionSlideDiagram() {
     <VisualizationContainer
       footer={
         <>
-          The highlighted 3×3 window: {terms.join(' + ')} = <strong>{highlightVal.toFixed(2)}</strong>. This is the entire mechanical operation a CNN's first convolutional layer performs — slide this same small window across the whole image, computing one weighted sum per position. The only difference from a real CNN layer: this kernel is hand-designed and fixed; a CNN <em>learns</em> the kernel values from data via backpropagation instead.
+          The highlighted 3×3 window at ({highlightR}, {highlightC}): {terms.join(' + ')} = <strong>{highlightVal.toFixed(2)}</strong>. This is the entire mechanical operation a CNN's first convolutional layer performs — slide this same small window across the whole image, computing one weighted sum per position. The only difference from a real CNN layer: this kernel is hand-designed and fixed; a CNN <em>learns</em> the kernel values from data via backpropagation instead.
         </>
       }
     >
@@ -105,7 +116,7 @@ export default function ConvolutionSlideDiagram() {
           <svg width={SIZE * CELL} height={SIZE * CELL} viewBox={`0 0 ${SIZE * CELL} ${SIZE * CELL}`} className="nm-fit-svg">
             {INPUT.map((row, r) =>
               row.map((v, c) => {
-                const inWindow = r >= HIGHLIGHT_R && r < HIGHLIGHT_R + 3 && c >= HIGHLIGHT_C && c < HIGHLIGHT_C + 3;
+                const inWindow = r >= highlightR && r < highlightR + 3 && c >= highlightC && c < highlightC + 3;
                 return (
                   <rect
                     key={`${r}-${c}`}
@@ -149,8 +160,10 @@ export default function ConvolutionSlideDiagram() {
                   width={CELL - 1}
                   height={CELL - 1}
                   fill={valueColor(t, 'attention', norm(v))}
-                  stroke={r === HIGHLIGHT_R && c === HIGHLIGHT_C ? t.accentPrimary : 'transparent'}
-                  strokeWidth={r === HIGHLIGHT_R && c === HIGHLIGHT_C ? 2 : 0}
+                  stroke={r === highlightR && c === highlightC ? t.accentPrimary : 'transparent'}
+                  strokeWidth={r === highlightR && c === highlightC ? 2 : 0}
+                  onClick={() => setUserSlide([r, c])}
+                  style={{ cursor: 'pointer' }}
                 />
               )),
             )}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 
 type Arch = '3dcnn' | 'twostream' | 'transformer';
 
@@ -25,16 +25,20 @@ const ARCHES: Record<Arch, { name: string; input: string; mechanism: string; not
   },
 };
 
+const ARCH_KEYS: Arch[] = ['3dcnn', 'twostream', 'transformer'];
+
 export default function VideoUnderstandingArchitectureDiagram() {
   const t = useVizTokens();
-  const [arch, setArch] = useState<Arch>('3dcnn');
+  const { value: autoIdx } = useAutoCycle(ARCH_KEYS.length, 3500);
+  const [userArch, setUserArch] = useState<Arch | null>(null);
+  const arch = userArch ?? ARCH_KEYS[autoIdx];
   const info = ARCHES[arch];
 
   return (
     <VisualizationContainer footer={info.note}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        {(Object.keys(ARCHES) as Arch[]).map((k) => (
-          <VizButton key={k} variant={arch === k ? 'primary' : 'secondary'} onClick={() => setArch(k)}>
+        {ARCH_KEYS.map((k) => (
+          <VizButton key={k} variant={arch === k ? 'primary' : 'secondary'} onClick={() => setUserArch(k)}>
             {ARCHES[k].name}
           </VizButton>
         ))}

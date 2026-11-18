@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { confounderSimulation, pearsonR } from '../lib/probstat';
 
 type Mode = 'obs' | 'rct';
+const MODES: Mode[] = ['obs', 'rct'];
 
 export default function ConfounderDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('obs');
+  const { value: autoIdx } = useAutoCycle(MODES.length, 3400);
+  const [userMode, setUserMode] = useState<Mode | null>(null);
+  const mode = userMode ?? MODES[autoIdx];
 
   const { obs, rct } = useMemo(() => confounderSimulation(5, 120), []);
   const data = mode === 'obs' ? obs : rct;
@@ -24,7 +27,7 @@ export default function ConfounderDiagram() {
         ? `Observational data: real Pearson r = ${r.toFixed(3)} between X and Y -- looks like a real relationship. But both X and Y were secretly generated from a shared confounder Z, with NO direct causal link between them at all. This is the ice-cream-sales-and-drownings pattern, made numeric.`
         : `Same underlying confounder Z still present, but X is now randomly assigned (a real RCT) -- real Pearson r = ${r.toFixed(3)}, collapsed toward the tiny real causal effect (0.1) that's actually there. Randomization breaks Z's influence on X, which is precisely what makes an RCT's correlation trustworthy as causation where the observational one wasn't.`
     }>
-      <PillSelect label="Data source" value={mode} onChange={(v) => setMode(v as Mode)} options={[
+      <PillSelect label="Data source" value={mode} onChange={(v) => setUserMode(v as Mode)} options={[
         { value: 'obs', label: 'Observational (confounded)' },
         { value: 'rct', label: 'RCT (randomized)' },
       ]} />

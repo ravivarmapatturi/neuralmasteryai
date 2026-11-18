@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_RADIUS, DIAGRAM_TYPE } from './diagramSystem';
 import { svdReconstruct, svdReconstructionError, SVD_SINGULAR_VALUES } from '../lib/linalg';
 
@@ -24,9 +24,13 @@ function Grid({ data }: { data: number[][] }) {
   );
 }
 
+const RANKS = [1, 2, 3];
+
 export default function SvdCompressionDiagram() {
   const t = useVizTokens();
-  const [k, setK] = useState(1);
+  const { value: autoIdx } = useAutoCycle(RANKS.length, 2800);
+  const [userK, setUserK] = useState<number | null>(null);
+  const k = userK ?? RANKS[autoIdx];
 
   const full = useMemo(() => svdReconstruct(3), []);
   const truncated = useMemo(() => svdReconstruct(k), [k]);
@@ -37,7 +41,7 @@ export default function SvdCompressionDiagram() {
     <VisualizationContainer footer={`Real singular values: σ = [${SVD_SINGULAR_VALUES.join(', ')}]. Keeping only the top ${k} of 3 rank-1 terms gives a real reconstruction error (Frobenius norm) of ‖A − A_k‖ = √(Σ dropped σᵢ²) = ${error.toFixed(3)}, out of ${fullError.toFixed(3)} total "energy" in the matrix. This IS the Eckart-Young theorem: no other rank-${k} matrix gets closer to A than this one.`}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
         {[1, 2, 3].map((kk) => (
-          <button key={kk} type="button" onClick={() => setK(kk)} style={{
+          <button key={kk} type="button" onClick={() => setUserK(kk)} style={{
             padding: '5px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
             border: `1px solid ${k === kk ? t.accentPrimary : t.border}`,
             background: k === kk ? t.accentPrimary : 'transparent',

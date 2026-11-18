@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const GRID = 8;
@@ -9,10 +9,19 @@ const OBJ_SIZE = 3;
 const START_R = 2;
 const START_C = 2;
 
+const DISPLACEMENTS: [number, number][] = [
+  [2, 1],
+  [-2, 1],
+  [1, -2],
+  [2, 2],
+  [0, 2],
+];
+
 export default function OpticalFlowFieldDiagram() {
   const t = useVizTokens();
-  const [dx, setDx] = useState(2);
-  const [dy, setDy] = useState(1);
+  const { value: autoIdx } = useAutoCycle(DISPLACEMENTS.length, 2800);
+  const [userDisp, setUserDisp] = useState<[number, number] | null>(null);
+  const [dx, dy] = userDisp ?? DISPLACEMENTS[autoIdx];
 
   const objColor = getConceptColor(t, 'attention');
   const flowColor = getConceptColor(t, 'query');
@@ -25,8 +34,8 @@ export default function OpticalFlowFieldDiagram() {
   return (
     <VisualizationContainer footer={`Every pixel the object covers in frame 1 gets flow vector (${clampedDx}, ${clampedDy}) -- exactly the object's true displacement, since this is ground-truth motion (a known synthetic shift), not an estimate. Real optical-flow algorithms have to recover this same vector field from just the two images' pixel values, with no ground truth to check against -- that's the actual hard problem; the vector field itself, once computed, looks exactly like this.`}>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <Slider label={`Motion dx`} value={dx} onChange={setDx} min={-3} max={3} format={(v) => `${v}`} />
-        <Slider label={`Motion dy`} value={dy} onChange={setDy} min={-3} max={3} format={(v) => `${v}`} />
+        <Slider label={`Motion dx`} value={dx} onChange={(x) => setUserDisp([x, dy])} min={-3} max={3} format={(v) => `${v}`} />
+        <Slider label={`Motion dy`} value={dy} onChange={(y) => setUserDisp([dx, y])} min={-3} max={3} format={(v) => `${v}`} />
       </div>
       <svg width={GRID * CELL} height={GRID * CELL} viewBox={`0 0 ${GRID * CELL} ${GRID * CELL}`} className="nm-fit-svg" style={{ marginTop: 8, display: 'block' }}>
         {Array.from({ length: GRID }, (_, r) =>

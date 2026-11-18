@@ -503,8 +503,58 @@ Pages covered:
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 13 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-14/`.
 
+## Codex batch 9 (done by agy)
 
+### Motion Rationales:
+1. `AttentionComplexityDiagram.tsx`: Autocycles sequence length presets [2000, 8000, 16000, 24000, 32000] demonstrating the widening quadratic vs linear computational gap in self-attention mechanisms.
+2. `BigOGrowthDiagram.tsx`: Autocycles input size n presets [4, 16, 64, 256, 1024] showing the explosive growth divergence between O(1), O(log n), O(n), O(n log n), O(n²), and O(2ⁿ).
+3. `HashMapVsArrayDiagram.tsx`: Autocycles collection size presets [10, 100, 1000, 10000] contrasting O(1) constant hash lookups with O(n) linear array scans.
+4. `SortingComplexityDiagram.tsx`: Autocycles array size presets [10, 50, 200, 1000, 5000] contrasting O(n²) comparison sorting against O(n log n) divide-and-conquer algorithms.
+5. `ConvexVsNonConvexDiagram.tsx`: Autocycles starting point presets [-2.5, -1.2, 0.2, 1.8] showing how gradient descent gets trapped in local minima on non-convex surfaces while converging globally on convex objectives.
+6. `GradientDirectionDiagram.tsx`: Autocycles position presets on the 2D Rosenbrock-style surface, showing how negative gradient vectors point along the direction of steepest descent.
+7. `HessianCurvatureDiagram.tsx`: Autocycles surface curvature presets (local minimum, local maximum, saddle point) displaying the second-order Taylor expansion and eigenvalue signs.
+8. `LagrangeKktDiagram.tsx`: Autocycles constraint bound presets to illustrate how Lagrange multipliers align gradient vectors at constrained optimum boundaries.
+9. `MatrixMultiplicationDiagram.tsx`: Autocycles row/column index pairs through the matrix multiplication walk, highlighting the inner dot product accumulation for each output entry.
+10. `MatrixTransformationDiagram.tsx`: Autocycles 2D linear transformation presets (shear, rotation, scaling, reflection) showing the distortion of the unit grid and basis vectors.
+11. `QuadraticFormContourDiagram.tsx`: Autocycles matrix eigenvalues to visualize how positive definite, indefinite, and negative definite matrices shape elliptical and hyperbolic contours.
+12. `RankSpanDiagram.tsx`: Autocycles matrix column configurations to illustrate vector span and the dimensionality collapse of rank-deficient linear systems.
+13. `SvdCompressionDiagram.tsx`: Autocycles rank truncation k presets [1, 2, 3] demonstrating the Eckart-Young optimal low-rank matrix approximation and reconstruction error.
+14. `VectorOperationsDiagram.tsx`: Autocycles vector pair presets (acute, orthogonal, opposite, collinear) showing live dot product and cosine similarity calculations independent of vector magnitude.
+15. `BayesUpdateDiagram.tsx`: Autocycles prior and likelihood presets demonstrating how rare disease priors temper positive test evidence via Bayes' theorem.
+16. `BootstrapDiagram.tsx`: Autocycles random resample seeds demonstrating the empirical construction of non-parametric 95% confidence intervals from 1,000 bootstrap draws.
+17. `CltDemoDiagram.tsx`: Autocycles sample batch size presets [1, 5, 20, 60, 100] illustrating the convergence of sample means toward a normal distribution via the Central Limit Theorem.
+18. `ConfounderDiagram.tsx`: Autocycles between observational and randomized controlled trial data to show how randomization shatters spurious confounder correlations.
+19. `DistributionExplorerDiagram.tsx`: Autocycles across probability distributions (Gaussian, Bernoulli, Binomial, Categorical) highlighting dynamic shape, mean, and variance.
+20. `EntropyKlDiagram.tsx`: Autocycles distribution Q presets toward true distribution P, showing cross-entropy converging to Shannon entropy as KL divergence drops to zero.
+21. `MleVsMapDiagram.tsx`: Autocycles sample count and head count presets showing Maximum A Posteriori estimates converging to Maximum Likelihood as sample evidence overcomes the Beta prior.
+22. `PermutationPValueDiagram.tsx`: Autocycles effect size presets showing empirical permutation null distributions and the exact computation of two-sided p-values.
+23. `NerfRayMarchingDiagram.tsx`: Autocycles camera ray offsets through the 3D volume, showing density sampling and optical transmittance accumulation yielding final pixel color.
+24. `PointCloudDiagram.tsx`: Autocycles 3D viewing azimuth angles to visualize 2D projection and painter's depth-sorted rendering of a 3D point cloud.
+25. `TemporalConsistencyDiagram.tsx`: Autocycles between independent per-frame generation and temporally consistent sequences, illustrating artifact reduction across video frames.
+26. `VideoUnderstandingArchitectureDiagram.tsx`: Autocycles across 3D-CNN, Two-Stream, and Video Transformer architectures, comparing temporal receptive fields and spatio-temporal attention.
+27. `ClassicalAndLearnedVisionDiagram.tsx`: Autocycles between classical deterministic pipelines, learned neural representations, and hybrid production architectures.
+28. `ImageTensorExplorerDiagram.tsx`: Autocycles between RGB 3D tensor views, grayscale intensity, and z-score normalized representations for neural network ingestion.
+29. `VisionDataContractDiagram.tsx`: Autocycles through data contract definition stages (decision, output geometry, allowed variation, failure cost) prior to model selection.
+30. `VisionDataShiftDiagram.tsx`: Autocycles domain shift severity percentages [10%, 35%, 65%, 90%], demonstrating distribution overlap decay between training and camera deployment.
+31. `VisionErrorCostDiagram.tsx`: Autocycles deployment risk scenarios (defect inspection, pedestrian safety, photo tagging) showing asymmetric false-positive versus false-negative operational trade-offs.
+32. `VisionFeedbackLoopDiagram.tsx`: Autocycles active stages of the production data flywheel (collect -> label -> train -> guard -> monitor -> refresh).
+33. `VisionInvarianceDiagram.tsx`: Autocycles environmental factors (lighting, crop, stroke, boundary), contrasting invariance augmentation against critical discriminative signal retention.
+34. `VisionLabelGranularityDiagram.tsx`: Autocycles annotation granularity levels (whole-image label, bounding box, keypoints, dense mask) versus marginal labeling costs.
+35. `VisionSectionMapDiagram.tsx`: Autocycles section navigation milestones across vision fundamentals, tasks and models, and modern multimodal architectures.
+36. `VisionTaskTaxonomyDiagram.tsx`: Autocycles canonical vision problem formulations (classification, bounding box detection, semantic segmentation, multi-object tracking).
+37. `ConvolutionSlideDiagram.tsx`: Autocycles 3x3 receptive field sliding steps across the input feature map, computing dot-product elementwise activations on the output grid.
+38. `DataAugmentationDiagram.tsx`: Autocycles data augmentation transformations (horizontal flip, rotation, random crop, brightness jitter, cutout, mixup) preserving semantic class labels.
+39. `HogFeatureDiagram.tsx`: Autocycles synthetic edge patterns showing real-time 4x4 spatial cell gradient histogram starburst extraction for HOG descriptors.
+40. `MorphologicalOpsDiagram.tsx`: Autocycles morphological operations (erosion, dilation, opening, closing) illustrating noise suppression and hole filling on binary masks.
+41. `RgbChannelDecompositionDiagram.tsx`: Autocycles channel views (RGB color, red, green, blue, luminance grayscale) showing per-channel pixel contributions.
+42. `OcrPipelineDiagram.tsx`: Autocycles pipeline stages (raw image -> text detection bounding boxes -> cropped patches -> sequence recognition) for optical character recognition.
+43. `OpticalFlowFieldDiagram.tsx`: Autocycles motion displacement vectors [dx, dy] visualizing ground-truth pixel motion displacement fields across consecutive video frames.
+44. `PoseEstimationApproachDiagram.tsx`: Autocycles person count n presets, comparing linear O(n) top-down detection cascades against constant O(1) bottom-up keypoint grouping costs.
+45. `StereoDepthDiagram.tsx`: Autocycles target depth presets, computing stereo camera horizontal disparity d = f * B / Z and optical ray triangulation.
+46. `TrackingAssociationDiagram.tsx`: Autocycles multi-frame tracking sequence, showing Kalman filter velocity predictions resolving trajectory crossover without identity swapping.
 
-
-
-
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Visual inspection: Verified all 46 components maintain proper SVG viewBox bounds, responsive containers, and zero text/label overlaps.

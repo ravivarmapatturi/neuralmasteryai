@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import DiagramMatrix from './DiagramMatrix';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { matMul } from '../lib/linalg';
@@ -9,27 +9,36 @@ const A = [[2, 0, 1], [1, 3, -1]];
 const B = [[1, 2], [0, 1], [3, 1]];
 const C = matMul(A, B);
 
+const CELLS: [number, number][] = [
+  [0, 0],
+  [0, 1],
+  [1, 0],
+  [1, 1],
+];
+
 export default function MatrixMultiplicationDiagram() {
   const t = useVizTokens();
   const [hover, setHover] = useState<[number, number] | null>(null);
+  const { value: autoIdx } = useAutoCycle(CELLS.length, 2500);
 
-  const rowVals = hover ? A[hover[0]] : null;
-  const colVals = hover ? B.map((row) => row[hover[1]]) : null;
+  const activeCell = hover ?? CELLS[autoIdx];
+  const rowVals = activeCell ? A[activeCell[0]] : null;
+  const colVals = activeCell ? B.map((row) => row[activeCell[1]]) : null;
   const terms = rowVals && colVals ? rowVals.map((v, i) => `${v}×${colVals[i]}`) : null;
 
   return (
-    <VisualizationContainer footer={hover
-      ? `C[${hover[0]},${hover[1]}] = row ${hover[0]} of A · col ${hover[1]} of B = ${terms!.join(' + ')} = ${C[hover[0]][hover[1]]}`
+    <VisualizationContainer footer={activeCell
+      ? `C[${activeCell[0]},${activeCell[1]}] = row ${activeCell[0]} of A · col ${activeCell[1]} of B = ${terms!.join(' + ')} = ${C[activeCell[0]][activeCell[1]]}`
       : 'Hover any output cell to see exactly which row and column produced it -- real dot products, not a schematic.'}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
         <div>
           <div style={{ fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, textAlign: 'center', marginBottom: 4 }}>A (2×3)</div>
-          <DiagramMatrix data={A} concept="query" cellSize={44} highlightRow={hover?.[0] ?? null} />
+          <DiagramMatrix data={A} concept="query" cellSize={44} highlightRow={activeCell?.[0] ?? null} />
         </div>
         <div style={{ fontSize: 20, color: t.textMuted }}>×</div>
         <div>
           <div style={{ fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, textAlign: 'center', marginBottom: 4 }}>B (3×2)</div>
-          <DiagramMatrix data={B} concept="key" cellSize={44} highlightCol={hover?.[1] ?? null} />
+          <DiagramMatrix data={B} concept="key" cellSize={44} highlightCol={activeCell?.[1] ?? null} />
         </div>
         <div style={{ fontSize: 20, color: t.textMuted }}>=</div>
         <div>

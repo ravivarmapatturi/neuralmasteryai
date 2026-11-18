@@ -1,13 +1,21 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { bowl, bowlGradient } from '../lib/calculus';
 
+const POS_PRESETS: [number, number][] = [
+  [1.6, -0.9],
+  [-1.8, 1.2],
+  [-1.2, -1.5],
+  [1.9, 1.4],
+];
+
 export default function GradientDirectionDiagram() {
   const t = useVizTokens();
-  const [x, setX] = useState(1.6);
-  const [y, setY] = useState(-0.9);
+  const { value: autoIdx } = useAutoCycle(POS_PRESETS.length, 2800);
+  const [userPos, setUserPos] = useState<[number, number] | null>(null);
+  const [x, y] = userPos ?? POS_PRESETS[autoIdx];
 
   const grad = useMemo(() => bowlGradient(x, y), [x, y]);
   const value = bowl(x, y);
@@ -30,8 +38,8 @@ export default function GradientDirectionDiagram() {
   return (
     <VisualizationContainer footer={`f(x,y) = x² + 2y², at (${x.toFixed(2)}, ${y.toFixed(2)}): f = ${value.toFixed(2)}, real ∇f = (${grad[0].toFixed(2)}, ${grad[1].toFixed(2)}). The gradient (red) is the direction of STEEPEST INCREASE -- to reduce the loss, step the opposite way (green), exactly what every gradient-descent update does.`}>
       <div style={{ display: 'flex', gap: 16 }}>
-        <Slider label="x" value={x} onChange={setX} min={-2.4} max={2.4} step={0.1} />
-        <Slider label="y" value={y} onChange={setY} min={-2.4} max={2.4} step={0.1} />
+        <Slider label="x" value={x} onChange={(newX) => setUserPos([newX, y])} min={-2.4} max={2.4} step={0.1} />
+        <Slider label="y" value={y} onChange={(newY) => setUserPos([x, newY])} min={-2.4} max={2.4} step={0.1} />
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8, maxWidth: 300, margin: '8px auto 0' }}>

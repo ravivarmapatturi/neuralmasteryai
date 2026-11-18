@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const N_FRAMES = 6;
@@ -23,9 +23,13 @@ function consistentPos(frame: number): { x: number; r: number; hue: number } {
 const CELL_W = 46;
 const CELL_H = 60;
 
+const MODES: ('independent' | 'consistent')[] = ['independent', 'consistent'];
+
 export default function TemporalConsistencyDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'independent' | 'consistent'>('independent');
+  const { value: autoIdx } = useAutoCycle(MODES.length, 3400);
+  const [userMode, setUserMode] = useState<('independent' | 'consistent') | null>(null);
+  const mode = userMode ?? MODES[autoIdx];
   const posFn = mode === 'independent' ? independentPos : consistentPos;
   const accent = getConceptColor(t, 'attention');
 
@@ -38,10 +42,10 @@ export default function TemporalConsistencyDiagram() {
       }
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <VizButton variant={mode === 'independent' ? 'primary' : 'secondary'} onClick={() => setMode('independent')}>
+        <VizButton variant={mode === 'independent' ? 'primary' : 'secondary'} onClick={() => setUserMode('independent')}>
           Independent per-frame
         </VizButton>
-        <VizButton variant={mode === 'consistent' ? 'primary' : 'secondary'} onClick={() => setMode('consistent')}>
+        <VizButton variant={mode === 'consistent' ? 'primary' : 'secondary'} onClick={() => setUserMode('consistent')}>
           Temporally consistent
         </VizButton>
       </div>

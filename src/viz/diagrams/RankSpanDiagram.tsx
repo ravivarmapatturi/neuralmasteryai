@@ -1,15 +1,23 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { rank2, type Vec2 } from '../lib/linalg';
 
+const V2_PRESETS: Vec2[] = [
+  [-1, 2],
+  [2, 1], // rank 1 collinear collapse!
+  [-2, -1],
+  [0.5, 2.5],
+];
+
 export default function RankSpanDiagram() {
   const t = useVizTokens();
-  const [v1] = useState<Vec2>([2, 1]);
-  const [v2x, setV2x] = useState(-1);
-  const [v2y, setV2y] = useState(2);
-  const v2: Vec2 = [v2x, v2y];
+  const v1: Vec2 = [2, 1];
+  const { value: autoIdx } = useAutoCycle(V2_PRESETS.length, 2800);
+  const [userV2, setUserV2] = useState<Vec2 | null>(null);
+  const v2 = userV2 ?? V2_PRESETS[autoIdx];
+  const [v2x, v2y] = v2;
 
   const rank = rank2(v1, v2);
 
@@ -20,8 +28,8 @@ export default function RankSpanDiagram() {
   return (
     <VisualizationContainer footer={`rank([v1, v2]) = ${rank}, computed from the real determinant of the 2×2 matrix these vectors form (nonzero ⟺ independent ⟺ rank 2). Drag v2 onto the same line as v1 and watch it drop to rank 1 -- the span collapses from the whole plane down to a single line, and the "real information" in the matrix drops with it.`}>
       <div style={{ display: 'flex', gap: 16 }}>
-        <Slider label="v2.x" value={v2x} onChange={setV2x} min={-3} max={3} step={0.1} />
-        <Slider label="v2.y" value={v2y} onChange={setV2y} min={-3} max={3} step={0.1} />
+        <Slider label="v2.x" value={v2x} onChange={(x) => setUserV2([x, v2y])} min={-3} max={3} step={0.1} />
+        <Slider label="v2.y" value={v2y} onChange={(y) => setUserV2([v2x, y])} min={-3} max={3} step={0.1} />
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8, maxWidth: 300, margin: '8px auto 0' }}>

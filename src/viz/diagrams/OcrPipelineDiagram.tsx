@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Stage = 'raw' | 'detect' | 'crop' | 'recognize';
@@ -11,12 +11,16 @@ const STAGES: { key: Stage; label: string }[] = [
   { key: 'recognize', label: '4. Recognize characters' },
 ];
 
+const STAGE_KEYS: Stage[] = ['raw', 'detect', 'crop', 'recognize'];
+
 const WIDTH = 460;
 const HEIGHT = 160;
 
 export default function OcrPipelineDiagram() {
   const t = useVizTokens();
-  const [stage, setStage] = useState<Stage>('detect');
+  const { value: autoIdx } = useAutoCycle(STAGE_KEYS.length, 2600);
+  const [userStage, setUserStage] = useState<Stage | null>(null);
+  const stage = userStage ?? STAGE_KEYS[autoIdx];
   const boxColor = getConceptColor(t, 'attention');
 
   const explain: Record<Stage, string> = {
@@ -30,7 +34,7 @@ export default function OcrPipelineDiagram() {
     <VisualizationContainer footer={explain[stage]}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
         {STAGES.map((s) => (
-          <VizButton key={s.key} variant={stage === s.key ? 'primary' : 'secondary'} onClick={() => setStage(s.key)}>
+          <VizButton key={s.key} variant={stage === s.key ? 'primary' : 'secondary'} onClick={() => setUserStage(s.key)}>
             {s.label}
           </VizButton>
         ))}

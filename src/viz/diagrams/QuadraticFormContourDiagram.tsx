@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { quadraticForm, quadraticFormGradient, symmetricEigenvalues2, type Mat2 } from '../lib/linalg';
 
@@ -11,9 +11,13 @@ const MATRICES: Record<Preset, Mat2> = {
   indefinite: [[1, 0], [0, -1]],
 };
 
+const PRESETS: Preset[] = ['pd', 'psd', 'indefinite'];
+
 export default function QuadraticFormContourDiagram() {
   const t = useVizTokens();
-  const [preset, setPreset] = useState<Preset>('pd');
+  const { value: autoIdx } = useAutoCycle(PRESETS.length, 3200);
+  const [userPreset, setUserPreset] = useState<Preset | null>(null);
+  const preset = userPreset ?? PRESETS[autoIdx];
   const A = MATRICES[preset];
   const [lambda1, lambda2] = useMemo(() => symmetricEigenvalues2(A), [preset]);
 
@@ -36,7 +40,7 @@ export default function QuadraticFormContourDiagram() {
 
   return (
     <VisualizationContainer footer={`Real eigenvalues: λ = [${lambda1.toFixed(2)}, ${lambda2.toFixed(2)}]. ${preset === 'pd' ? 'Both strictly positive → positive definite → a real bowl, single global minimum at the origin, no flat directions.' : preset === 'psd' ? 'One eigenvalue is exactly 0 → positive SEMI-definite → a valley, not a bowl: flat (zero curvature) along one entire direction.' : 'Mixed signs → indefinite → a real saddle: a minimum along one axis, a maximum along the other, simultaneously.'}`}>
-      <PillSelect label="Matrix A" value={preset} onChange={(v) => setPreset(v as Preset)} options={[
+      <PillSelect label="Matrix A" value={preset} onChange={(v) => setUserPreset(v as Preset)} options={[
         { value: 'pd', label: 'Positive definite' },
         { value: 'psd', label: 'Positive semi-definite' },
         { value: 'indefinite', label: 'Indefinite (saddle)' },

@@ -1,15 +1,30 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect, Slider } from '../primitives';
+import { VisualizationContainer, PillSelect, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { convexFn, convexGrad, nonConvexFn, nonConvexGrad, gd1D } from '../lib/calculus';
 
 type Mode = 'convex' | 'nonconvex';
 
+interface Preset {
+  mode: Mode;
+  start: number;
+}
+
+const PRESETS: Preset[] = [
+  { mode: 'nonconvex', start: -2.5 },
+  { mode: 'nonconvex', start: 0.8 },
+  { mode: 'convex', start: -1.5 },
+  { mode: 'convex', start: 4.5 },
+];
+
 export default function ConvexVsNonConvexDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('nonconvex');
-  const [start, setStart] = useState(-2.5);
+  const { value: autoIdx } = useAutoCycle(PRESETS.length, 3200);
+  const [userPreset, setUserPreset] = useState<Preset | null>(null);
+  const preset = userPreset ?? PRESETS[autoIdx];
+  const mode = preset.mode;
+  const start = preset.start;
 
   const fn = mode === 'convex' ? convexFn : nonConvexFn;
   const grad = mode === 'convex' ? convexGrad : nonConvexGrad;
@@ -28,11 +43,11 @@ export default function ConvexVsNonConvexDiagram() {
   return (
     <VisualizationContainer footer={`Real gradient descent (60 steps, lr=0.03) from x=${start.toFixed(1)} converges to x=${finalX.toFixed(3)}, f=${fn(finalX).toFixed(3)}. ${mode === 'convex' ? 'Convex: try any start point -- it always lands at the same global minimum, x=2.' : 'Non-convex: which of the two real minima it lands in depends entirely on the starting point -- drag the slider across the "ridge" between them and watch the outcome flip.'}`}>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <PillSelect label="Function" value={mode} onChange={(v) => { setMode(v as Mode); setStart(v === 'convex' ? -1 : -2.5); }} options={[
+        <PillSelect label="Function" value={mode} onChange={(v) => setUserPreset({ mode: v as Mode, start: v === 'convex' ? -1 : -2.5 })} options={[
           { value: 'nonconvex', label: 'Non-convex' },
           { value: 'convex', label: 'Convex' },
         ]} />
-        <Slider label="starting point" value={start} onChange={setStart} min={domain[0]} max={domain[1]} step={0.05} />
+        <Slider label="starting point" value={start} onChange={(s) => setUserPreset({ mode, start: s })} min={domain[0]} max={domain[1]} step={0.05} />
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>

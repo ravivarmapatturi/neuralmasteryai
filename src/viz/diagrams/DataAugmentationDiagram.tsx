@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Aug = 'original' | 'flip' | 'rotate' | 'crop' | 'brightness' | 'cutout' | 'mixup';
@@ -37,16 +37,20 @@ function Blob({ fill }: { fill: string }) {
 
 const SIZE = 140;
 
+const AUG_KEYS: Aug[] = ['original', 'flip', 'rotate', 'crop', 'brightness', 'cutout', 'mixup'];
+
 export default function DataAugmentationDiagram() {
   const t = useVizTokens();
-  const [aug, setAug] = useState<Aug>('original');
+  const { value: autoIdx } = useAutoCycle(AUG_KEYS.length, 2800);
+  const [userAug, setUserAug] = useState<Aug | null>(null);
+  const aug = userAug ?? AUG_KEYS[autoIdx];
   const objColor = getConceptColor(t, 'attention');
 
   return (
     <VisualizationContainer footer={AUG_EXPLAIN[aug]}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-        {(Object.keys(AUG_LABELS) as Aug[]).map((k) => (
-          <VizButton key={k} variant={aug === k ? 'primary' : 'secondary'} onClick={() => setAug(k)}>
+        {AUG_KEYS.map((k) => (
+          <VizButton key={k} variant={aug === k ? 'primary' : 'secondary'} onClick={() => setUserAug(k)}>
             {AUG_LABELS[k]}
           </VizButton>
         ))}

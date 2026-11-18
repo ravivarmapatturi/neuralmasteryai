@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, VisualizationMath } from '../primitives';
+import { VisualizationContainer, Slider, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const BASELINE = 60; // distance between the two cameras, arbitrary units
@@ -11,9 +11,13 @@ const CAM_Y = 140;
 const PLANE_Y = 40;
 const SCALE = 1.4;
 
+const DEPTH_PRESETS = [70, 130, 200, 280];
+
 export default function StereoDepthDiagram() {
   const t = useVizTokens();
-  const [depth, setDepth] = useState(150);
+  const { value: autoIdx } = useAutoCycle(DEPTH_PRESETS.length, 2800);
+  const [userDepth, setUserDepth] = useState<number | null>(null);
+  const depth = userDepth ?? DEPTH_PRESETS[autoIdx];
 
   const objX = BASELINE / 2; // object centered between the two cameras
   const leftImgX = (FOCAL * (objX - 0)) / depth;
@@ -41,7 +45,7 @@ export default function StereoDepthDiagram() {
         </>
       }
     >
-      <Slider label="Object depth" value={depth} onChange={setDepth} min={50} max={300} format={(v) => `${v}`} />
+      <Slider label="Object depth" value={depth} onChange={setUserDepth} min={50} max={300} format={(v) => `${v}`} />
       <svg width="100%" viewBox={`0 -10 ${WIDTH} ${CAM_Y + 20}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={camLeftX} y1={PLANE_Y} x2={camLeftX} y2={CAM_Y} stroke={t.border} strokeWidth={1} strokeDasharray="2 2" />
         <line x1={camRightX} y1={PLANE_Y} x2={camRightX} y2={CAM_Y} stroke={t.border} strokeWidth={1} strokeDasharray="2 2" />

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const PER_PERSON_COST = 12; // ms, running the pose model once per detected person
@@ -21,9 +21,13 @@ const PAD_L = 45;
 const PAD_B = 30;
 const MAX_N = 15;
 
+const PEOPLE_PRESETS = [2, 5, 9, 14];
+
 export default function PoseEstimationApproachDiagram() {
   const t = useVizTokens();
-  const [n, setN] = useState(4);
+  const { value: autoIdx } = useAutoCycle(PEOPLE_PRESETS.length, 2800);
+  const [userN, setUserN] = useState<number | null>(null);
+  const n = userN ?? PEOPLE_PRESETS[autoIdx];
 
   const topColor = getConceptColor(t, 'query');
   const bottomColor = getConceptColor(t, 'attention');
@@ -41,7 +45,7 @@ export default function PoseEstimationApproachDiagram() {
     <VisualizationContainer
       footer={`At ${n} people: top-down costs ~${topDownCost(n).toFixed(0)}ms (one detection pass + ${n} separate pose-model runs), bottom-up costs ~${bottomUpCost(n).toFixed(0)}ms (one whole-image pass, plus a grouping step that grows slowly with crowd size). Top-down is simpler and often more per-person-accurate at low counts; bottom-up's near-flat cost curve is why it's the standard choice for genuinely crowded scenes.`}
     >
-      <Slider label="People in frame" value={n} onChange={setN} min={0} max={MAX_N} format={(v) => `${v}`} />
+      <Slider label="People in frame" value={n} onChange={setUserN} min={0} max={MAX_N} format={(v) => `${v}`} />
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ display: 'block', marginTop: 8 }}>
         <line x1={PAD_L} y1={20} x2={PAD_L} y2={20 + plotH} stroke={t.border} strokeWidth={1} />
         <line x1={PAD_L} y1={20 + plotH} x2={PAD_L + plotW} y2={20 + plotH} stroke={t.border} strokeWidth={1} />

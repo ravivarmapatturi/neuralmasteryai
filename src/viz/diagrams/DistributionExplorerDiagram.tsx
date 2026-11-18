@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect, Slider } from '../primitives';
+import { VisualizationContainer, PillSelect, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { gaussianPdf, binomialPmf } from '../lib/probstat';
 
 type Dist = 'bernoulli' | 'binomial' | 'gaussian' | 'categorical';
+const DISTS: Dist[] = ['gaussian', 'bernoulli', 'binomial', 'categorical'];
 
 export default function DistributionExplorerDiagram() {
   const t = useVizTokens();
-  const [dist, setDist] = useState<Dist>('gaussian');
+  const { value: autoIdx } = useAutoCycle(DISTS.length, 3200);
+  const [userDist, setUserDist] = useState<Dist | null>(null);
+  const dist = userDist ?? DISTS[autoIdx];
   const [p, setP] = useState(0.5);
   const [n, setN] = useState(10);
   const [sigma, setSigma] = useState(1);
@@ -37,7 +40,7 @@ export default function DistributionExplorerDiagram() {
     <VisualizationContainer footer={dist === 'categorical'
       ? 'This is exactly what an LLM\'s output layer produces at every generation step -- a real probability distribution over every possible next token, one number per vocabulary entry.'
       : `Real computed mean = ${Number.isNaN(mean) ? '—' : mean.toFixed(3)}, variance = ${Number.isNaN(variance) ? '—' : variance.toFixed(3)}.`}>
-      <PillSelect label="Distribution" value={dist} onChange={(v) => setDist(v as Dist)} options={[
+      <PillSelect label="Distribution" value={dist} onChange={(v) => setUserDist(v as Dist)} options={[
         { value: 'bernoulli', label: 'Bernoulli' },
         { value: 'binomial', label: 'Binomial' },
         { value: 'gaussian', label: 'Gaussian' },

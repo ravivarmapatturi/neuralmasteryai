@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, FlowDots, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const N_SAMPLES = 24;
@@ -40,9 +41,13 @@ const WIDTH = 460;
 const RAY_H = 70;
 const BAR_H = 90;
 
+const OFFSET_PRESETS = [0, 1.25, 2.5, -1.5];
+
 export default function NerfRayMarchingDiagram() {
   const t = useVizTokens();
-  const [offset, setOffset] = useState(0);
+  const { value: autoIdx } = useAutoCycle(OFFSET_PRESETS.length, 3200);
+  const [userOffset, setUserOffset] = useState<number | null>(null);
+  const offset = userOffset ?? OFFSET_PRESETS[autoIdx];
 
   const samples = useMemo(() => marchRay(offset), [offset]);
   const finalColorWeight = samples.reduce((s, x) => s + x.contribution, 0);
@@ -57,11 +62,12 @@ export default function NerfRayMarchingDiagram() {
 
   return (
     <VisualizationContainer footer={`This ray's accumulated color weight from the object is ${finalColorWeight.toFixed(2)} (vs. ${bgWeight.toFixed(2)} background) -- computed by marching along the ray, querying density at each sample point, and accumulating color weighted by how much light survives to reach that point (transmittance) times how much this point itself absorbs (alpha). A ray straight through the object's center accumulates almost entirely object color; a ray that misses picks up almost none -- exactly what the offset slider demonstrates.`}>
-      <Slider label="Ray offset from object center" value={offset} onChange={setOffset} min={-3} max={3} step={0.25} format={(v) => v.toFixed(2)} />
+      <Slider label="Ray offset from object center" value={offset} onChange={setUserOffset} min={-3} max={3} step={0.25} format={(v) => v.toFixed(2)} />
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
         <svg width={WIDTH - 100} height={RAY_H} viewBox={`0 0 ${WIDTH - 100} ${RAY_H}`} className="nm-fit-svg">
           <line x1={10} y1={RAY_H / 2} x2={WIDTH - 120} y2={RAY_H / 2} stroke={t.border} strokeWidth={1.5} />
+          <FlowDots d={line(10, RAY_H / 2, WIDTH - 120, RAY_H / 2)} color={t.accentPrimary} count={2} dur={2.4} r={3} />
           <circle cx={10} cy={RAY_H / 2} r={6} fill={t.textSecondary} />
           <text x={10} y={RAY_H / 2 + 20} textAnchor="middle" fontSize={9} fill={t.textMuted}>camera</text>
           {samples.map((s, i) => (

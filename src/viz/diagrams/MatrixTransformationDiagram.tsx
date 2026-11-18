@@ -1,18 +1,25 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { matVec2, det2, type Mat2 } from '../lib/linalg';
 
 const GRID_LINES = Array.from({ length: 9 }, (_, i) => i - 4); // -4..4
 
+const TRANSFORMS: { name: string; A: Mat2 }[] = [
+  { name: 'Shear', A: [[1.4, 0.6], [0.2, 1.1]] },
+  { name: 'Rotation', A: [[0.7, -0.7], [0.7, 0.7]] },
+  { name: 'Rank-deficient (line collapse)', A: [[1, 0.5], [2, 1]] },
+  { name: 'Reflection', A: [[-1, 0], [0, 1]] },
+];
+
 export default function MatrixTransformationDiagram() {
   const t = useVizTokens();
-  const [a11, setA11] = useState(1.4);
-  const [a12, setA12] = useState(0.6);
-  const [a21, setA21] = useState(0.2);
-  const [a22, setA22] = useState(1.1);
-  const A: Mat2 = [[a11, a12], [a21, a22]];
+  const { value: autoIdx } = useAutoCycle(TRANSFORMS.length, 3200);
+  const [userA, setUserA] = useState<Mat2 | null>(null);
+  const A = userA ?? TRANSFORMS[autoIdx].A;
+  const [a11, a12] = A[0];
+  const [a21, a22] = A[1];
 
   const determinant = useMemo(() => det2(A), [a11, a12, a21, a22]);
 
@@ -26,10 +33,10 @@ export default function MatrixTransformationDiagram() {
   return (
     <VisualizationContainer footer={`A matrix is a function on vectors -- every point on the grid moved to A·(x,y). det(A) = ${determinant.toFixed(2)}: the area scale factor of the transformation (a unit square now has area |${determinant.toFixed(2)}|). ${Math.abs(determinant) < 0.05 ? 'Near zero -- the grid has collapsed toward a line, exactly what "rank-deficient" looks like geometrically.' : determinant < 0 ? 'Negative -- the transformation flips orientation (like a mirror), on top of scaling.' : ''}`}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <Slider label="A[0][0]" value={a11} onChange={setA11} min={-2} max={2} step={0.1} />
-        <Slider label="A[0][1]" value={a12} onChange={setA12} min={-2} max={2} step={0.1} />
-        <Slider label="A[1][0]" value={a21} onChange={setA21} min={-2} max={2} step={0.1} />
-        <Slider label="A[1][1]" value={a22} onChange={setA22} min={-2} max={2} step={0.1} />
+        <Slider label="A[0][0]" value={a11} onChange={(v) => setUserA([[v, a12], [a21, a22]])} min={-2} max={2} step={0.1} />
+        <Slider label="A[0][1]" value={a12} onChange={(v) => setUserA([[a11, v], [a21, a22]])} min={-2} max={2} step={0.1} />
+        <Slider label="A[1][0]" value={a21} onChange={(v) => setUserA([[a11, a12], [v, a22]])} min={-2} max={2} step={0.1} />
+        <Slider label="A[1][1]" value={a22} onChange={(v) => setUserA([[a11, a12], [a21, v]])} min={-2} max={2} step={0.1} />
       </div>
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8, maxWidth: 320, margin: '8px auto 0' }}>

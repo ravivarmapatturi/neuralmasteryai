@@ -1,13 +1,23 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, VisualizationMath } from '../primitives';
+import { VisualizationContainer, Slider, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { dot, norm, cosineSimilarity, type Vec2 } from '../lib/linalg';
 
+const PAIR_PRESETS: { a: Vec2; b: Vec2 }[] = [
+  { a: [3, 1], b: [1, 2.5] }, // acute (~42 deg)
+  { a: [3, 1], b: [-1, 3] }, // orthogonal (90 deg, dot = 0)
+  { a: [2, 2], b: [-2, -2] }, // opposite (180 deg, cos = -1)
+  { a: [3, 0], b: [2, 0] }, // collinear (0 deg, cos = 1)
+];
+
 export default function VectorOperationsDiagram() {
   const t = useVizTokens();
-  const [a, setA] = useState<Vec2>([3, 1]);
-  const [b, setB] = useState<Vec2>([1, 2.5]);
+  const { value: autoIdx } = useAutoCycle(PAIR_PRESETS.length, 3000);
+  const [userPair, setUserPair] = useState<{ a: Vec2; b: Vec2 } | null>(null);
+  const pair = userPair ?? PAIR_PRESETS[autoIdx];
+  const a = pair.a;
+  const b = pair.b;
 
   const dotProduct = dot(a, b);
   const normA = norm(a);
@@ -33,12 +43,12 @@ export default function VectorOperationsDiagram() {
     <VisualizationContainer footer={`a·b = (${a[0]})(${b[0]}) + (${a[1]})(${b[1]}) = ${dotProduct.toFixed(2)}. ‖a‖ = ${normA.toFixed(2)}, ‖b‖ = ${normB.toFixed(2)}. cos(θ) = a·b / (‖a‖‖b‖) = ${cos.toFixed(3)} → θ ≈ ${angleDeg.toFixed(1)}°. Every number here is recomputed live from the two vectors you're dragging via the sliders.`}>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
         <div>
-          <Slider label="a.x" value={a[0]} onChange={(v) => setA([v, a[1]])} min={-4} max={4} step={0.1} />
-          <Slider label="a.y" value={a[1]} onChange={(v) => setA([a[0], v])} min={-4} max={4} step={0.1} />
+          <Slider label="a.x" value={a[0]} onChange={(v) => setUserPair({ a: [v, a[1]], b })} min={-4} max={4} step={0.1} />
+          <Slider label="a.y" value={a[1]} onChange={(v) => setUserPair({ a: [a[0], v], b })} min={-4} max={4} step={0.1} />
         </div>
         <div>
-          <Slider label="b.x" value={b[0]} onChange={(v) => setB([v, b[1]])} min={-4} max={4} step={0.1} />
-          <Slider label="b.y" value={b[1]} onChange={(v) => setB([b[0], v])} min={-4} max={4} step={0.1} />
+          <Slider label="b.x" value={b[0]} onChange={(v) => setUserPair({ a, b: [v, b[1]] })} min={-4} max={4} step={0.1} />
+          <Slider label="b.y" value={b[1]} onChange={(v) => setUserPair({ a, b: [b[0], v] })} min={-4} max={4} step={0.1} />
         </div>
       </div>
 

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 type Op = 'original' | 'erosion' | 'dilation' | 'opening' | 'closing';
+
+const OPS: Op[] = ['original', 'erosion', 'dilation', 'opening', 'closing'];
 
 const SIZE = 11;
 
@@ -73,7 +75,9 @@ const CELL = 24;
 
 export default function MorphologicalOpsDiagram() {
   const t = useVizTokens();
-  const [op, setOp] = useState<Op>('original');
+  const { value: autoIdx } = useAutoCycle(OPS.length, 2800);
+  const [userOp, setUserOp] = useState<Op | null>(null);
+  const op = userOp ?? OPS[autoIdx];
   const grid = RESULTS[op];
 
   return (
@@ -81,7 +85,7 @@ export default function MorphologicalOpsDiagram() {
       <PillSelect<Op>
         label="Operation"
         value={op}
-        onChange={setOp}
+        onChange={setUserOp}
         options={[
           { value: 'original', label: 'Original' },
           { value: 'erosion', label: 'Erosion' },

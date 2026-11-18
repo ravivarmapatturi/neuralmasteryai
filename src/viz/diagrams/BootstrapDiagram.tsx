@@ -1,14 +1,18 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { bootstrapResample, median } from '../lib/probstat';
 
 const DATA = [4.2, 5.1, 3.8, 12.5, 4.9, 5.5, 4.1, 6.2, 4.7, 5.9, 3.5, 15.1, 4.4, 5.3];
 
+const SEEDS = [1, 2, 3, 4, 5];
+
 export default function BootstrapDiagram() {
   const t = useVizTokens();
-  const [seed, setSeed] = useState(1);
+  const { value: autoIdx } = useAutoCycle(SEEDS.length, 3000);
+  const [userSeed, setUserSeed] = useState<number | null>(null);
+  const seed = userSeed ?? SEEDS[autoIdx];
 
   const resampleMedians = useMemo(() => bootstrapResample(DATA, median, 1000, seed), [seed]);
   const realMedian = median(DATA);
@@ -40,7 +44,7 @@ export default function BootstrapDiagram() {
         <span><span style={{ color: t.accentWarn }}>┃┃</span> 95% bootstrap CI</span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
-        <VizButton onClick={() => setSeed((s) => s + 1)}>Re-run 1000 resamples</VizButton>
+        <VizButton onClick={() => setUserSeed((seed % 5) + 1)}>Re-run 1000 resamples (seed {seed})</VizButton>
       </div>
     </VisualizationContainer>
   );
