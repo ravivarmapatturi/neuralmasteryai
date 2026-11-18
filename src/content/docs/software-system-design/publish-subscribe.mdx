@@ -5,12 +5,28 @@ description: "Separate fan-out subscriptions from competing workers, calculate d
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { SubscriptionFanout } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # Publish/Subscribe and Independent Consumer Progress
 
 <ELI5>A notice can go to both the accounts team and the delivery team. Adding another person to accounts should share the accounts workload, not remove delivery's copy. Subscriptions decide which teams receive the notice; workers decide who within each team handles it. Keeping those two levels separate prevents quiet omissions.</ELI5>
+
+## Why it exists
+
+One event can have several independent consumers, each with its own progress. Competing workers divide one subscription's work; separate subscriptions each receive the event. That fan-out increases delivery and payload load, so retention and per-consumer lag need explicit budgets.
+
+## The big picture
+
+<PenFlow ariaLabel="Publish/Subscribe and Independent Consumer Progress: overview" rows={[{ steps: { title: "Publish one event", lines: ["stable event identity"], tone: "blue" } }, { steps: { title: "Choose subscription", lines: ["worker pool or independent group"], tone: "purple" } }, { steps: { title: "Track each cursor", lines: ["one group progress does not advance another"], tone: "orange" } }, { steps: { title: "Budget fan-out", lines: ["rate \u00d7 groups \u00d7 payload"], tone: "green" } }]} caption="Four events go to competing workers once but to two independent subscriptions twice." />
+
+<Worksheet title="Fan-out load" ariaLabel="Fan-out load" stages={[{ tag: "Source values", color: "yellow", note: "Four events reach two independent subscriptions; payload rate is 1,000 \u00d7 5 \u00d7 500 bytes.", grid: { head: ["", "value"], rows: [{ label: "competing deliveries", cells: ["4"] }, { label: "subscription deliveries", cells: ["8"] }, { label: "logical deliveries/s", cells: ["5,000"] }, { label: "payload MB/s", cells: ["2.5"] }] } }]} />
+
+The worksheet uses values printed by the runnable examples below.
+
+
 
 Separate fan-out subscriptions from competing workers, calculate delivery amplification, and define retention, routing, and recovery independently for each subscriber.
 **Publish/subscribe** decouples a publisher from independently interested subscribers. The publisher emits an event, and routing delivers it to the subscriptions that match. A subscription may contain several competing workers, but it still represents one logical consumer responsibility. Worker count and subscription count therefore change different parts of the system.
@@ -109,20 +125,28 @@ The groups may also need different retention and replay policies. Accounting may
 
 Filtering can reduce unnecessary deliveries, but it changes where subscription intent is expressed. If a broker-side filter excludes an event, the consumer cannot recover it from its own received-message history. Record filter changes and decide how a new subscription backfills earlier eligible data. A newly added fraud service, for example, may need historical purchase events rather than only events published after deployment. Test that onboarding path independently from ordinary reconnection. Finally, monitor each group's lag and failure population separately. A healthy combined delivery rate can hide a permanently failed fulfilment group behind a fast accounting group. Name the affected responsibility in alerts so the recovery procedure follows the business obligation that remains unfinished.
 
-## Failure Modes and Better Choices
+## Worked example
 
-A subscriber's acknowledgement removes work needed by another team. Separate their logical subscriptions. A new binding unexpectedly matches every event and overloads a service. Test exact routing patterns and enforce quotas. The publisher reports success while the required queue was absent. Validate routing topology and the chosen confirmation boundary.
+For four events, the competing workers split one delivery each, while each of two subscriptions receives all four (8 total). At 1,000 events/s, five groups, and 500 bytes, fan-out is 5,000 deliveries/s and 2.5 MB/s.
 
-One group replays old events and repeats irreversible actions. Preserve operation identity and separate projection rebuilds from action delivery. A handler assumes the latest database state equals the published fact. Carry sufficient historical meaning or use a version-aware lookup. A schema change silently makes a filter false. Test old retained messages and binding rules as part of interface evolution.
+## Try it yourself
 
-## When Not to Use Independent Fan-Out
+Use the page’s RunnableCode example, apply its existing `# Try it:` edit, and compare the output with the worksheet or trace above.
 
-| Situation | Better fit |
-| --- | --- |
-| Exactly one interchangeable worker should perform a task | One work queue with competing consumers |
-| Every action must commit in one local invariant boundary | A local transaction |
-| A transient refresh hint is sufficient | An explicitly ephemeral notification channel |
-| Subscribers require globally atomic joint completion | A coordinated workflow with durable state |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Use competing workers for independent subscribers | Workers in one group divide the events | Create a separate subscription per independent consumer |
+| Assume one cursor represents all consumers | Each consumer can progress or fail separately | Track offsets and retention per subscription |
+| Ignore payload fan-out | Delivery rate multiplies by group count | Budget bytes/s and lag before adding groups |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| Only one consumer needs the event | Use one queue or worker group |
+| Every subscriber can independently query the source | A durable event fan-out may be unnecessary |
 
 ## Remember
 

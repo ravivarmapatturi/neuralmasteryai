@@ -5,12 +5,28 @@ description: "Trace partition logs and committed offsets, size replay and retent
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { KafkaOffsetBoundary } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # Kafka Logs, Offsets, and Processing Boundaries
 
 <ELI5>A numbered ledger keeps old entries so several readers can work at their own pace. Each reader bookmarks where to continue. Moving the bookmark before finishing can skip work; moving it afterward can repeat work after a crash. The ledger preserves the sequence, while the reader must make its result and bookmark agree.</ELI5>
+
+## Why it exists
+
+A consumer's external effect and committed Kafka offset are different records. If the effect succeeds and the process crashes before committing progress, replay can repeat it. Offset commits must also preserve contiguous progress when records finish out of order.
+
+## The big picture
+
+<PenFlow ariaLabel="Kafka Logs, Offsets, and Processing Boundaries: overview" rows={[{ steps: { title: "Read ordered records", lines: ["offsets 10, 11, 12"], tone: "blue" } }, { steps: { title: "Apply effect 11", lines: ["effect commits before offset"], tone: "purple" } }, { steps: { title: "Crash before progress", lines: ["11 replays after restart"], tone: "orange" } }, { steps: { title: "Deduplicate effect", lines: ["commit contiguous next offset"], tone: "green" } }]} caption="A completed offset set {10,12} cannot advance past missing 11; next safe offset remains 11." />
+
+<Worksheet title="Offsets and retained payload" ariaLabel="Offsets and retained payload" stages={[{ tag: "Source values", color: "yellow", note: "The contiguous offset cannot pass 11 while it is unfinished.", grid: { head: ["", "value"], rows: [{ label: "committed next before crash", cells: ["11"] }, { label: "restart replay", cells: ["11, 12"] }, { label: "effect executions for 11", cells: ["2"] }, { label: "safe next offset", cells: ["11"] }, { label: "daily payload", cells: ["43.2 GB"] }, { label: "three-copy payload", cells: ["129.6 GB"] }] } }]} />
+
+The worksheet uses values printed by the runnable examples below.
+
+
 
 Trace partition logs and committed offsets, size replay and retention, and distinguish Kafka transaction guarantees from effects committed in an external store.
 An event log retains ordered records so consumers can replay them independently. Kafka organizes a topic into partitions, each with its own ordered offset space and replication protocol. Consuming a record does not remove it for every other consumer. Retention and compaction determine what remains available, while consumer-group progress determines where a group resumes.
@@ -111,20 +127,28 @@ Partition assignment changes do not remove this problem. A worker can lose an as
 
 Stateful processing has another recovery surface: local state and its changelog. Restoring a bookmark without the corresponding aggregate state can skip contributions; restoring state from a later point while replaying earlier records can count them twice. Use the framework's supported state restoration and transaction boundaries instead of copying directories and offsets independently. Also verify the retention horizon against the maximum supported recovery delay. A consumer that falls behind data already deleted from the log cannot reconstruct that history merely by selecting an older number. Define whether it rebuilds from another durable source, restores an aligned snapshot, or explicitly starts a new incomplete history. Those alternatives have different business meanings even when all of them result in a running consumer process.
 
-## Failure Modes and Better Choices
+## Worked example
 
-A group commits offsets before its external writes finish. Move progress after a safe effect or establish an atomic supported boundary. A consumer holds one slow record while committing later completions. Track the contiguous frontier. A producer's idempotence setting is advertised as end-to-end deduplication. Test application resubmission and the actual downstream effect separately.
+The first code prints committed next offset 11, restart replay [11,12], and two effect executions for 11. The second prints completed offsets [10,12], safe next offset 11, daily payload 432.0 GB, and three-copy payload 1296.0 GB.
 
-A consumer resets after retention loss and silently skips a gap. Require repair or an explicit product decision. A hot partition limits throughput despite many idle workers. Review the key and invariant boundary before adding consumers. A schema deployment cannot read retained older events. Use versioned compatible event interpretation, including the history needed for recovery, not only newly produced messages.
+## Try it yourself
 
-## When Not to Use Kafka
+Use the page’s RunnableCode example, apply its existing `# Try it:` edit, and compare the output with the worksheet or trace above.
 
-| Situation | Better fit |
-| --- | --- |
-| Small disposable tasks need simple worker competition | A suitable work queue |
-| No consumer needs retention or replay | A simpler notification transport |
-| A single synchronous invariant needs one local commit | A database transaction |
-| The team cannot operate log retention and partition recovery | A managed or simpler mechanism with explicit guarantees |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Commit the largest completed offset | A lower offset may still be unfinished | Advance only over a contiguous completed prefix |
+| Assume Kafka offset commit atomically covers an external DB | The two systems have separate commit boundaries | Use an idempotent sink or compatible transaction protocol |
+| Treat retention as an infinite replay store | Old data can expire or compaction can change records | Set a replay horizon and snapshot/recovery plan |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| One transient work item does not need ordered replay | Use a queue |
+| Consumers do not need independent offsets or retention | Use a simpler delivery mechanism |
 
 ## Remember
 

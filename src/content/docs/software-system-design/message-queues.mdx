@@ -5,12 +5,28 @@ description: "Choose durable acceptance and acknowledgement boundaries, bound wo
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { QueueAcknowledgementEffects } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # Message Queues and Worker Acknowledgements
 
 <ELI5>A work tray lets people leave tasks for whichever worker is free. Removing a card when someone picks it up risks losing the task if they leave before finishing. Removing it after completion risks a second worker repeating it if the completion note gets lost. A queue needs an explicit agreement about pickup, completion, and repeated work.</ELI5>
+
+## Why it exists
+
+A broker acknowledgement and an application effect are separate events. If the effect commits and its acknowledgement is lost, redelivery is required to avoid silently losing work; the consumer must make repetition safe. Prefetch also bounds in-flight jobs, not useful completion rate.
+
+## The big picture
+
+<PenFlow ariaLabel="Message Queues and Worker Acknowledgements: overview" rows={[{ steps: { title: "Persist accepted job", lines: ["broker confirms configured boundary"], tone: "blue" } }, { steps: { title: "Worker commits effect", lines: ["job identity stored atomically"], tone: "purple" } }, { steps: { title: "Ack is lost", lines: ["broker redelivers job"], tone: "orange" } }, { steps: { title: "Deduplicate and ack", lines: ["effect remains once"], tone: "green" } }]} caption="A duplicate delivery of job 7 repeats the effect without a durable guard, but not with identity protection." />
+
+<Worksheet title="Delivery and backlog" ariaLabel="Delivery and backlog" stages={[{ tag: "Source values", color: "yellow", note: "A guarded replay leaves one effect; the prefetch bound is 3 \u00d7 2.", grid: { head: ["", "value"], rows: [{ label: "unguarded effect count", cells: ["2"] }, { label: "guarded effect count", cells: ["1"] }, { label: "in-flight bound", cells: ["6"] }, { label: "backlog after 10 s", cells: ["400"] }, { label: "drain at 140/s", cells: ["10 s"] }] } }]} />
+
+The worksheet uses values printed by the runnable examples below.
+
+
 
 Choose durable acceptance and acknowledgement boundaries, bound worker prefetch, and recover redelivered jobs without confusing transport delivery with committed effects.
 A **message queue** separates a producer accepting work from workers performing it. This can absorb bounded bursts, isolate slow processing, and let workers recover independently. It also creates a second lifecycle: submitted, accepted, ready, in flight, completed, retried, expired, or diverted. The producer's response must say which transition has actually occurred.
@@ -109,20 +125,28 @@ Prefetch changes the number of deliveries held by a consumer before acknowledgem
 
 A poison delivery needs a disposition policy as well. Immediate requeue after a deterministic validation failure can create a tight failure loop, consuming capacity without changing the input. Decide which errors are transient, how attempts are counted durably, and when a message moves to a dead-letter workflow. That workflow needs an owner and a replay procedure because moving data aside does not repair it. When replaying, preserve the original business identity if the intent is the same operation. Inspect whether a partial effect already occurred before permitting another attempt. The operator should be able to explain whether job 7 is waiting, executing, completed, rejected, or awaiting intervention without deriving its business status solely from a broker's transient delivery counters.
 
-## Failure Modes and Better Choices
+## Worked example
 
-A queue looks empty because workers prefetched every job, but users still wait. Monitor in-flight age and reduce unfair prefetch. A consumer commits then crashes and redelivery repeats a charge. Protect effect identity at its durable owner. A retry message references an expired file. Align dependency retention with job lifetime. A broker restart loses sends despite durable queue configuration. Inspect persistence, replication, confirms, and the exact acceptance response.
+For job 7, the first attempt commits and redelivery occurs: the unguarded case has two effects, while the guarded set has one. With three workers and prefetch 2, the modeled outstanding bound is 6; at 100 arrivals/s and 60 completions/s, ten seconds adds 400 jobs.
 
-A poison message is retried forever at the head of a workflow. Bound redrive and separate permanent failure handling. A dead-letter queue silently grows. Give it an operational owner and a recovery policy. A schema change makes older queued payloads unreadable. Preserve compatible consumers or migrate retained messages under a versioned contract; queues preserve yesterday's inputs, not only today's code.
+## Try it yourself
 
-## When Not to Introduce a Queue
+Use the page’s RunnableCode example, apply its existing `# Try it:` edit, and compare the output with the worksheet or trace above.
 
-| Situation | Better starting design |
-| --- | --- |
-| The caller needs a small immediate result | A bounded synchronous operation |
-| Accepted work has no recovery owner | Establish durable lifecycle state first |
-| Every consumer needs its own replay history | A suitable durable subscription or log |
-| The bottleneck is an invariant on one hot key | Fix ownership or admission instead of accumulating more work |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Acknowledge before the effect commit | A crash can permanently lose the work | Acknowledge after durable effect, then make replay safe |
+| Use a process-local deduplication set | It disappears on restart and does not coordinate workers | Store operation identity at the durable effect boundary |
+| Scale consumers from queue length alone | More workers can overload dependencies or still fail to drain backlog | Measure age, arrivals, completions, and safe capacity |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| One synchronous operation must return immediately | Use request/response with a clear deadline |
+| There is no durable asynchronous obligation | A queue adds unnecessary state |
 
 ## Remember
 

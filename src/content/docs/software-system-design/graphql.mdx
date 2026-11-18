@@ -5,12 +5,28 @@ description: "Trace a graph query through resolvers, eliminate repeated backend 
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { GraphqlResolverWork } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # GraphQL Execution and Bounded Resolver Work
 
 <ELI5>A restaurant order can ask for a complete meal on one sheet, but the kitchen still performs many tasks. Asking for ten meals can repeat the same ingredient lookup ten times unless the kitchen groups it. A graph query reduces the number of client conversations; it does not automatically reduce the work behind the counter.</ELI5>
+
+## Why it exists
+
+A single GraphQL request can trigger many resolver calls even though it looks like one network operation. Repeated relationship lookups create N+1 backend work; a batch loader can group keys while preserving response order. The server also needs bounds on query depth, cost, and authorization.
+
+## The big picture
+
+<PenFlow ariaLabel="GraphQL Execution and Bounded Resolver Work: overview" rows={[{ steps: { title: "Resolve parent objects", lines: ["10 requested orders"], tone: "blue" } }, { steps: { title: "Load each owner", lines: ["naive repeated backend calls"], tone: "purple" } }, { steps: { title: "Batch distinct keys", lines: ["IDs 1 and 2 share results"], tone: "orange" } }, { steps: { title: "Align results", lines: ["requested key order is preserved"], tone: "green" } }]} caption="Ten owner lookups become two distinct backend reads, or one batched call." />
+
+<Worksheet title="Resolver call counts" ariaLabel="Resolver call counts" stages={[{ tag: "Source values", color: "yellow", note: "Ten owner lookups reference two distinct IDs.", grid: { head: ["", "calls"], rows: [{ label: "requested orders", cells: ["10"] }, { label: "distinct owners", cells: ["2"] }, { label: "naive", cells: ["11"] }, { label: "batch", cells: ["2"] }, { label: "memoized", cells: ["3"] }] } }]} />
+
+The worksheet uses values printed by the runnable examples below.
+
+
 
 Trace a graph query through resolvers, eliminate repeated backend lookups with request-scoped batching, and bound cost without weakening authorization.
 GraphQL lets a client select fields from a typed schema and executes that selection through server-defined behavior. It can make one interface serve several client views without returning every available field. The schema is an application contract, not a direct invitation to expose database tables or let clients choose arbitrary storage commands.
@@ -106,20 +122,28 @@ The batch function also has a precise result contract. It must return an entry f
 
 Finally, a single operation may contain several independent aliases or nested list expansions. Counting HTTP requests does not bound that work. Estimate query cost using the schema's actual cardinality limits, enforce pagination at every expandable connection, and set execution budgets that account for database calls and response size. A depth limit alone can permit a shallow but enormous fanout. Persisted operations can make a known application's workload easier to inspect, while public schema exploration needs its own policy. Measure resolver latency and calls by operation shape without logging secret variables. The goal is to connect the client's selected fields to the backend effort and authorization decisions they cause, then reject a request before it consumes an unbounded share of that effort.
 
-## Failure Modes and Better Choices
+## Worked example
 
-Latency grows with list size despite one client request. Count resolver work and downstream fan-out before adding network capacity. Batching returns the wrong records because a backend reordered its output. Restore key alignment and test duplicates and missing values. A loader survives across users and leaks data. Scope it to the authorization context and remove unsafe cross-request reuse.
+For owner IDs [1,2] repeated five times, source output is 10 requested orders, 2 distinct owners, 11 naive calls, 2 batched calls, and 3 memoized calls. The result alignment example returns names in key order, including the missing value.
 
-An introspection setting is treated as the main security boundary. Enforce actual authorization and cost limits; hiding schema metadata does not make forbidden fields unreachable. A mutation sequence partially commits while the client expects atomicity. Provide a real transactional operation or expose the workflow's partial states. A query log contains access tokens or private filters. Record bounded operation metadata and redact sensitive variables.
+## Try it yourself
 
-## When Not to Add GraphQL
+Use the page’s RunnableCode example, apply its existing `# Try it:` edit, and compare the output with the worksheet or trace above.
 
-| Situation | Better starting choice |
-| --- | --- |
-| Few stable public resources with strong shared-cache benefit | A clear HTTP resource interface |
-| Internal calls need tightly bounded typed operations | A suitable RPC contract |
-| The server cannot enforce query cost or field authorization | Establish those boundaries before exposing flexible selection |
-| Work must continue after disconnect | Durable operations or messaging, independent of the query transport |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Batch keys but return rows in database order | Resolver output must align to requested keys | Map by key and rebuild the request order |
+| Assume one request means bounded work | Nested resolvers can multiply backend calls | Limit depth, cost, and list sizes |
+| Cache across authorization scopes | The same key can have different visibility | Include security context or isolate loaders per request |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| A fixed resource representation is simpler | Use a REST endpoint |
+| Clients need unrestricted arbitrary query cost | Expose bounded operations instead |
 
 ## Remember
 

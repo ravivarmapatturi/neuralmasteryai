@@ -5,12 +5,28 @@ description: "Choose a live transport from direction and payload needs, then rec
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { StreamReplayWindow } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # WebSockets, SSE, and Reconnect Recovery
 
 <ELI5>A phone conversation lets two people speak immediately, but a dropped call does not preserve the sentences nobody heard. A radio announcement has only one speaking direction, yet listeners still need to know what they missed. Live software connections need a separate memory of events and a rule for restarting the conversation.</ELI5>
+
+## Why it exists
+
+A persistent connection reduces repeated setup and can deliver updates quickly, but it does not preserve events while a client is disconnected. Reconnect needs a cursor, retention window, and snapshot fallback when the missing range is no longer available. The application effect also needs deduplication.
+
+## The big picture
+
+<PenFlow ariaLabel="WebSockets, SSE, and Reconnect Recovery: overview" rows={[{ steps: { title: "Receive cursor 41", lines: ["client last applied event"], tone: "blue" } }, { steps: { title: "Reconnect after gap", lines: ["server retains from 43"], tone: "purple" } }, { steps: { title: "Detect missing 42", lines: ["replay incomplete"], tone: "orange" } }, { steps: { title: "Send snapshot then resume", lines: ["restore complete state"], tone: "green" } }]} caption="A cursor at 41 cannot replay a missing event below retention floor 43; a snapshot is required." />
+
+<Worksheet title="Reconnect and replay" ariaLabel="Reconnect and replay" stages={[{ tag: "Source values", color: "yellow", note: "The cursor is 41; floor 40 permits replay, while floor 44 leaves events 42 and 43 missing.", grid: { head: ["", "result"], rows: [{ label: "cursor", cells: ["41"] }, { label: "floor 40 replay", cells: ["42, 43, 44, 45"] }, { label: "floor 44 missing", cells: ["42, 43"] }, { label: "snapshot required", cells: ["yes at floor 44"] }, { label: "applied cursor", cells: ["45"] }] } }]} />
+
+The worksheet uses values printed by the runnable examples below.
+
+
 
 Choose a live transport from direction and payload needs, then recover missed events with durable cursors, bounded buffers, and an explicit retention-gap policy.
 WebSockets provide a bidirectional message conversation after the protocol handshake. Server-sent events, or SSE, carry a server-to-client event stream over HTTP. Both can deliver updates promptly, but neither creates durable application history merely by keeping a connection open. The transport choice and recovery contract are separate decisions.
@@ -109,20 +125,28 @@ When the replay window no longer includes event 42, simply continuing with event
 
 For bidirectional WebSockets, reconnect recovery also needs a policy for commands the client sent before disconnection. A client-side pending list cannot infer success from the lost socket. Preserve operation identifiers, reconcile server results, and resend only under the command's retry contract. For SSE, the browser's reconnection machinery helps carry the event cursor, but the server still owns history retention and interpretation. Test both directions of uncertainty: an event delivered but not recorded locally, and a command committed but not acknowledged. Duplicates and gaps require different repairs. A connection that reconnects quickly can still produce incorrect application state if either boundary remains undefined.
 
-## Failure Modes and Better Choices
+## Worked example
 
-The connection stays open while no business updates arrive. Monitor event progress and heartbeat separately. Reconnect replays messages from another user because the cursor is treated as authority. Verify stream ownership independently of token parsing. A deployment disconnects all clients simultaneously and overloads snapshot generation. Stagger reconnect, bound recovery work, and test a connection-drain event.
+The retention example checks a client cursor of 41 against each floor and prints replay plus missing IDs. The effect example receives event 41 twice but stores one unique effect and cursor 41.
 
-A browser receives the newest delta after older deltas were dropped. Send a complete replacement state or repair the missing dependency. A proxy delays SSE until a buffer fills. Check flushing and intermediary buffering along the real route. An idle socket holds expired permissions forever. Define reauthorization, revocation, or bounded session lifetime appropriate to the action.
+## Try it yourself
 
-## When Not to Hold a Live Connection
+Use the page’s RunnableCode example, apply its existing `# Try it:` edit, and compare the output with the worksheet or trace above.
 
-| Situation | Better fit |
-| --- | --- |
-| Updates are rare and latency tolerance is large | Conditional polling |
-| Offline consumers need durable independent progress | A durable subscription or log |
-| The result is a one-off bounded request | Ordinary HTTP or unary RPC |
-| No retention or repair protocol exists | Establish recovery before promising loss-free live updates |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Assume reconnect replays every missed event | The server may have expired older history | Detect gaps and return a snapshot |
+| Advance cursor on receipt | The application may fail before applying the event | Advance only after durable effect |
+| Treat connection lifetime as authorization lifetime | Permissions may change while the socket stays open | Reauthorize or bound session lifetime |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| Clients only need occasional state snapshots | Use bounded polling or a fetch endpoint |
+| No event history or gap recovery is available | Do not promise resumable delivery |
 
 ## Remember
 

@@ -4,10 +4,22 @@ sidebar_position: 4
 description: "A request, a live connection, and a durable message make different promises. Read focused chapters with worked examples, interactive experiments, and failure analysis."
 ---
 import { ELI5 } from '../../../components/content/ExpandableDepth';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Communication and Delivery Guarantees
 
 <ELI5>A request, a live connection, and a durable message make different promises. Choose what must survive a disconnect and which effect a retry may repeat. These chapters trace one boundary at a time before combining them in a service.</ELI5>
+
+## Why it exists
+
+Clients, services, and workers use several communication shapes, each with a different completion boundary. A response can be lost after an effect commits; a live connection can drop before a client receives an event; a durable message can be redelivered. Choose the mechanism from what must survive and what may repeat.
+
+## The big picture
+
+<PenFlow ariaLabel="Communication and Delivery Guarantees: overview" rows={[{ steps: { title: "Request/response", lines: ["caller waits for a bounded result"], tone: "blue" } }, { steps: { title: "Live stream", lines: ["connection carries updates"], tone: "purple" } }, { steps: { title: "Durable queue", lines: ["accepted work waits for a worker"], tone: "orange" } }, { steps: { title: "Protect effect", lines: ["identity, ack, and recovery"], tone: "green" } }]} caption="Choose the delivery boundary before promising what a response means." />
+
+
 
 Read the topics in order. Each chapter develops its own decision through a numerical example, an interactive experiment, runnable Python, and explicit failure behavior.
 
@@ -47,13 +59,28 @@ Continue with [Idempotency and operation identity](/docs/software-system-design/
 
 Continue with [REST and conditional updates](/docs/software-system-design/rest), [WebSockets, SSE, and reconnect recovery](/docs/software-system-design/websockets-and-sse), [Kafka logs and offset boundaries](/docs/software-system-design/kafka-and-event-streaming). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
 
-## Common Problems and Fixes
+## Worked example
 
-Continue with [Message queues and acknowledgements](/docs/software-system-design/message-queues), [Idempotency and operation identity](/docs/software-system-design/idempotency), [Delivery guarantees and effects](/docs/software-system-design/delivery-guarantees). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
+This overview links request, stream, and durable-work patterns; the linked chapters supply their measured examples.
 
-## When Not to Introduce Messaging
+## Try it yourself
 
-Continue with [Message queues and acknowledgements](/docs/software-system-design/message-queues), [Pub/sub and independent subscriptions](/docs/software-system-design/publish-subscribe). The dedicated chapters explain the mechanism, its observable boundary, and the failures its guarantees cover.
+Use the page’s RunnableCode example, apply its existing `# Try it:` edit, and compare the output with the worksheet or trace above.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat every successful send as completed work | The acknowledgement may cover only transport or broker receipt | Name the commit boundary |
+| Retry after timeout with a new identity | The first effect may already have committed | Preserve operation identity and reconcile |
+| Use a live connection as durable history | Disconnect can lose an unretained event | Persist events or provide a replay cursor |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| A synchronous local call fits the action | Keep the simpler boundary |
+| No durable obligation exists after disconnect | Do not introduce a broker |
 
 ## Remember
 

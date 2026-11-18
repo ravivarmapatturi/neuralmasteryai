@@ -5,12 +5,28 @@ description: "Define typed RPC messages, propagate one useful deadline, and boun
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { GrpcDeadlineBudget } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # gRPC Contracts, Deadlines, and Flow Control
 
 <ELI5>A receptionist can pass your request through several departments, but the time you can wait does not restart at each desk. Departments also need a shared form so they agree on what the request means. A typed RPC interface supplies that form; deadlines and flow control keep the conversation within useful limits.</ELI5>
+
+## Why it exists
+
+A downstream call that starts a fresh timeout can outlive the caller's budget. The top-level request may already be abandoned while work continues in several services. Propagating one deadline bounds the whole path, and flow control bounds buffered work when producers outrun consumers.
+
+## The big picture
+
+<PenFlow ariaLabel="gRPC Contracts, Deadlines, and Flow Control: overview" rows={[{ steps: { title: "Receive 200 ms budget", lines: ["one request deadline"], tone: "blue" } }, { steps: { title: "Spend 30 ms upstream", lines: ["remaining 170 ms"], tone: "purple" } }, { steps: { title: "Spend 50 ms next hop", lines: ["remaining 120 ms"], tone: "orange" } }, { steps: { title: "Propagate remainder", lines: ["bound downstream work"], tone: "green" } }]} caption="Two stages spend 80 ms from one 200 ms deadline; remaining budget is 120 ms." />
+
+<Worksheet title="Deadline and queue outputs" ariaLabel="Deadline and queue outputs" stages={[{ tag: "Source values", color: "yellow", note: "The 200 ms budget spends 30 ms and 50 ms; arrivals exceed completions by 40/s.", grid: { head: ["", "value"], rows: [{ label: "after 30 ms", cells: ["170 ms"] }, { label: "after 50 ms", cells: ["120 ms"] }, { label: "fresh nested timeouts", cells: ["280 ms"] }, { label: "10 s backlog", cells: ["400"] }] } }]} />
+
+The worksheet uses values printed by the runnable examples below.
+
+
 
 Define typed RPC messages, propagate one useful deadline, and bound streaming work while preserving schema compatibility and ambiguous-outcome semantics.
 An internal service call needs more than a compact payload. Both sides must agree on operation names, message structure, errors, cancellation, and what success acknowledges. gRPC combines service definitions, generated client/server bindings, and RPC semantics. Protocol Buffers is a common message format, while the transport and runtime supply capabilities such as streaming and deadlines.
@@ -125,20 +141,28 @@ Consider a database mutation that commits just before cancellation reaches the h
 
 Streaming adds another lifetime boundary. A stream can remain open while individual messages carry separate business deadlines. A single connection deadline may be inappropriate for a long-lived subscription, but unlimited per-message work is also unsafe. Bound outstanding messages and buffered bytes, define how either peer signals completion, and decide whether an application acknowledgement represents receipt or a committed effect. Transport flow control limits transmission pressure; it does not establish that a receiver has safely applied a command. During a failure drill, slow the receiving application while keeping the connection alive. Watch memory, pending work, and cancellation cleanup rather than only whether the socket disconnects. That experiment separates resource backpressure from application progress and shows which limit actually protects the service.
 
-## Failure Modes and Better Choices
+## Worked example
 
-An RPC expires but its database query continues until the pool is exhausted. Propagate cancellation and bound backend work under the remaining deadline. A retry library repeats unsafe mutations. Give effects stable identity and document retryable outcomes. An unknown enum or missing field breaks an old client. Test schema evolution and preserve forward-compatible behavior where the contract permits it.
+Source output: the propagated path totals 200 ms, while two fresh downstream timeouts could allow 280 ms. The queue simulation rises by 40/s at arrivals 100/s and consumption 60/s.
 
-A stream's memory grows while transport metrics look normal. Inspect application buffers and producer rate, not only network windows. One backend is overloaded despite many healthy replicas. Inspect connection affinity and client-side selection. A generated method exposes another tenant's record. Perform resource authorization in the service that owns the data, even when transport authentication succeeded.
+## Try it yourself
 
-## When Not to Use gRPC
+Use the page’s RunnableCode example, apply its existing `# Try it:` edit, and compare the output with the worksheet or trace above.
 
-| Situation | Better fit |
-| --- | --- |
-| A public interface primarily benefits from generic HTTP caching and inspection | Resource-oriented HTTP |
-| Browser constraints make the required transport impractical | A compatible gateway or browser-native protocol |
-| Work must survive disconnected consumers | Durable messaging plus an explicit delivery contract |
-| The team cannot maintain generated schema compatibility | A simpler interface with equally explicit versioning |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Start a fresh timeout at every hop | Nested calls can exceed the caller deadline | Propagate remaining deadline |
+| Treat cancellation as rollback | A remote operation may already have committed | Use operation identity and reconcile |
+| Buffer without flow control | Fast producers can grow memory and latency | Bound queues and propagate backpressure |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| The API is browser-facing and needs a simple HTTP contract | Use a suitable HTTP interface |
+| No typed RPC or streaming need justifies the extra protocol | Keep a simpler request boundary |
 
 ## Remember
 

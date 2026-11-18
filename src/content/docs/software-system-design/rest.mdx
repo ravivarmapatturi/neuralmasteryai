@@ -5,12 +5,28 @@ description: "Design HTTP resources, method semantics, validators, and error res
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { RestConditionalWrite } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # REST and Conditional Resource Updates
 
 <ELI5>A shared noticeboard has one current notice, but two editors can hold old copies. Posting a replacement should say which copy it was based on. Otherwise the second editor can erase the first editor's work without seeing it. HTTP gives clients a shared vocabulary for retrieving, replacing, and conditionally changing those representations.</ELI5>
+
+## Why it exists
+
+HTTP methods and status codes give clients and intermediaries a shared contract, but they do not automatically prevent lost updates. A stale editor can overwrite a newer representation even when PUT is idempotent. Conditional validators connect a client's observed version to the server's atomic write.
+
+## The big picture
+
+<PenFlow ariaLabel="REST and Conditional Resource Updates: overview" rows={[{ steps: { title: "Fetch representation", lines: ["client observes version 7"], tone: "blue" } }, { steps: { title: "Editor A updates", lines: ["price 10 to 12; version 8"], tone: "purple" } }, { steps: { title: "Editor B sends old version", lines: ["If-Match v7"], tone: "orange" } }, { steps: { title: "Reject stale replacement", lines: ["412; current price stays 12"], tone: "green" } }]} caption="An atomic If-Match check prevents the stale full replacement." />
+
+<Worksheet title="Conditional replacement results" ariaLabel="Conditional replacement results" stages={[{ tag: "Source values", color: "yellow", note: "The guarded update preserves A\u2019s price when B sends stale version 7.", grid: { head: ["", "B status", "stored price"], rows: [{ label: "without If-Match", cells: ["200", "10"] }, { label: "with If-Match", cells: ["412", "12"] }] } }]} />
+
+The worksheet uses values printed by the runnable examples below.
+
+
 
 Design HTTP resources, method semantics, validators, and error responses so clients can retry safely without silently overwriting concurrent changes.
 A public API needs behavior that clients, caches, proxies, and operators can interpret consistently. REST, representational state transfer, is an architectural style built around a uniform interface to resources. It includes constraints on stateless interaction, cacheability, layering, and representations that carry the information needed to drive application transitions. Naming JSON endpoints with plural nouns is only a small part of that design.
@@ -117,20 +133,28 @@ The version also needs a defined relationship to the representation. If a resour
 
 Now trace an ambiguous result. A sends its conditional update, the database commits version 8, and the response disappears. Repeating the same request with the old validator can return a precondition failure even though A's first attempt succeeded. That response protects the current state but does not explain the original operation's outcome. A client can fetch and reconcile the resource, or the service can provide an operation identity when the workflow requires durable result lookup. Avoid responding to this ambiguity by removing the precondition. That would restore the lost-update race the version check was meant to prevent. Conditional mutation, operation identity, and retrieval each answer a different question in the recovery workflow.
 
-## Failure Modes and Better Choices
+## Worked example
 
-A proxy retries a POST after a reset and creates a second business effect. Use an application idempotency contract or make another attempt conditional on authoritative outcome evidence. A client treats 202 as completion and deletes its only copy of pending work. Expose durable operation status and define failure recovery. A browser serves a deleted private representation from a cache. Review access, freshness, and revocation rather than only origin database state.
+In the first RunnableCode, unguarded B returns status 200 and resets price to 10; guarded B returns 412 and preserves price 12. The second exchange also prints A success, B stale failure, and the final representation.
 
-A resource URL encodes a shard or host permanently. Keep stable public identifiers separate from internal placement so migration does not rewrite every client bookmark. An API change removes a field while older clients still depend on it. Evolve representations compatibly, instrument usage, and make semantic changes explicit. Adding a path version does not by itself supply a migration policy.
+## Try it yourself
 
-## When Not to Use Resource-Oriented HTTP Alone
+Use the page’s RunnableCode example, apply its existing `# Try it:` edit, and compare the output with the worksheet or trace above.
 
-| Situation | Better companion or alternative |
-| --- | --- |
-| Continuous bidirectional messages | A stream with explicit reconnect and flow semantics |
-| Typed internal calls need generated contracts | A suitable RPC interface |
-| A long operation outlives the request | Durable operation state and asynchronous processing |
-| Arbitrary client-selected nested data dominates | Evaluate a bounded graph query interface |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Assume idempotent PUT prevents concurrent overwrite | Idempotence concerns repeating one intent, not stale state | Use an atomic validator or expected-version update |
+| Read version then write separately | Another update can land between those operations | Compare and mutate at one storage boundary |
+| Treat 202 Accepted as completed work | The operation may only be durably queued | Return an operation resource and status |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| The mutation is a non-resource command with no stable identity | Use a documented operation contract and deduplication key |
+| Clients cannot recover from version conflicts | Design a merge or user-resolution path before conditional writes |
 
 ## Remember
 
