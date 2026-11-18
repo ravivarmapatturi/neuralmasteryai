@@ -10,19 +10,30 @@ import NotebookCallout from '../../../components/notebook/NotebookCallout';
 import SearchRecommendationPipelineDiagram from '../../../viz/diagrams/SearchRecommendationPipelineDiagram';
 import PenFlow from '../../../components/notebook/PenFlow';
 
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Search & Recommendation Pipelines
 
 <ELI5>
 Imagine walking into a warehouse with ten million books. If you ask a librarian for books about space exploration, they do not read every single book in the warehouse while you wait at the desk. Instead, they first run to the astronomy aisle and grab fifty candidate books in thirty seconds. Next, they discard books that are checked out or damaged. Finally, they sit down, compare the remaining candidates carefully, and hand you the best five in order of relevance. Search and recommendation systems do the exact same thing in software.
 </ELI5>
 
-## Why Multi-Stage Funnels Exist
+## Why it exists
+
+Search and recommendation systems must score very large catalogs within interactive response budgets. A multi-stage funnel filters cheaply first, then spends richer computation on a bounded candidate set.## Why Multi-Stage Funnels Exist
 
 Search and recommendation engines face an identical fundamental engineering tension: catalog size versus scoring complexity. A modern platform contains vast catalogs—web pages, e-commerce products, short videos, or audio tracks—frequently scaling from millions to billions of items. Conversely, scoring a candidate item with a modern transformer or gradient-boosted decision tree requires computing dozens to hundreds of cross-features, comparing dense text embeddings, or evaluating deep neural networks.
 
 If we evaluated millions of catalog items through a deep cross-attention model on every user request, computational demands would require millions of full neural forward passes, violating interactive response budgets by orders of magnitude. Conversely, if we relied exclusively on fast keyword matching or unranked nearest-neighbor vector scans, responses would arrive rapidly, but the ordering would fail to capture subtle user preferences, contextual affinities, and business constraints.
 
 We resolve this tension by structuring the system as a multi-stage funnel. Early stages employ lightweight, sub-linear filtering and vector indexing to discard the vast majority of non-viable items, passing only a bounded candidate set to progressively richer, more computationally intensive scoring layers.
+
+
+## The big picture
+
+<PenFlow title="Move candidates through the search funnel" ariaLabel="Move candidates through the search funnel" rows={[{ steps: { title: 'Retrieve broadly', lines: ['Use lexical, dense, and graph signals'], tone: 'blue' } }, { steps: { title: 'Filter constraints', lines: ['Remove unavailable or disallowed items'], tone: 'purple' } }, { steps: { title: 'Rank and rerank', lines: ['Spend model compute on finalists'], tone: 'orange' } }, { steps: { title: 'Serve slate', lines: ['Return a bounded top-k list'], tone: 'green' } }]} caption="The funnel trades candidate breadth for scoring depth at each stage." />
+
+<Worksheet title="Catalog funnel budget" ariaLabel="Catalog funnel budget" stages={[{ tag: 'Page scale examples', color: 'yellow', note: 'Illustrative counts copied from the architecture description.', grid: { head: ['', 'Candidates'], rows: [{ label: 'Catalog', cells: ['Millions to billions of items'] }, { label: 'After retrieval', cells: ['Several hundred to a few thousand'] }, { label: 'Served slate', cells: ['Typically 5 to 20 items'] }] } }]} />
 
 ## The Multi-Stage Architecture
 
@@ -226,7 +237,31 @@ Here is how candidate item **H1** (a pair of high-end noise-cancelling headphone
 
 At each transition, the candidate pool contracts while feature richness expands. Candidate generation operates over static document embeddings; ranking operates over real-time feature joins; re-ranking operates over list-level properties.
 
-## When Not to Use a Multi-Stage Pipeline
+## Worked example
+
+A catalog with millions of items is first reduced to several hundred or a few thousand candidates. Ranking applies richer models to that pool, and the serving layer returns a slate of about 5 to 20 results. If retrieval misses the best item, no later stage can recover it.
+
+## Try it yourself
+
+Trace one query through retrieval, hard filters, ranking, reranking, and serving. Choose one constraint that should remove a candidate before expensive scoring.
+
+```python
+# Try it: Trace one query through retrieval, hard filters, ranking, reranking, and serving. Choose one constraint that should remove a candidate before expensive scoring.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Apply a cross-encoder to the full catalog | Per-item joint scoring breaks the latency budget | Retrieve a bounded candidate pool first |
+| Treat retrieval recall as a ranking concern | Missed items never reach ranking | Measure candidate recall separately |
+| Ignore serving constraints | High-scoring results may be unavailable or disallowed | Apply hard filters before final reranking |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+
 
 A full multi-stage architecture introduces distributed complexity, operational overhead, and serialized network boundaries. Several common product scenarios do not warrant this architecture:
 

@@ -17,6 +17,10 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
+import Worksheet from '../../../components/notebook/Worksheet';
+
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Harness Engineering: Building Autonomous Production Agents in Python
 
 The transition from early LLM demos to production-grade coding and operational agents has revealed a stark architectural reality: **prompt engineering alone does not scale to autonomous work**. When given complex multi-file engineering problems or long-horizon tasks, naked frontier models fail in predictable, recurring ways:
@@ -42,7 +46,19 @@ A **Harness** automates everything the human engineer was doing outside the chat
 
 </ELI5>
 
+## Why it exists
+
+A language model cannot observe whether its code compiles or its task is complete. A harness supplies execution, state, permissions, and independent verification so model claims become checked outcomes.
+
+
 ---
+
+
+## The big picture
+
+<PenFlow title="Close the harness feedback loop" ariaLabel="Close the harness feedback loop" rows={[{ steps: { title: 'Assemble context', lines: ['Load task, files, and instructions'], tone: 'blue' } }, { steps: { title: 'Call model and tools', lines: ['Execute inside a permission boundary'], tone: 'purple' } }, { steps: { title: 'Verify externally', lines: ['Run checks and inspect state'], tone: 'orange' } }, { steps: { title: 'Update state', lines: ['Continue, retry, or stop'], tone: 'green' } }]} caption="External checks feed evidence back into the next model step." />
+
+<Worksheet title="Harness ablation results" ariaLabel="Harness ablation results" stages={[{ tag: 'Page results', color: 'yellow', note: 'Ablation percentages and context figures stated on this page.', grid: { head: ['', 'Recorded value'], rows: [{ label: 'Task completion', cells: ['14% without controls → 92% with harness'] }, { label: 'Instruction budget', cells: ['32k tokens'] }, { label: 'Compaction', cells: ['120k churn → 8k clean state'] }] } }]} />
 
 ## 1. The Anatomy of an Agent Harness
 
@@ -117,6 +133,13 @@ def extract_map(code: str) -> str:
 print("=== Extracted High-Density AST Map ===")
 print(extract_map(python_source))
 `} />
+
+```output
+=== Extracted High-Density AST Map ===
+class AgentSupervisor:
+    def __init__(self, max_turns)
+    def dispatch_work_order(self, task)
+```
 
 ---
 
@@ -198,3 +221,27 @@ Explore the deep-dive chapters in this track to build each subsystem from scratc
 - **[The 3-Layer Verification Engine](/docs/harness-engineering/verification-loops)**
 - **[State Continuity & Memory Compaction](/docs/harness-engineering/state-continuity-and-memory)**
 - **[Autonomous Loops & Supervisors](/docs/harness-engineering/autonomous-loops-and-supervisors)**
+## Worked example
+
+The page reports task completion shifting from 14% to 92% in the harness ablation. It also describes a 32k instruction budget and a compaction example that reduces 120k tokens of churn to 8k of clean state.
+
+## Try it yourself
+
+Choose one failed tool action and specify what evidence the harness should capture before deciding whether to retry or stop.
+
+```python
+# Try it: Choose one failed tool action and specify what evidence the harness should capture before deciding whether to retry or stop.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Trust the model’s success statement | The model cannot observe external test results unless returned | Require independent checks and feed their output back |
+| Give tools broad host access | One bad action can damage unrelated state | Scope permissions and isolate execution |
+| Keep all history forever | Context grows and old details distract | Persist state externally and compact deliberately |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|

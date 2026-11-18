@@ -10,9 +10,25 @@ import ContaminationDiagram from '../../../viz/diagrams/ContaminationDiagram';
 import SaturationDiagram from '../../../viz/diagrams/SaturationDiagram';
 import GoldenDatasetCoverageDiagram from '../../../viz/diagrams/GoldenDatasetCoverageDiagram';
 
+import Worksheet from '../../../components/notebook/Worksheet';
+
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Evaluation Fundamentals
 
 Before LLM-as-judge, before agent trajectories — the basic question every evaluation effort has to answer honestly: is this measurement actually trustworthy?
+
+
+## Why it exists
+
+A benchmark score is trustworthy only when the test measures the intended capability, has not leaked into training, still separates systems, and covers production inputs. Each diagram makes one failure mode measurable.
+
+
+## The big picture
+
+<PenFlow title="Audit a benchmark score" ariaLabel="Audit a benchmark score" rows={[{ steps: { title: 'Check construct', lines: ['Could a shortcut solve the test?'], tone: 'blue' } }, { steps: { title: 'Check contamination', lines: ['Estimate score inflation'], tone: 'purple' } }, { steps: { title: 'Check spread', lines: ['Confirm benchmark still discriminates'], tone: 'orange' } }, { steps: { title: 'Check coverage', lines: ['Include rare production cases'], tone: 'green' } }]} caption="Trust the number only after checking what generated it and which cases it covers." />
+
+<Worksheet title="Default contamination calculation" ariaLabel="Default contamination calculation" stages={[{ tag: 'Diagram defaults', color: 'yellow', note: 'Constants are taken from the contamination diagram and its stated equation.', grid: { head: ['', 'Score'], rows: [{ label: 'True capability', cells: ['62%'] }, { label: 'Contaminated items', cells: ['15%'] }, { label: 'Reported score', cells: ['(1 - 0.15) × 0.62 + 0.15 = 0.677, or 67.7%'] }, { label: 'Inflation', cells: ['5.7 percentage points'] }] } }]} />
 
 ## Intuition: A Number Is Not a Measurement
 
@@ -95,4 +111,28 @@ def check_contamination(benchmark_items: list[str], training_corpus_shards: list
     return len(contaminated) / len(benchmark_items)  # real contamination fraction, feeds the diagram above
 ```
 
-Next: [LLM, RAG & Agent Evaluation](/docs/ai-evaluation/llm-rag-agent-evaluation) — applying this foundation to the harder-to-measure outputs generative and agentic systems produce.
+## Worked example
+
+At the contamination diagram’s defaults, true capability is 62% and 15% of benchmark items are memorized. Applying the stated formula gives (1 - 0.15) × 0.62 + 0.15 = 0.677, so the reported score is 67.7%, an inflation of 5.7 points.
+
+## Try it yourself
+
+Change the contamination fraction and recompute the reported score. Then explain why a larger golden set should include sparse-tail examples.
+
+```python
+# Try it: Change the contamination fraction and recompute the reported score. Then explain why a larger golden set should include sparse-tail examples.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat the benchmark score as capability | Surface cues or memorization can inflate it | Test construct validity and contamination |
+| Keep a saturated benchmark | Near-ceiling scores stop separating models | Replace or extend the evaluation set |
+| Sample only common inputs | Rare failures remain invisible | Track coverage of the production tail |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+(/docs/ai-evaluation/llm-rag-agent-evaluation) — applying this foundation to the harder-to-measure outputs generative and agentic systems produce.

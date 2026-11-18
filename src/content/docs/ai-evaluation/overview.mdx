@@ -5,6 +5,10 @@ description: "Evaluation methodology as its own discipline: benchmark design, LL
 ---
 
 
+import Worksheet from '../../../components/notebook/Worksheet';
+
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # AI Evaluation — Overview
 
 Evaluation shows up throughout this site already — [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) for classical ML, [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) for production LLM/RAG monitoring, evaluation sections inside [RAG](/docs/llms-genai/rag) itself. This section is the discoverable home that ties all of it together, and fills in what was genuinely missing: **agent evaluation**, **benchmark design methodology**, and **adversarial evaluation/red teaming** as their own disciplines rather than afterthoughts.
@@ -17,8 +21,39 @@ The unifying question across every page here: not just "what's the metric," but 
 - **[LLM, RAG & Agent Evaluation](/docs/ai-evaluation/llm-rag-agent-evaluation)** — LLM-as-a-judge in depth, RAG evaluation (cross-linked), and agent evaluation — trajectory analysis, task success rate, tool-call accuracy — which had no dedicated treatment anywhere on the site before this.
 - **[Human & Adversarial Evaluation](/docs/ai-evaluation/human-and-adversarial-evaluation)** — human evaluation methodology, pairwise/preference evaluation, adversarial evaluation, and red teaming.
 
-## Why This Deserves Its Own Section
+## Why it exists
 
 "Ship it if the eval score looks good" is exactly backwards when the eval itself is untrustworthy — a benchmark that's leaked into training data, a golden dataset that's stale, an LLM-judge that's systematically biased toward longer answers, or a human eval with too few raters to be statistically meaningful all produce a number that *looks* like signal and isn't. Evaluation methodology is a discipline in its own right, not a free byproduct of building the model/RAG pipeline/agent it's measuring.
 
+
+## The big picture
+
+<PenFlow title="Build trustworthy evaluation" ariaLabel="Build trustworthy evaluation" rows={[{ steps: { title: 'Define the claim', lines: ['Name the capability being measured'], tone: 'blue' } }, { steps: { title: 'Design the set', lines: ['Cover real inputs and hard cases'], tone: 'purple' } }, { steps: { title: 'Evaluate', lines: ['Use code, calibrated judges, and people'], tone: 'orange' } }, { steps: { title: 'Challenge results', lines: ['Probe bias and adversarial failures'], tone: 'green' } }]} caption="A trustworthy score depends on what the test covers and how it is graded." />
+
+<Worksheet title="Evaluation section map" ariaLabel="Evaluation section map" stages={[{ tag: 'Existing section structure', color: 'yellow', note: 'Chapter names and methods copied from this section overview.', grid: { head: ['', 'Question'], rows: [{ label: 'Does the benchmark measure the intended skill?', cells: ['Evaluation Fundamentals'] }, { label: 'How do we grade LLM, RAG, and agent behavior?', cells: ['LLM, RAG & Agent Evaluation'] }, { label: 'How do people and attackers expose failures?', cells: ['Human & Adversarial Evaluation'] }] } }]} />
+
 See the [roadmap](/docs/ai-evaluation/roadmap) for the full ordered path.
+## Worked example
+
+A team testing an agent first checks that its task-success set represents production requests. It then chooses graders for outcomes and tool calls, and uses human/adversarial evaluation to find failures a routine test set misses.
+
+## Try it yourself
+
+Write one claim about your model, then choose which section provides the method to test it and which provides an adversarial check.
+
+```python
+# Try it: Write one claim about your model, then choose which section provides the method to test it and which provides an adversarial check.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Trust a benchmark score by itself | A score can reflect contamination or shortcuts | Examine construct validity and data coverage |
+| Use one grader for every output | Different tasks need different evidence | Choose code, judges, or people by criterion |
+| Treat red teaming as optional polish | Adversarial inputs expose deployment failures | Include adversarial evaluation in the release plan |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|

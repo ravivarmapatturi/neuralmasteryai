@@ -8,6 +8,10 @@ import AgentHarnessArchitectureVisualizer from '../../../viz/diagrams/AgentHarne
 import HarnessCurriculumDiagram from '../../../viz/diagrams/HarnessCurriculumDiagram';
 import { ELI5 } from '../../../components/content/ExpandableDepth';
 
+import Worksheet from '../../../components/notebook/Worksheet';
+
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Harness Engineering Roadmap
 
 <ELI5>
@@ -15,6 +19,18 @@ import { ELI5 } from '../../../components/content/ExpandableDepth';
 An AI model can suggest a change, but it cannot tell whether the change works until it runs it. A harness gives the model tools, limits what those tools can do, checks the result, and saves the work so the next step starts with the right facts. The chapters on this page build those pieces one at a time.
 
 </ELI5>
+
+## Why it exists
+
+The roadmap moves from the model-plus-harness equation through execution isolation, instruction design, verification, persistent state, and long-running autonomy. Each step adds a control that addresses a concrete failure mode.
+
+
+
+## The big picture
+
+<PenFlow title="Build the harness in layers" ariaLabel="Build the harness in layers" rows={[{ steps: { title: 'Set boundaries', lines: ['Architecture and sandboxing'], tone: 'blue' } }, { steps: { title: 'Shape context', lines: ['Instruction maps and budgets'], tone: 'purple' } }, { steps: { title: 'Verify work', lines: ['Static, test, and runtime checks'], tone: 'orange' } }, { steps: { title: 'Preserve continuity', lines: ['State, memory, and goal loops'], tone: 'green' } }]} caption="The sequence progresses from safe execution to reliable long-running work." />
+
+<Worksheet title="Harness roadmap checkpoints" ariaLabel="Harness roadmap checkpoints" stages={[{ tag: 'Numbers in the roadmap', color: 'yellow', note: 'Named values taken from the linked chapter descriptions.', grid: { head: ['', 'Checkpoint'], rows: [{ label: 'Ablation', cells: ['14% → 92% task completion'] }, { label: 'Context design', cells: ['32k instruction budget'] }, { label: 'State compaction', cells: ['120k → 8k tokens'] }, { label: 'Verification', cells: ['3 layers: static, tests, runtime'] }] } }]} />
 
 ## What you will learn
 
@@ -65,6 +81,30 @@ The chapters trace one supervised task from its goal through tool calls, verific
 - Background entropy and garbage collection agents (OpenAI pattern): continuously pruning stale code and docs.
 - Trajectory logging (`transcript.jsonl`), telemetry, and security monitoring.
 
+## Worked example
+
+A team can follow the route in order: establish sandbox boundaries, keep instructions within the 32k budget, verify with three layers, and compact a 120k-token history to 8k of clean state before resuming.
+
+## Try it yourself
+
+Pick one failure in a long coding task and map it to the roadmap chapter that would prevent or detect it.
+
+```python
+# Try it: Pick one failure in a long coding task and map it to the roadmap chapter that would prevent or detect it.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Start with prompts alone | Prompts cannot enforce process boundaries | Begin with harness architecture and permissions |
+| Treat all checks as equivalent | Static analysis, tests, and runtime probes catch different failures | Add checks in layers |
+| Omit persistent state | A restart loses task progress | Add state continuity before long tasks |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
 ## Start here
 
 Begin with [Harness Engineering Overview](/docs/harness-engineering/overview) to see the full loop, then follow the chapters in order as each control is introduced.

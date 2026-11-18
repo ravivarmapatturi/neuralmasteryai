@@ -251,3 +251,9 @@ Static checks passed on the combined worktree: notebook (19 changed pages/0 viol
 ## Agents batch 1 correction
 
 The updated local notebook import guard exposed that Agent Architectures rendered the new ELI5 component without importing it. Added the missing import; notebook and MDX checks pass. The guard implementation itself is separate workspace work and was not included in this content commit.
+
+## Rest batch 1 — eight pages
+
+Finished the Search & Recommendation overview, Harness Engineering overview/roadmap, MLOps overview/roadmap, and AI Evaluation overview/roadmap/fundamentals. Worksheets use the search funnel's stated scale, harness ablation/context figures and AST output, linked chapter routes, and the evaluation simulator default contamination calculation (62% true capability, 15% contamination → 67.7% reported). Scorecard: `rest-1/scorecard.md`.
+
+Static gates passed on the combined worktree: notebook (8 changed pages/0 violations), math, MDX (2019/0 failures), links (2147 valid routes/0 broken anchors), typecheck, tracker, and diff check. Full Vitest, browser captures, and build remain deferred under low-memory constraints. No push.
