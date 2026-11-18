@@ -12,6 +12,8 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Prompt Engineering
 
@@ -21,9 +23,35 @@ A language model continues whatever text you give it. If you hand a new colleagu
 
 </ELI5>
 
-## Why This Exists
+## Why it exists
 
-A prompt is the cheapest lever on an LLM's behaviour: no training, no data pipeline, and a change is live in minutes. It is also the easiest to fool yourself with. Models are sensitive to wording, order and examples, and a prompt that looks better on five hand-picked inputs can be worse on the next five hundred. This page covers the techniques (examples, step-by-step reasoning, sampling several answers), when a reasoning model is worth its cost, how to get output code can parse, the security problem of untrusted text in the prompt, and how to measure a prompt change so the decision is based on evidence.
+A prompt is a low-cost way to change a model's behavior without training or a data pipeline. It is also easy to misjudge: a prompt that looks better on five hand-picked inputs can be worse on the next five hundred. This page covers examples, step-by-step reasoning, answer sampling, reasoning budgets, structured output, injection risks, and evidence for deciding whether a prompt change helped.
+
+## The big picture
+
+Prompt work is an experiment: state the task, write the prompt, run it on fixed cases, compare outcomes, then keep or revise the change. Notice that both prompt versions see the same cases; pairing makes each case its own comparison.
+
+<PenFlow
+  ariaLabel="Prompt experiment: define task, write prompt, run fixed cases, compare paired outcomes, then keep or revise"
+  title="A prompt is a testable change"
+  caption="Use the same cases for both prompt versions so the comparison isolates the wording change."
+  rows={[
+    { steps: [
+      { title: 'Define the task', lines: ['choose a score rule', 'save the same test cases'], tone: 'blue' },
+      { title: 'Write the prompt', lines: ['state the goal', 'add examples or a format'], tone: 'purple' },
+    ] },
+    { arrow: 'run both versions on the same cases', steps: [
+      { title: 'Compare outcomes', lines: ['count fixes and regressions', 'estimate uncertainty'], tone: 'green' },
+      { title: 'Decide', lines: ['keep if evidence is clear', 'revise if cases break'], tone: 'orange' },
+    ] },
+  ]}
+/>
+
+<Worksheet title="Compare two prompts on 200 cases" ariaLabel="Worksheet using the prompt evaluation example with 169 baseline correct, 14 fixed, 6 broken, and 177 new correct cases" stages={[
+  { tag: 'Baseline', color: 'yellow', note: 'The old prompt gets 169 of 200 cases right.', grid: { head: ['', 'test cases', 'correct', 'incorrect'], rows: [{ label: 'old prompt', cells: ['200', '169', '31'] }] } },
+  { tag: 'Changes', color: 'blue', note: 'The new prompt fixes 14 and breaks 6 cases.', grid: { head: ['', 'fixed', 'broken', 'net'], rows: [{ label: 'case changes', cells: ['14', '6', '+8'] }] } },
+  { tag: 'New score', color: 'green', note: 'Work out the new total and accuracy before revealing the answer.', grid: { head: ['', 'correct', 'accuracy', 'gain'], rows: [{ label: 'new prompt', cells: ['?', '?', '?'] }], hide: [[0, 0], [0, 1], [0, 2]] } },
+]} />
 
 ## Zero-Shot, One-Shot, Few-Shot
 
@@ -109,9 +137,9 @@ No prompt wording reliably stops injection, because instructions and data share 
 
 Treat a prompt like code: change it, run a test suite, compare. The suite is a fixed set of inputs with known-good outputs or a grading rule, and both versions run on the same cases so the comparison is paired.
 
-### Run It Yourself: Is a 4-Point Gain Real?
+## Worked example
 
-An old prompt scores 0.845 on 200 cases and a new one 0.885, a gain of 4 points. Looking case by case, the new prompt fixed 14 cases and broke 6. A paired bootstrap, resampling the 200 cases 5,000 times, puts the gain's 95% interval at -0.005 to +0.080. It includes zero: on this suite, the improvement could be noise. Had the new prompt fixed 24 cases, the interval would be +0.040 to +0.145, a real improvement.
+An old prompt gets 169 of 200 cases right (84.5%). The new prompt fixes 14 cases and breaks 6, so it gets 177 right (88.5%), a gain of 4 percentage points. In a paired bootstrap of 5,000 resamples, the 95% interval for this run is -0.000 to +0.085; it includes zero, so the apparent gain could be noise. If the new prompt fixed 24 instead, the interval would be +0.035 to +0.145.
 
 <PredictFirst
   question="A new prompt raises accuracy from 84.5% to 88.5% on a 200-case test set. What is the right conclusion?"
@@ -125,12 +153,17 @@ An old prompt scores 0.845 on 200 cases and a new one 0.885, a gain of 4 points.
   explanation="The gain comes from 14 fixed and 6 broken cases, a net of 8 out of 200, and resampling shows that could easily be chance. That does not mean the prompt is worse, so rejecting it is also wrong. Read the 6 broken cases (they often reveal a real regression) and grow the suite until the interval is narrow enough to decide."
 />
 
+## Try it yourself
+
+The runnable example uses those same counts. Change the number of fixed cases and see when the interval clears zero.
+
 <RunnableCode code={`import numpy as np
 
 # Two prompt versions run on the same 200 test cases (1 = correct).
 rng = np.random.default_rng(3)
 n = 200
-old = (rng.random(n) < 0.82).astype(int)
+old = np.array([1] * 169 + [0] * 31)
+rng.shuffle(old)
 new = old.copy()
 flip_up = rng.choice(np.where(old == 0)[0], 14, replace=False)    # new prompt fixes 14
 flip_down = rng.choice(np.where(old == 1)[0], 6, replace=False)   # and breaks 6
@@ -149,7 +182,7 @@ print(f"95% interval for the gain: [{lo:+.3f}, {hi:+.3f}]")
 print("verdict:", "real improvement" if lo > 0 else "could be noise; add test cases")
 
 # Try it: change 14 to 24, so the new prompt fixes 24 cases. The gain becomes
-# +0.090 and the interval [+0.040, +0.145] no longer includes zero.`} />
+# +0.090 and the interval [+0.035, +0.145] no longer includes zero.`} />
 
 See [Model evaluation metrics](/docs/machine-learning/model-evaluation-metrics#6-is-the-difference-real) for the statistics behind paired comparisons, and [LLM Evaluation and Serving](/docs/llms-genai/evaluation-and-serving) for grading with LLM judges.
 
@@ -159,7 +192,7 @@ A transformer does a fixed amount of computation per token: one pass through eve
 
 </GoDeeper>
 
-## Failure Modes and Debugging
+## Common mistakes
 
 - **Prompt sensitivity.** Small wording changes give inconsistent output. Make the instructions explicit, add examples, lower the temperature, and measure with a suite rather than spot checks.
 - **Lost in the middle.** Models use information near the start and end of a long context more reliably than information in the middle, even inside the context window. It matters for prompting and for [RAG](/docs/llms-genai/rag).
@@ -174,7 +207,7 @@ This is one symptom of **context rot**, the broader drop in recall as context gr
 Write the test suite before the prompt. Start with the simplest instruction, run the suite, read the failures, change one thing, run again. Keep the suite in version control next to the prompt.
 </NotebookCallout>
 
-## When *Not* to Use It
+## When not to use it
 
 | Situation | Better choice |
 | --- | --- |

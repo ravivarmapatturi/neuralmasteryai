@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { PillSelect, VisualizationContainer, VisualizationHeader } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
-import { SketchRect } from '../../components/notebook/RoughShape';
-
-const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
 
 type Phase = 'prefill' | 'decode';
 
@@ -15,46 +12,27 @@ type Phase = 'prefill' | 'decode';
 export default function PrefillVsDecodeDiagram() {
   const t = useVizTokens();
   const [active, setActive] = useState<Phase>('decode');
-  const prefillColor = getConceptColor(t, 'query');
-  const decodeColor = getConceptColor(t, 'attention');
-  const width = 560;
-  const height = 150;
+  const phaseColor = getConceptColor(t, active === 'prefill' ? 'query' : 'attention');
+  const tokens = active === 'prefill' ? ['the', 'cat', 'sat', 'down'] : ['fast', 'next'];
 
   return (
-    <VisualizationContainer
+    <VisualizationContainer title="Prefill and decode phases"
       footer={
         active === 'prefill'
           ? 'Prefill: all prompt tokens are known upfront -- one large, parallelizable matrix multiply. Compute-bound: speed scales with GPU FLOPs.'
           : "Decode: each new token depends on the previous one -- can't be parallelized across steps. Every step re-reads the full model weights + growing KV cache from GPU memory -- memory-bandwidth-bound, not compute-bound."
       }
     >
-      <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-        <g onClick={() => setActive('prefill')} onMouseEnter={() => setActive('prefill')} style={{ cursor: 'pointer' }} opacity={active === 'prefill' ? 1 : 0.35}>
-          <text x={20} y={20} fontSize={11} fontWeight={700} fontFamily={HAND_FONT} fill={prefillColor}>Prefill</text>
-          {['the', 'cat', 'sat', 'down'].map((tok, i) => (
-            <g key={i}>
-              <rect x={20 + i * 60} y={30} width={50} height={28} rx={5} fill={`${prefillColor}25`} stroke="none" />
-              <SketchRect x={20 + i * 60} y={30} width={50} height={28} color={prefillColor} strokeWidth={active === 'prefill' ? 2 : 1.25} id={`pvd-prefill-${i}`} />
-              <text x={45 + i * 60} y={48} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={prefillColor}>{tok}</text>
-            </g>
-          ))}
-          <text x={20} y={78} fontSize={8.5} fontFamily={HAND_FONT} fill={t.textMuted}>↑ processed together, one matmul</text>
-        </g>
-
-        <g onClick={() => setActive('decode')} onMouseEnter={() => setActive('decode')} style={{ cursor: 'pointer' }} opacity={active === 'decode' ? 1 : 0.35}>
-          <text x={20} y={105} fontSize={11} fontWeight={700} fontFamily={HAND_FONT} fill={decodeColor}>Decode</text>
-          {['fast', '?'].map((tok, i) => (
-            <g key={i}>
-              <rect x={20 + i * 70} y={115} width={55} height={28} rx={5} fill={i === 1 ? t.surfaceAlt : `${decodeColor}25`} stroke="none" />
-              <SketchRect x={20 + i * 70} y={115} width={55} height={28} color={decodeColor} strokeWidth={active === 'decode' ? 2 : 1.25} id={`pvd-decode-${i}`} />
-              <text x={47 + i * 70} y={133} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={decodeColor}>{tok}</text>
-              {i === 0 && <text x={110} y={133} fontSize={12} fontFamily={HAND_FONT} fill={t.textMuted}>→</text>}
-            </g>
-          ))}
-        </g>
-      </svg>
-      <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 4 }}>
-        Same GPU, opposite bottlenecks -- this split is why LLM inference optimization is really two different problems.
+      <VisualizationHeader eyebrow="Interactive model" title="Two phases, two bottlenecks" description="Choose a phase to see which tokens can run together." />
+      <PillSelect label="Request phase" value={active} onChange={setActive} options={[{ value: 'prefill', label: 'Prefill' }, { value: 'decode', label: 'Decode' }]} />
+      <div role="img" aria-label={`${active} phase token flow: ${tokens.join(', ')}. ${active === 'prefill' ? 'All prompt tokens are processed together.' : 'Each next token waits for the previous token.'}`} style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '16px 8px', color: t.textPrimary }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+          {tokens.map((token, i) => <span key={`${active}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 56, minHeight: 42, padding: '4px 10px', border: `2px solid ${phaseColor}`, borderRadius: 8, background: `${phaseColor}18`, fontSize: 16 }}>{token}</span>)}
+        </div>
+        <div style={{ fontSize: 15, lineHeight: 1.5 }}>{active === 'prefill' ? 'Prompt tokens are processed together in parallel.' : 'The next token waits for the previous token before generation continues.'}</div>
+      </div>
+      <div style={{ textAlign: 'center', fontSize: Math.max(DIAGRAM_TYPE.caption.size, 14), color: t.textMuted, marginTop: 4 }}>
+        Same GPU, opposite bottlenecks: prefill is compute-bound; decode is memory-bandwidth-bound.
       </div>
     </VisualizationContainer>
   );

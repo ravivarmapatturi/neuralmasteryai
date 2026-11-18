@@ -22,10 +22,9 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Attention and Transformers
-
-[Sequence Models](/docs/deep-learning/sequence-models) ended with recurrent networks hitting their limits: they process one step at a time, and even gated ones lose the gradient from distant steps. The transformer, introduced in 2017, <Mark>removed recurrence and built a model from attention alone</Mark>. It is the architecture behind Claude, GPT, Gemini, Llama and nearly every large model in text, vision and beyond. This page follows it end to end: why it exists, every mechanism in the original design worked out with real numbers, the three model families it produced, and the problems later work fixed.
 
 <ELI5>
 
@@ -35,7 +34,9 @@ Everything below is that same idea, made exact: real formulas, real numbers, and
 
 </ELI5>
 
-## Why This Architecture Exists
+## Why it exists
+
+[Sequence Models](/docs/deep-learning/sequence-models) ends with recurrent networks' limits: each step waits for the one before it, and distant signals can fade during training. The 2017 transformer removed recurrence and let each position attend directly to others in parallel. This page follows that architecture from its input vectors through attention, model families, and later fixes.
 
 ### Problems With RNNs
 
@@ -49,13 +50,33 @@ Three specific, compounding problems, in the order they actually bite:
 
 <RnnVsAttentionComparison />
 
-Trading recurrence for attention doesn't remove cost — it just changes its shape, from *sequential steps* to *quadratic attention cost in sequence length* (more on that in [Common Problems & SOTA Solutions](#common-problems-sota-solutions) below), which turns out to be a much more parallelizable problem to have.
+Trading recurrence for attention doesn't remove cost — it changes its shape, from *sequential steps* to *quadratic attention cost in sequence length* (more on that in [Common mistakes](#common-mistakes) below), which turns out to be a much more parallelizable problem to have.
 
-## The Shape of the Architecture
+## The big picture
 
 Before any of the individual mechanisms, here's every block named once, top to bottom — nothing that follows should be an unfamiliar shape. An <Key>encoder</Key> (left) builds a full-context representation of the input; a <Key>decoder</Key> (right) generates the output one token at a time, conditioned on that representation via cross-attention. Both stacks repeat $N=6$ times in the base model from the original paper:
 
 <TransformerArchitectureDiagram />
+
+Notice how both stacks reuse the same attention and feed-forward blocks, while the decoder adds a mask and cross-attention to generate one token at a time.
+
+<Worksheet title="Trace three attention tokens" ariaLabel="Attention worksheet reusing the three token worked example to show input vectors, projected vectors, and raw query key scores" stages={[
+  { tag: 'Input vectors', color: 'yellow', note: 'The worked example uses three four-value token vectors.', grid: { head: ['', 'x₁', 'x₂', 'x₃', 'x₄'], rows: [
+    { label: 'The', cells: ['1', '0', '1', '1'] },
+    { label: 'cat', cells: ['1', '1', '0', '1'] },
+    { label: 'sat', cells: ['0', '1', '2', '2'] },
+  ] } },
+  { tag: 'Projected vectors', color: 'blue', note: 'These Q, K, and V vectors come from the example projection matrices.', grid: { head: ['', 'token', 'Q', 'K', 'V'], rows: [
+    { label: 'row 1', cells: ['The', '(1,0,1,1)', '(1,0,1,2)', '(1,2,1,2)'] },
+    { label: 'row 2', cells: ['cat', '(1,1,0,1)', '(1,1,1,2)', '(2,1,1,2)'] },
+    { label: 'row 3', cells: ['sat', '(0,1,2,2)', '(0,1,3,2)', '(3,2,3,2)'] },
+  ] } },
+  { tag: 'Raw scores', color: 'green', note: 'Each cell is one query dotted with one key, before scaling and softmax.', grid: { head: ['', 'The', 'cat', 'sat'], rows: [
+    { label: 'The query', cells: ['4', '4', '5'] },
+    { label: 'cat query', cells: ['3', '4', '3'] },
+    { label: 'sat query', cells: ['6', '7', '11'] },
+  ], hide: [[0, 2], [1, 1], [2, 0]] } },
+]} />
 
 ## Input Embeddings
 
@@ -129,78 +150,6 @@ $$
 The $(6,6)$ attention-weight matrix times the $(6,512)$ Value matrix cancels the shared $6$, landing back at $(6,512)$ — self-attention's output is the *same shape* as its input, one context-mixed vector per token, which is exactly what lets these blocks stack $N$ times without the shape ever changing. That $(6,512)$ output isn't just shape-compatible with the input — each of its 6 rows is now that word's vector carrying real information about its relationship to every other word in the sentence, mixed in proportion to the attention weights computed above.
 
 To be precise about what this single computation is: everything derived in this section — one $Q$, one $K$, one $V$, one $(6,6)$ score matrix — is **self-attention**, run once. **Multi-head attention** (next) is this exact same computation repeated $h$ times in parallel on different learned projections of the input, then concatenated — self-attention is the atomic operation multi-head is built from, not a different mechanism.
-
-### A Full Worked Example
-
-The formula above is compact enough to skim past without really seeing it compute anything. Here it is with real numbers — 3 tokens ("The cat sat"), $d_{\text{model}} = 4$ (far smaller than the paper's 512, purely so every value fits on screen), one head. Every matrix below is computed live, by real matrix multiplication, not a fixed screenshot — step through it:
-
-<AttentionWorkedExample />
-
-The diagonal of the raw-scores matrix (step 3) — 4, 4, 11 — is each token's score against *itself* ($Q_1{\cdot}K_1$, $Q_2{\cdot}K_2$, $Q_3{\cdot}K_3$): "The" attending to "The", "cat" attending to "cat", "sat" attending to "sat". Notice "sat"'s self-score (11) is already the largest value in its whole row before softmax even runs — a concrete instance of the "attends to itself" point above, not just an abstract claim.
-
-Read the last two steps as the whole mechanism in miniature: softmax turns raw compatibility scores into a proper probability distribution per token, and the weighted sum is a soft, differentiable lookup — "give me mostly one token's Value content, a little of another's, almost none of a third's," instead of a hard, non-differentiable index lookup.
-
-### Run the Worked Example For Real
-
-The diagram above is a real, live computation — but it's still someone else's code running it. Here's the exact same $X$, $W_Q$, $W_K$, $W_V$ from that worked example, in a real Python interpreter running in your browser, so you can trace $QK^T/\sqrt{d_k} \to \text{softmax} \to \times V$ yourself, edit any number, and watch the output actually change:
-
-<RunnableCode code={`import numpy as np
-
-def scaled_dot_product_attention(Q, K, V):
-    d_k = Q.shape[-1]
-    scores = Q @ K.T / np.sqrt(d_k)
-    scores -= scores.max(axis=-1, keepdims=True)  # numerical stability, doesn't change the result
-    weights = np.exp(scores)
-    weights /= weights.sum(axis=-1, keepdims=True)
-    return weights @ V, weights
-
-# The exact X, Wq, Wk, Wv from the worked-example diagram above (3 tokens: "The", "cat", "sat").
-X = np.array([[1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 2, 2]])
-Wq = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
-Wk = np.array([[1, 0, 0, 1], [0, 1, 1, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
-Wv = np.array([[0, 1, 0, 1], [1, 0, 1, 0], [0, 1, 1, 0], [1, 0, 0, 1]])
-
-Q, K, V = X @ Wq, X @ Wk, X @ Wv
-
-output, weights = scaled_dot_product_attention(Q, K, V)
-np.set_printoptions(precision=3, suppress=True)
-print("Attention weights (row = 'The'/'cat'/'sat', col = how much of each token it attends to):")
-print(weights)
-print()
-print("Output (compare row 2, 'cat', and row 3, 'sat', to the diagram above -- they should match):")
-print(output)
-
-# Try it: delete the "/ np.sqrt(d_k)" on the scores line and re-run --
-# watch "sat"'s row collapse toward a near-one-hot [0.005, 0.015, 0.980]
-# instead of the scaled [0.067, 0.111, 0.821]. This is the exact effect
-# the "Why Scale by the Square Root" section above derives.
-`} />
-
-### Implement Scaled Dot-Product Attention Yourself
-
-The function signature, and the same worked-example $X$/$W_Q$/$W_K$/$W_V$ from above — write the body. The tests check your output against the worked example's actual known-correct numbers (not a description of what should happen, the real values), plus one structural property: every attention-weight row must sum to exactly 1, since softmax always produces a probability distribution.
-
-<RunnableCode
-  code={`import numpy as np
-
-X = np.array([[1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 2, 2]])
-Wq = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
-Wk = np.array([[1, 0, 0, 1], [0, 1, 1, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
-Wv = np.array([[0, 1, 0, 1], [1, 0, 1, 0], [0, 1, 1, 0], [1, 0, 0, 1]])
-
-Q, K, V = X @ Wq, X @ Wk, X @ Wv
-
-def scaled_dot_product_attention(Q, K, V):
-    """Return (output, weights) for Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V.
-    weights is the (n, n) post-softmax attention matrix; output is weights @ V."""
-    # Your implementation here
-    pass
-`}
-  tests={`assert np.allclose(scaled_dot_product_attention(Q, K, V)[1].sum(axis=-1), np.ones(3), atol=1e-6)
-assert np.allclose(scaled_dot_product_attention(Q, K, V)[0][1], np.array([2.0, 1.548137, 1.548137, 2.0]), atol=1e-4)
-assert np.allclose(scaled_dot_product_attention(Q, K, V)[0][2], np.array([2.753984, 1.888834, 2.642818, 2.0]), atol=1e-4)
-assert scaled_dot_product_attention(Q, K, V)[1][2].argmax() == 2`}
-/>
 
 ### Two Properties of Self-Attention
 
@@ -385,7 +334,7 @@ The original Transformer is a toolkit, not one fixed kind of model. The architec
 
 ### BERT, RoBERTa, DeBERTa, and SBERT — encoder-only representations
 
-**BERT** is the canonical encoder-only Transformer: every input token can attend to tokens on both its left and right. During pretraining, some input tokens are hidden and BERT predicts them from that full surrounding context. This makes the final vector at each position a contextual representation rather than a prediction of the next word. For example, the vector for *bank* can encode whether the neighboring sentence means a financial institution or a riverbank.
+**BERT** is a well-known encoder-only Transformer: every input token can attend to tokens on both its left and right. During pretraining, some input tokens are hidden and BERT predicts them from that full surrounding context. This makes the final vector at each position a contextual representation rather than a prediction of the next word. For example, the vector for *bank* can encode whether the neighboring sentence means a financial institution or a riverbank.
 
 That bidirectional view is ideal for tasks whose answer is a property of an already-complete input: document classification, named-entity recognition, extractive question answering, reranking, and embeddings. It is a poor direct fit for free-form text generation, because allowing a position to inspect future tokens would leak the answer during next-token training.
 
@@ -411,7 +360,85 @@ A **Vision Transformer (ViT)** turns an image into a sequence of fixed-size patc
 
 Multimodal models then combine a vision encoder with a language model. A connector/projector maps visual features into the language model's embedding space; the decoder can condition text generation on those visual tokens. Contrastive systems such as **CLIP** learn aligned image and text embedding spaces for retrieval, while generative systems such as **LLaVA** and Flamingo-style architectures add image-conditioned language generation. The architectural question stays the same: what information should be encoded, which elements may attend, and what output should be predicted?
 
-## Common Problems & SOTA Solutions
+## Worked example
+
+The formula above is compact enough to skim past without really seeing it compute anything. Here it is with real numbers — 3 tokens ("The cat sat"), $d_{\text{model}} = 4$ (far smaller than the paper's 512, purely so every value fits on screen), one head. Every matrix below is computed live, by real matrix multiplication, not a fixed screenshot — step through it:
+
+<AttentionWorkedExample />
+
+The diagonal of the raw-scores matrix (step 3) — 4, 4, 11 — is each token's score against *itself* ($Q_1{\cdot}K_1$, $Q_2{\cdot}K_2$, $Q_3{\cdot}K_3$): "The" attending to "The", "cat" attending to "cat", "sat" attending to "sat". Notice "sat"'s self-score (11) is already the largest value in its whole row before softmax even runs — a concrete instance of the "attends to itself" point above, not just an abstract claim.
+
+Read the last two steps as the whole mechanism in miniature: softmax turns raw compatibility scores into a proper probability distribution per token, and the weighted sum is a soft, differentiable lookup — "give me mostly one token's Value content, a little of another's, almost none of a third's," instead of a hard, non-differentiable index lookup.
+
+## Try it yourself
+
+The diagram above is a real, live computation — but it's still someone else's code running it. Here's the exact same $X$, $W_Q$, $W_K$, $W_V$ from that worked example, in a real Python interpreter running in your browser, so you can trace $QK^T/\sqrt{d_k} \to \text{softmax} \to \times V$ yourself, edit any number, and watch the output actually change:
+
+<RunnableCode code={`import numpy as np
+
+def scaled_dot_product_attention(Q, K, V):
+    d_k = Q.shape[-1]
+    scores = Q @ K.T / np.sqrt(d_k)
+    scores -= scores.max(axis=-1, keepdims=True)  # numerical stability, doesn't change the result
+    weights = np.exp(scores)
+    weights /= weights.sum(axis=-1, keepdims=True)
+    return weights @ V, weights
+
+# The exact X, Wq, Wk, Wv from the worked-example diagram above (3 tokens: "The", "cat", "sat").
+X = np.array([[1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 2, 2]])
+Wq = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+Wk = np.array([[1, 0, 0, 1], [0, 1, 1, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+Wv = np.array([[0, 1, 0, 1], [1, 0, 1, 0], [0, 1, 1, 0], [1, 0, 0, 1]])
+
+Q, K, V = X @ Wq, X @ Wk, X @ Wv
+
+output, weights = scaled_dot_product_attention(Q, K, V)
+np.set_printoptions(precision=3, suppress=True)
+print("Attention weights (row = 'The'/'cat'/'sat', col = how much of each token it attends to):")
+print(weights)
+print()
+print("Output (compare row 2, 'cat', and row 3, 'sat', to the diagram above -- they should match):")
+print(output)
+
+# Try it: delete the "/ np.sqrt(d_k)" on the scores line and re-run --
+# watch "sat"'s row collapse toward a near-one-hot [0.005, 0.015, 0.980]
+# instead of the scaled [0.067, 0.111, 0.821]. This is the exact effect
+# the "Why Scale by the Square Root" section above derives.
+`} />
+
+### Implement Scaled Dot-Product Attention Yourself
+
+The function signature, and the same worked-example $X$/$W_Q$/$W_K$/$W_V$ from above — write the body. The tests check your output against the worked example's actual known-correct numbers (not a description of what should happen, the real values), plus one structural property: every attention-weight row must sum to exactly 1, since softmax always produces a probability distribution.
+
+<RunnableCode
+  code={`import numpy as np
+
+X = np.array([[1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 2, 2]])
+Wq = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+Wk = np.array([[1, 0, 0, 1], [0, 1, 1, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+Wv = np.array([[0, 1, 0, 1], [1, 0, 1, 0], [0, 1, 1, 0], [1, 0, 0, 1]])
+
+Q, K, V = X @ Wq, X @ Wk, X @ Wv
+
+def scaled_dot_product_attention(Q, K, V):
+    """Return (output, weights) for Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V.
+    weights is the (n, n) post-softmax attention matrix; output is weights @ V."""
+    # Your implementation here
+    pass
+# Try it: implement the score, stable softmax, and weighted sum, then run the checks.
+`}
+  tests={`assert np.allclose(scaled_dot_product_attention(Q, K, V)[1].sum(axis=-1), np.ones(3), atol=1e-6)
+assert np.allclose(scaled_dot_product_attention(Q, K, V)[0][1], np.array([2.0, 1.548137, 1.548137, 2.0]), atol=1e-4)
+assert np.allclose(scaled_dot_product_attention(Q, K, V)[0][2], np.array([2.753984, 1.888834, 2.642818, 2.0]), atol=1e-4)
+assert scaled_dot_product_attention(Q, K, V)[1][2].argmax() == 2`}
+/>
+
+
+## Common mistakes
+
+### Common problems & SOTA solutions
+
+Full attention compares every token pair, so its score matrix grows with the square of sequence length. For long inputs, block-sparse patterns skip selected pairs and linear attention changes the computation to avoid building that full matrix; each choice trades some flexibility for lower memory or latency. [Linear attention and state-space models](/docs/deep-learning/linear-attention-and-state-space-models) derives those alternatives.
 
 - **Vanishing gradients in deep stacks** → residual connections + normalization (inherited from [Training Deep Networks](/docs/deep-learning/training-deep-networks))
 - **Quadratic cost of self-attention** ($O(n^2)$ in sequence length, see [Algorithms & Data Structures](/docs/mathematics-for-ai/algorithms-data-structures)) → **Flash Attention** (a GPU-memory-aware exact implementation that avoids materializing the full attention matrix), or a genuinely different mechanism for very long contexts: [linear attention and Mamba-style state-space models](/docs/deep-learning/linear-attention-and-state-space-models)
@@ -421,10 +448,10 @@ Multimodal models then combine a vision encoder with a language model. A connect
 
 One more real limitation worth naming explicitly: every token above gets exactly the same fixed amount of computation, set once by the layer count, whether it's trivial or the hardest reasoning step in the sequence. [From RNNs to Transformers to Recurrent Looped Transformers](/docs/deep-learning/recurrent-looped-transformers) picks up exactly there — how looping the same blocks across tokens, rather than stacking more of them, lets reasoning depth keep growing with context instead of stopping at the layer count.
 
-## When *Not* to Use a Transformer
+## When not to use it
 
 | Situation | Better choice |
-|---|---|
+| --- | --- |
 | Small tabular datasets | Gradient-boosted trees, which usually beat transformers there |
 | Very long sequences where memory or latency is the constraint | Linear-attention, state-space or hybrid models, or windowed attention |
 | Small image datasets trained from scratch | A CNN, or a pretrained vision transformer rather than a fresh one |
@@ -435,7 +462,7 @@ One more real limitation worth naming explicitly: every token above gets exactly
 ## Remember
 
 | Idea | In one line |
-|---|---|
+| --- | --- |
 | Why it exists | Recurrence is sequential and loses distant gradients; attention connects every pair of positions in parallel |
 | Self-attention | $\operatorname{softmax}(QK^\top/\sqrt{d_k})V$: each position takes a relevance-weighted average of all values |
 | Scaling | Dividing by $\sqrt{d_k}$ keeps scores at unit variance so softmax doesn't saturate |

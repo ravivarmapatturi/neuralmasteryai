@@ -6,49 +6,23 @@ description: "The complete curriculum for AI Harness Engineering in Python: turn
 
 import AgentHarnessArchitectureVisualizer from '../../../viz/diagrams/AgentHarnessArchitectureVisualizer';
 import HarnessCurriculumDiagram from '../../../viz/diagrams/HarnessCurriculumDiagram';
-import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5 } from '../../../components/content/ExpandableDepth';
-import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
-# Python Harness Engineering — Roadmap
-
-Raw foundation models are stochastic next-token predictors. Left on their own in an open prompt loop, even frontier models hit severe pathologies: **premature victory** (claiming success without verifying), **context rot & context anxiety** (rushing or degrading as context fills), and **unbounded blast radius** (mutating production state).
-
-**Harness Engineering** is the technical discipline that closes the loop:
-
-$$
-\text{Agent} = \text{Model} + \text{Harness}
-$$
-
-While the model acts as the reasoning engine, the **harness** is the cybernetic chassis: it provides the instruction boundaries (`AGENTS.md`), the sandboxed execution environment, the automated multi-layer verification sensors, and the state compaction engine.
-
-We engineer our reference harness in modern Python (Python 3.12+, Pydantic v2, pytest, ruff, mypy, and asyncio). Production AI infrastructure—from PyTorch model weights and custom CUDA/Triton kernels to vLLM inference serving, LangGraph state machines, and eval pipelines—runs natively in Python. In this track, we build the deterministic cybernetic harness that governs these autonomous systems from end to end, synthesizing foundational research from OpenAI's Codex engineering and Anthropic's long-running agent harnesses.
-
-<AgentHarnessArchitectureVisualizer />
+# Harness Engineering Roadmap
 
 <ELI5>
 
-Think of an LLM like an incredibly powerful Formula 1 engine. If you leave that engine sitting on the garage floor and pour fuel into it, it makes deafening noise and spins at 15,000 RPM, but it cannot steer, brake, or win a race. 
-
-The **Harness** is the car built around that engine: the chassis, steering wheel, hydraulic brakes, telemetry sensors, and roll cage. The engine doesn't decide where to go or verify whether it stayed on the track—the harness guides it, limits its speed around corners, catches errors before a crash, and drives lap after lap reliably.
+An AI model can suggest a change, but it cannot tell whether the change works until it runs it. A harness gives the model tools, limits what those tools can do, checks the result, and saves the work so the next step starts with the right facts. The chapters on this page build those pieces one at a time.
 
 </ELI5>
 
-<PredictFirst
-  question="In production autonomous coding agents (such as OpenAI Codex or Anthropic Claude Code), when an agent fails to complete a task, what is the primary root cause identified in empirical studies?"
-  options={[
-    "The underlying foundation model lacks basic knowledge of Python syntax.",
-    "Harness failure: the model was given poorly scoped instructions, raw noisy error logs, no sandbox limits, or no deterministic verification loop forcing it to test its changes before finishing.",
-    "The GPU hardware ran out of floating-point precision during inference.",
-    "The user did not provide enough examples in few-shot prompting."
-  ]}
-  correctIndex={1}
-  explanation="In benchmark harness environments, holding the foundation model constant while providing automated verification sensors and sandboxed execution raises task completion dramatically. Model intelligence is rarely the limiting factor in unattended coding; missing verification sensors, context rot, and unconstrained action spaces account for the vast majority of autonomous failures."
-/>
+## What you will learn
 
----
+The chapters trace one supervised task from its goal through tool calls, verification, and saved state. Notice how each later chapter adds a control that closes a failure path in the loop.
 
-## The Curriculum Track
+<AgentHarnessArchitectureVisualizer />
+
+## The chapters
 
 <HarnessCurriculumDiagram />
 
@@ -91,18 +65,6 @@ The **Harness** is the car built around that engine: the chassis, steering wheel
 - Background entropy and garbage collection agents (OpenAI pattern): continuously pruning stale code and docs.
 - Trajectory logging (`transcript.jsonl`), telemetry, and security monitoring.
 
-## When *Not* to Use It
+## Start here
 
-Applying an autonomous multi-step harness across every engineering task creates unnecessary latency and cost overhead:
-
-| Situation | Better Choice | Why |
-| :--- | :--- | :--- |
-| Simple query answering over static documentation | Standard Vector Search (RAG) | Read-only questions do not execute commands or edit files; harness sandboxing adds unnecessary overhead. |
-| Deterministic CI linters and formatting | Pre-commit hooks (`ruff`, `prettier`) | Deterministic formatters execute in < 100 ms with zero token cost; delegating formatting to autonomous agents is wasteful. |
-| Strict linear workflows with zero ambiguity | Airflow / Prefect / Temporal workflow | If execution paths are strictly fixed, stochastic agent supervisors add non-deterministic points of failure. |
-
----
-
-<NotebookCallout title="The Harness Engineer's Creed">
-"The model is a rented commodity; the harness is the enterprise asset. Do not spend your career fine-tuning prompts to coax a stochastic model into good behavior. Build the deterministic harness that makes bad behavior impossible."
-</NotebookCallout>
+Begin with [Harness Engineering Overview](/docs/harness-engineering/overview) to see the full loop, then follow the chapters in order as each control is introduced.

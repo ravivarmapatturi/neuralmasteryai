@@ -18,10 +18,11 @@ import GraphRagDiagram from '../../../viz/diagrams/GraphRagDiagram';
 import RagEvalMetricsDiagram from '../../../viz/diagrams/RagEvalMetricsDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import { Remember } from '../../../components/content/Remember';
+import RunnableCode from '../../../components/content/RunnableCode';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Retrieval-Augmented Generation (RAG)
-
-An LLM's knowledge is frozen at training time and limited to what fit in its weights. RAG fixes both problems by retrieving relevant information at query time and feeding it into the prompt as grounding context.
 
 <ELI5>
 
@@ -31,9 +32,28 @@ Everything below is how each piece of that "find the right pages, then use them 
 
 </ELI5>
 
+## Why it exists
+
+An LLM's knowledge is frozen at training time and limited to what fit in its weights. RAG answers questions against documents that may be private, too large to train on, or updated after model training. It retrieves relevant passages at query time and gives them to the model as grounding context.
+
 RAG isn't the only way to get a model to know things it wasn't trained on — fine-tuning is the other lever, and it's worth being clear about which one actually fixes which problem, because reaching for the wrong one wastes real engineering time. Fine-tuning changes the model's weights, which makes it genuinely good at adopting a *tone*, a *format*, or a narrow *skill* — but it's a slow, expensive way to teach a model *facts*, and those facts freeze the moment training ends. RAG does the opposite: it leaves the weights untouched and instead hands the model fresh, specific facts at query time, which makes it the right tool whenever the knowledge itself needs to stay current or come from documents too numerous or too sensitive to bake into weights. In practice, production systems often use both — RAG for the facts, a lightly fine-tuned model for the voice they're delivered in — rather than treating it as an either-or choice.
 
-## The RAG Pipeline, End to End
+## The big picture
+
+<PenFlow ariaLabel="RAG transforms documents into indexed chunks, retrieves and reranks evidence, then generates and checks a grounded answer" title="From source documents to a checked answer" rows={[
+  { steps: { title: 'Prepare', lines: ['Parse documents and split them into chunks'], tone: 'blue' } },
+  { steps: { title: 'Index', lines: ['Embed chunks and store searchable records'], tone: 'purple' } },
+  { steps: { title: 'Retrieve and rerank', lines: ['Find likely evidence and order it'], tone: 'orange' } },
+  { steps: { title: 'Answer and evaluate', lines: ['Generate from evidence, then check quality'], tone: 'green' } },
+]} caption="The answer can only use evidence that survived document parsing, retrieval, and reranking." />
+
+<Worksheet title="One retrieval and reranking pass" ariaLabel="Worksheet calculating precision and recall for retrieval and reranking over five chunks" stages={[
+  { tag: 'Judgments', color: 'yellow', note: 'Five chunks exist; R1 and R2 are relevant to this question.', grid: { head: ['', 'All chunks', 'Relevant'], rows: [{ label: 'Count', cells: ['5', '2'] }] } },
+  { tag: 'Retrieve top 3', color: 'blue', note: 'The first search returns R1, a distractor, and R2.', grid: { head: ['', 'Returned', 'Relevant found', 'Precision', 'Recall'], rows: [{ label: 'Search', cells: ['3', '2', '2/3', '2/2'] }] } },
+  { tag: 'Rerank top 2', color: 'green', note: 'The reranker keeps R2 and R1 at the top; work out the new precision.', grid: { head: ['', 'Kept', 'Relevant found', 'Precision', 'Recall'], rows: [{ label: 'Reranked', cells: ['2', '2', '2/2', '2/2'] }], hide: [[0, 2], [0, 3]] } },
+]} />
+
+## The RAG pipeline, end to end
 
 Nine steps, in the order they actually run. Everything else on this page is one of these steps covered in real depth — worth seeing the whole shape once before diving into any single piece. One operating principle is worth internalizing before any of them: **retrieval quality is the rate-limiting factor** for the entire system. A perfect generation model fed the wrong chunks still produces a wrong answer — so when a RAG system is giving bad answers, the fix is almost always upstream of generation, in how documents were chunked, embedded, or retrieved, not in prompting the LLM harder.
 
@@ -149,13 +169,20 @@ Sparse retrieval's whole value proposition is that it *guarantees* literal match
 In code, via [`rank_bm25`](https://github.com/dorianbrown/rank_bm25), the standard Python implementation — it deliberately does no text preprocessing itself, so tokenizing (and lowercasing, stemming, etc. if wanted) is the caller's job:
 
 ```python
+# Install rank-bm25 with pip before running this example.
 from rank_bm25 import BM25Okapi
 
+chunks = ["dogs are loyal", "cats like warm rooms", "canine health guide"]
+query = "canine health"
 tokenized_corpus = [chunk.lower().split() for chunk in chunks]
 bm25 = BM25Okapi(tokenized_corpus)
 
 tokenized_query = query.lower().split()
 top_chunks = bm25.get_top_n(tokenized_query, chunks, n=5)
+print("Top matching chunks:")
+for chunk in top_chunks:
+    print(chunk)
+print("Returned:", len(top_chunks))
 ```
 
 <Bm25ScoringDiagram />
@@ -198,7 +225,7 @@ $$
 
 where $\text{rank}_r(d)$ is $d$'s 1-indexed position in ranking $r$ (dense results, sparse/BM25 results, or — in RAG-Fusion — each of several query-variant result lists), and $k$ is a damping constant (commonly 60) that keeps a single 1st-place finish from completely dominating the sum. Compute this sum for every document that appears in *any* of the lists being fused, then sort by total RRF score descending.
 
-**Why positions and not the raw scores directly:** a dense retriever's cosine similarities live in one range (typically $[0,1]$ or $[-1,1]$), and BM25's scores are unbounded and depend on corpus statistics ($\text{avgdl}$, term rarity) — there's no principled way to compare a BM25 score of 8.3 against a cosine similarity of 0.82 and decide which result is "really" more relevant; averaging them would be combining numbers on two different, incompatible scales. A rank, by contrast, means the same thing regardless of how it was produced — "1st place" is 1st place whether the underlying list came from cosine similarity or BM25 term matching. RRF sidesteps the scale-incompatibility problem entirely by throwing away the raw scores and working only with each result's position.
+**Why positions and not the raw scores directly:** a dense retriever's cosine similarities live in one range (typically $[0,1]$ or $[-1,1]$), and BM25's scores are unbounded and depend on corpus statistics ($\text{avgdl}$, term rarity) — there's no sound way to compare a BM25 score of 8.3 against a cosine similarity of 0.82 and decide which result is "really" more relevant; averaging them would be combining numbers on two different, incompatible scales. A rank, by contrast, means the same thing regardless of how it was produced — "1st place" is 1st place whether the underlying list came from cosine similarity or BM25 term matching. RRF sidesteps the scale-incompatibility problem entirely by throwing away the raw scores and working only with each result's position.
 
 </GoDeeper>
 
@@ -260,14 +287,74 @@ In practice, almost nobody computes these by hand — **RAGAS** is the open-sour
 
 See [LLM Evaluation & RAGOps](/docs/mlops/llm-evaluation-and-ragops) for the full evaluation tooling (Ragas, DeepEval) and production RAG monitoring.
 
-## Common Failure Modes
+## Worked example
 
-A few failure patterns show up often enough in real systems to be worth recognizing by name, rather than re-diagnosing from scratch each time.
+For one question, assume the corpus contains five chunks and relevance judgments mark two as useful: R1 and R2. The first retrieval returns R1, distractor D, and R2. A reranker then keeps R2 and R1. Retrieval precision is $2/3$ and recall is $2/2$; after reranking, both are $2/2$. The reranker improves the top-two list while preserving all relevant evidence in this small example.
 
-Sometimes the model **hallucinates despite having correct context in front of it** — it retrieved the right chunk and still ignored or misread it, which stronger grounding instructions and explicit citation requirements (forcing the model to point at *which* chunk supports each claim) help with directly. Long retrieved context has its own well-documented trap, **"lost in the middle"**: models pay noticeably less attention to information buried in the center of a long prompt than to what's near the start or end, so simply reordering retrieved chunks to put the most relevant ones at the edges of the context — rather than wherever they happened to rank — measurably helps. **Multi-hop questions**, ones that need facts stitched together across several documents, are a structural mismatch for retrieving isolated chunks one at a time, and are better addressed with GraphRAG or explicit query decomposition than by throwing more chunks at the problem.
+## Try it yourself
 
-A **stale knowledge base** is less a RAG-algorithm problem than an infrastructure one. The real fix isn't periodically rebuilding the whole index from scratch — it's tracking a content hash or modification timestamp per source document, so the pipeline can detect exactly which documents actually changed and re-embed only those, incrementally, rather than paying the cost (and the staleness window) of a full rebuild every time. **Parsing failures on PDFs and tables** are a common, almost embarrassingly mundane cause of bad retrieval — naive text extraction mangles table structure badly enough that a dedicated document-layout parser is usually worth the extra step, as the ingestion step above already covers. And in any multi-tenant system, **per-user access control** has to be enforced at retrieval time itself, via metadata filtering scoped to what each specific user is actually authorized to see — not bolted on afterward by filtering the LLM's output, by which point the model has already read documents it should never have seen in the first place.
+Run the same judgment with Python's standard library. Change the retrieved order or remove one relevant chunk, then compare precision and recall.
 
-A smaller set of failures is worth watching for specifically because they're easy to misdiagnose as something else. **Embedding mismatch** happens when a team swaps embedding models but doesn't fully re-embed the existing index — old and new vectors end up sitting in the same store, geometrically incompatible with each other, and retrieval quality silently degrades in a way that looks like a model problem but is really a migration problem. **Reranker failure** is its own distinct category, not just "retrieval was wrong" — a reranker can confidently push the *wrong* candidate to the top, which is a different bug with a different fix (recalibrating or swapping the reranker, not touching the retrieval stage it operates downstream of). And in systems that lean on semantic caching for speed, **cache leakage** is a real risk worth naming explicitly: a cache hit threshold set too loosely can serve one user's cached answer to a different user's semantically-similar-but-not-identical query — including, in a multi-tenant system, serving content across a boundary it should never have crossed.
+<RunnableCode code={`relevant = {"R1", "R2"}
+retrieved = ["R1", "D", "R2"]
+reranked = ["R2", "R1"]
 
-Next: [Evaluation & Serving](/docs/llms-genai/evaluation-and-serving) — measuring whether any of this actually works, and running it in production.
+def scores(results, relevant):
+    found = set(results) & relevant
+    precision = len(found) / len(results)
+    recall = len(found) / len(relevant)
+    return precision, recall
+
+for label, results in (("Retrieved", retrieved), ("Reranked", reranked)):
+    precision, recall = scores(results, relevant)
+    print(f"{label}: precision={precision:.3f}, recall={recall:.3f}")
+
+# Try it:
+# Remove R2 from retrieved, or add another distractor, and compare both scores.
+`} />
+
+## Common mistakes
+
+### Common failure modes
+
+These failures occur at different pipeline stages, so check the affected stage before changing the generation prompt.
+
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| The answer ignores correct evidence | The prompt does not tie each claim to a source passage. | Require citations and score faithfulness against retrieved chunks. |
+| A useful fact sits in the middle of a long context | The model may use boundary information more reliably. | Put the strongest evidence near the start or end and test long contexts. |
+| A multi-hop question misses a needed fact | Independent chunk retrieval may not connect related entities. | Decompose the question or retrieve through a knowledge graph. |
+| Index quality regresses after updates | Stale documents, parsing errors, or mixed embedding spaces distort retrieval. | Track source versions, inspect parsed content, and re-embed the full index when changing models. |
+| A cache returns another user's result | Cache keys or similarity thresholds ignore tenant boundaries. | Include tenant identity in cache keys and enforce access before retrieval. |
+| The reranker pushes a poor match to the top | Its scoring model does not fit this domain or query set. | Evaluate the reranker separately and tune or replace it. |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The answer comes from a small, stable set of facts | Put the facts directly in the prompt or application configuration. |
+| The system needs the exact current value of an account or order | Query the authorized source of truth instead of a vector index. |
+| The task is to adopt a consistent format or tone | Use structured output controls or fine-tuning; retrieval alone does not teach style. |
+| The user is not allowed to see the source material | Deny access before retrieval; a prompt instruction cannot replace access control. |
+
+## Remember
+
+| Idea | In one line |
+| --- | --- |
+| Chunking | Keep each retrievable unit coherent and sized for the query. |
+| Embeddings | Map meaning to vectors so related text can be found by similarity. |
+| Hybrid retrieval | Combine exact term matches with semantic matches. |
+| Reranking | Spend more compute on a small candidate set to improve its order. |
+| Grounding | Give the model evidence and check that claims follow from it. |
+| Evaluation | Measure retrieval and answer quality separately. |
+
+Next: [Evaluation & Serving](/docs/llms-genai/evaluation-and-serving) — measure answer quality and operate the pipeline in production.
+
+## Sources
+
+- Lewis et al. [Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks](https://arxiv.org/abs/2005.11401) (NeurIPS, 2020).
+- Karpukhin et al. [Dense Passage Retrieval for Open-Domain Question Answering](https://aclanthology.org/2020.emnlp-main.550/) (EMNLP, 2020).
+- Robertson and Zaragoza. [The Probabilistic Relevance Framework: BM25 and Beyond](https://doi.org/10.1561/1500000019) (2009).
+- Edge et al. [From Local to Global: A Graph RAG Approach to Query-Focused Summarization](https://arxiv.org/abs/2404.16130) (2024).
+- Es et al. [RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217) (2023).
