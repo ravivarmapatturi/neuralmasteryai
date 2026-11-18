@@ -2,6 +2,16 @@ import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, PulseRect, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
+// split a sentence into two lines of roughly equal length, at a space
+function wrapTwo(text: string): string[] {
+  if (text.length <= 40) return [text];
+  const mid = text.length / 2;
+  let cut = text.lastIndexOf(' ', mid);
+  const after = text.indexOf(' ', mid);
+  if (cut === -1 || (after !== -1 && after - mid < mid - cut)) cut = after;
+  return cut === -1 ? [text] : [text.slice(0, cut), text.slice(cut + 1)];
+}
+
 const STEPS = [
   { label: 'Compute predictions', desc: 'Use the current weights and intercept to predict each example.' },
   { label: 'Measure the cost', desc: 'Calculate the mean squared error for the current predictions.' },
@@ -24,7 +34,7 @@ export default function GradientDescentLoopDiagram() {
         role="img"
         aria-label="Gradient descent starts with weights and an intercept, computes predictions and cost, finds the gradient, updates both parameters, then repeats."
         width="100%"
-        viewBox="0 0 360 450"
+        viewBox="0 0 360 468"
         style={{ display: 'block', maxWidth: 360, marginInline: 'auto' }}
       >
         <defs>
@@ -73,8 +83,11 @@ export default function GradientDescentLoopDiagram() {
           strokeDasharray="4 3"
           markerEnd="url(#gdloop-arrow)"
         />
-        <text x="180" y="444" textAnchor="middle" fontSize="14" fill={color}>
-          {STEPS[active].desc}
+        {/* the active step's description, wrapped onto two lines so it fits the 360-wide drawing */}
+        <text x="180" y="440" textAnchor="middle" fontSize="14" fill={color}>
+          {wrapTwo(STEPS[active].desc).map((ln, i) => (
+            <tspan key={i} x="180" dy={i === 0 ? 0 : 18}>{ln}</tspan>
+          ))}
         </text>
       </svg>
     </VisualizationContainer>

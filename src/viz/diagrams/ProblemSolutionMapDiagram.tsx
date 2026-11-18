@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const PAIRS = [
@@ -16,7 +15,7 @@ const PAIRS = [
  * problem and solution as two halves of one bullet line. */
 export default function ProblemSolutionMapDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState(0);
+  const { value: active, pick, stop } = useAutoCycle(PAIRS.length, 2500, 0);
   const problemColor = t.accentDanger;
   const solutionColor = getConceptColor(t, 'attention');
 
@@ -28,9 +27,9 @@ export default function ProblemSolutionMapDiagram() {
           return (
             <div
               key={p.problem}
-              onClick={() => setActive(i)}
-              onMouseEnter={() => setActive(i)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', opacity: isActive ? 1 : 0.55 }}
+              onClick={() => { stop(); pick(i); }}
+              onMouseEnter={() => { stop(); pick(i); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', opacity: isActive ? 1 : 0.55, transition: 'all 0.25s ease' }}
             >
               <div style={{ flex: '0 0 220px', padding: '6px 10px', borderRadius: 6, fontSize: 11, fontWeight: isActive ? 700 : 400, background: isActive ? `${problemColor}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? problemColor : t.border}`, color: isActive ? problemColor : t.textSecondary }}>
                 {p.problem}

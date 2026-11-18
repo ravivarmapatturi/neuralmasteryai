@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const ITEMS = [
@@ -10,12 +10,16 @@ const ITEMS = [
   { label: 'Post D', engagement: 0.75, revenue: 0.0 },
 ];
 
+const WEIGHTS = [40, 15, 85, 60];
+
 /** Drag the engagement/revenue weight and watch the ranking of the SAME
  * 4 items actually reorder -- a blended objective isn't abstract, it's a
  * literal weighted sum that changes what shows up first. */
 export default function BlendedObjectiveDiagram() {
   const t = useVizTokens();
-  const [revenueWeight, setRevenueWeight] = useState(40);
+  const { value: weightIdx, stop } = useAutoCycle(WEIGHTS.length, 3000, 0);
+  const [userWeight, setUserWeight] = useState<number | null>(null);
+  const revenueWeight = userWeight ?? WEIGHTS[weightIdx];
   const color = getConceptColor(t, 'attention');
   const w = revenueWeight / 100;
 
@@ -23,10 +27,20 @@ export default function BlendedObjectiveDiagram() {
 
   return (
     <VisualizationContainer footer="Feed ranking blends engagement and revenue into ONE score, weighted by business priority -- drag the slider and watch the same 4 items actually reorder.">
-      <Slider label={`Revenue weight: ${revenueWeight}% (engagement weight: ${100 - revenueWeight}%)`} min={0} max={100} step={5} value={revenueWeight} onChange={setRevenueWeight} />
+      <Slider
+        label={`Revenue weight: ${revenueWeight}% (engagement weight: ${100 - revenueWeight}%)`}
+        min={0}
+        max={100}
+        step={5}
+        value={revenueWeight}
+        onChange={(v) => {
+          stop();
+          setUserWeight(v);
+        }}
+      />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 10 }}>
         {scored.map((item, i) => (
-          <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.4rem 0.7rem', borderRadius: 7, background: t.surfaceAlt }}>
+          <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.4rem 0.7rem', borderRadius: 7, background: t.surfaceAlt, transition: 'all 0.3s ease' }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: color, width: 16 }}>#{i + 1}</span>
             <span style={{ fontSize: 11.5, color: t.textPrimary, flex: 1 }}>{item.label}</span>
             <span style={{ fontSize: 9.5, color: t.textMuted }}>engagement {item.engagement.toFixed(1)} · revenue {item.revenue.toFixed(1)}</span>

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 export interface EcosystemLayer {
@@ -19,7 +18,7 @@ export interface EcosystemLayer {
  * how the prose below actually behaves, not decoration. */
 export default function EcosystemMapDiagram({ layers }: { layers: EcosystemLayer[] }) {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(0);
+  const { value: selected, pick, stop } = useAutoCycle(layers.length, 2500, 0);
   const color = getConceptColor(t, 'attention');
   const mutedColor = t.textMuted;
 
@@ -53,7 +52,7 @@ export default function EcosystemMapDiagram({ layers }: { layers: EcosystemLayer
                   markerEnd="url(#ecosystem-arrow)"
                 />
               )}
-              <g onClick={() => setSelected(i)} onMouseEnter={() => setSelected(i)} style={{ cursor: 'pointer' }}>
+              <g onClick={() => { stop(); pick(i); }} onMouseEnter={() => { stop(); pick(i); }} style={{ cursor: 'pointer' }}>
                 <rect
                   x={20}
                   y={y}
@@ -64,6 +63,7 @@ export default function EcosystemMapDiagram({ layers }: { layers: EcosystemLayer
                   stroke={rowColor}
                   strokeWidth={isSelected ? 2.5 : 1.5}
                   strokeDasharray={layer.covered ? undefined : '4 3'}
+                  style={{ transition: 'all 0.25s ease' }}
                 />
                 <text x={35} y={y + rowH / 2 + 4} fontSize={11} fontWeight={isSelected ? 700 : 600} fill={rowColor}>
                   {layer.label}

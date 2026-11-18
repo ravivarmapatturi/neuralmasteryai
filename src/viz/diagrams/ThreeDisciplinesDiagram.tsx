@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, FlowDots } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Discipline = 'research' | 'design' | 'mlops';
+const ORDER: Discipline[] = ['research', 'design', 'mlops'];
 
 const INFO: Record<Discipline, { label: string; question: string; section: string; color: (t: ReturnType<typeof useVizTokens>) => string }> = {
   research: { label: 'Research / Modeling', question: 'Can a model learn this pattern, and how well?', section: 'Deep Learning, Machine Learning', color: (t) => getConceptColor(t, 'query') },
@@ -17,10 +17,10 @@ const INFO: Record<Discipline, { label: string; question: string; section: strin
  * gradient-boosted tree or a transformer. */
 export default function ThreeDisciplinesDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<Discipline>('design');
+  const { value: activeIdx, pick, stop } = useAutoCycle(ORDER.length, 2800, 1);
+  const active = ORDER[activeIdx];
   const width = 520;
   const height = 110;
-  const order: Discipline[] = ['research', 'design', 'mlops'];
 
   return (
     <VisualizationContainer footer={`${INFO[active].label}: ${INFO[active].question} — covered in ${INFO[active].section}.`}>
@@ -30,14 +30,19 @@ export default function ThreeDisciplinesDiagram() {
             <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
           </marker>
         </defs>
-        {order.map((d, i) => {
+        <FlowDots d="M 170 50 H 370" color={t.accentPrimary} dur={2.4} />
+        {ORDER.map((d, i) => {
           const x = 20 + i * 175;
           const color = INFO[d].color(t);
           const isActive = active === d;
           return (
             <g key={d}>
               {i > 0 && <line x1={x - 24} y1={50} x2={x - 1} y2={50} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#td-arrow)" />}
-              <g onClick={() => setActive(d)} onMouseEnter={() => setActive(d)} style={{ cursor: 'pointer' }}>
+              <g
+                onClick={() => { stop(); pick(i); }}
+                onMouseEnter={() => { stop(); pick(i); }}
+                style={{ cursor: 'pointer' }}
+              >
                 <rect x={x} y={20} width={150} height={60} rx={8} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
                 <text x={x + 75} y={54} textAnchor="middle" fontSize={11} fontWeight={700} fill={color}>{INFO[d].label}</text>
               </g>

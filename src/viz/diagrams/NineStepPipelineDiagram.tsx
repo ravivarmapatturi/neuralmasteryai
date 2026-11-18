@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, FlowDots } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STEPS = [
@@ -22,7 +21,7 @@ const STEPS = [
  * in production -- that grouping is itself worth seeing at a glance. */
 export default function NineStepPipelineDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState(0);
+  const { value: active, pick, stop } = useAutoCycle(STEPS.length, 2200, 0);
   const frameColor = getConceptColor(t, 'query');
   const buildColor = getConceptColor(t, 'embedding');
   const runColor = getConceptColor(t, 'attention');
@@ -40,6 +39,7 @@ export default function NineStepPipelineDiagram() {
             <path d="M0,0 L6,3 L0,6 Z" fill={t.textMuted} />
           </marker>
         </defs>
+        <FlowDots d="M 20 40 H 600" color={t.accentPrimary} dur={3.5} />
         {STEPS.map((s, i) => {
           const x = 10 + i * stepW;
           const cx = x + (stepW - 12) / 2;
@@ -47,7 +47,7 @@ export default function NineStepPipelineDiagram() {
           const color = colorFor(s.n);
           const isActive = active === i;
           return (
-            <g key={s.n} onClick={() => setActive(i)} onMouseEnter={() => setActive(i)} style={{ cursor: 'pointer' }}>
+            <g key={s.n} onClick={() => { stop(); pick(i); }} onMouseEnter={() => { stop(); pick(i); }} style={{ cursor: 'pointer' }}>
               {i > 0 && <line x1={prevCx + 16} y1={40} x2={cx - 21} y2={40} stroke={t.textMuted} strokeWidth={1} markerEnd="url(#nsp-arrow)" />}
               <circle cx={cx} cy={40} r={16} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
               <text x={cx} y={44} textAnchor="middle" fontSize={11} fontWeight={700} fill={color}>{s.n}</text>

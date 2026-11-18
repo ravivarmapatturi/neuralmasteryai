@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const ITEMS = [
@@ -22,17 +21,25 @@ const ITEMS = [
  * just that it is. */
 export default function ModelCardChecklistDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('params');
+  const { value: activeIdx, pick, stop } = useAutoCycle(ITEMS.length, 2500, 1);
   const color = getConceptColor(t, 'attention');
-  const info = ITEMS.find((i) => i.key === active)!;
+  const info = ITEMS[activeIdx];
 
   return (
     <VisualizationContainer footer={info.desc}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 5 }}>
-        {ITEMS.map((item) => {
-          const isActive = active === item.key;
+        {ITEMS.map((item, i) => {
+          const isActive = activeIdx === i;
           return (
-            <div key={item.key} onClick={() => setActive(item.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(item.key); } }} onMouseEnter={() => setActive(item.key)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '0.4rem 0.6rem', borderRadius: 6, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.25px solid ${isActive ? color : t.border}` }}>
+            <div
+              key={item.key}
+              onClick={() => { stop(); pick(i); }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stop(); pick(i); } }}
+              onMouseEnter={() => { stop(); pick(i); }}
+              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '0.4rem 0.6rem', borderRadius: 6, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.25px solid ${isActive ? color : t.border}`, transition: 'all 0.25s ease' }}
+            >
               <span style={{ color, fontSize: 11 }}>✓</span>
               <span style={{ fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{item.label}</span>
             </div>

@@ -584,6 +584,78 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  10: [
+    {
+      route: '/docs/software-system-design/transactions-and-isolation',
+      diagrams: [
+        { name: 'WriteSkewExplorer', match: 'Transaction schedule' },
+      ],
+    },
+    {
+      route: '/docs/software-system-design/vertical-vs-horizontal-scaling',
+      diagrams: [
+        { name: 'ScalingBottleneckExplorer', match: 'Application replicas' },
+      ],
+    },
+    {
+      route: '/docs/ml-system-design/case-studies',
+      diagrams: [
+        { name: 'DiscoverySequenceDiagram', match: 'Click a step' },
+        { name: 'TwoStagePipelinePatternDiagram', match: 'Two-stage retrieval and ranking' },
+        { name: 'ColdStartDiagram', match: 'Approach' },
+        { name: 'BlendedObjectiveDiagram', match: 'Revenue weight' },
+        { name: 'DomainAgnosticDesignDiagram', match: 'Domain' },
+        { name: 'GenAiCaseStudiesDiagram', match: 'RAG pipeline design' },
+        { name: 'ProblemSolutionMapDiagram', match: 'Training-serving skew' },
+      ],
+    },
+    {
+      route: '/docs/ml-system-design/model-catalog-and-benchmarking',
+      diagrams: [
+        { name: 'ModelCategoryMapDiagram', match: 'A taxonomy, not a leaderboard' },
+        { name: 'ModelCardChecklistDiagram', match: 'The same attribute set the Model Cards standard formalizes' },
+        { name: 'ActiveVsTotalParamsDiagram', match: 'Total parameters' },
+        { name: 'BenchmarkDimensionsSelectorDiagram', match: 'System type' },
+        { name: 'UsageWorkflowDiagram', match: 'The checklist and dimensions stay true' },
+      ],
+    },
+    {
+      route: '/docs/ml-system-design/overview',
+      diagrams: [
+        { name: 'ThreeDisciplinesDiagram', match: 'Click a discipline' },
+        { name: 'WhenSystemDesignMattersDiagram', match: 'When system design becomes necessary' },
+        { name: 'ProblemFormulationFunnelDiagram', match: 'Turn a business request into a trainable objective' },
+        { name: 'OfflineVsOnlineMetricsDiagram', match: 'Offline improvement is a hypothesis' },
+        { name: 'TradeoffSpaceDiagram', match: 'Every design picks a dominant constraint' },
+        { name: 'BatchVsOnlineServingDiagram', match: 'Freshness determines the serving path' },
+        { name: 'LatencyBudgetBreakdownDiagram', match: 'A 100ms budget spans the whole request path' },
+        { name: 'ModelComplexityInterpretabilityDiagram', match: 'Earn complexity with measured value' },
+        { name: 'SectionMapDiagram', match: 'The system-design learning path' },
+      ],
+    },
+    {
+      route: '/docs/ml-system-design/roadmap',
+      diagrams: [
+        { name: 'NineStepPipelineDiagram', match: 'Problem formulation' },
+      ],
+    },
+    {
+      route: '/docs/ml-system-design/technology-ecosystem-map',
+      diagrams: [
+        { name: 'EcosystemMapDiagram', match: 'Frontend / Client Experience' },
+      ],
+    },
+    {
+      route: '/docs/ml-system-design/the-9-step-framework',
+      diagrams: [
+        { name: 'DataBiasDiagram', match: 'Showing full catalog' },
+        { name: 'FeatureCategoriesDiagram', match: 'User features' },
+        { name: 'TimeBasedSplitDiagram', match: 'Split strategy' },
+        { name: 'ABShadowCanaryDiagram', match: 'Strategy' },
+        { name: 'MonitoringRetrainLoopDiagram', match: 'loop is the step' },
+      ],
+    },
+  ],
 };
 
 async function main() {

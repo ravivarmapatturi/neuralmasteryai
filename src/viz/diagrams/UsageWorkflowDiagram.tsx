@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STEPS = [
@@ -14,21 +13,21 @@ const STEPS = [
  * one paragraph -- click a step for the reasoning behind it. */
 export default function UsageWorkflowDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('skeptic');
+  const { value: activeIdx, pick, stop } = useAutoCycle(STEPS.length, 2500, 1);
   const color = getConceptColor(t, 'attention');
-  const info = STEPS.find((s) => s.key === active)!;
+  const info = STEPS[activeIdx];
 
   return (
     <VisualizationContainer footer={info.desc}>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {STEPS.map((s, i) => {
-          const isActive = active === s.key;
+          const isActive = activeIdx === i;
           return (
             <div key={s.key} style={{ display: 'flex', alignItems: 'center' }}>
               <div
-                onClick={() => setActive(s.key)}
-                onMouseEnter={() => setActive(s.key)}
-                style={{ cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}
+                onClick={() => { stop(); pick(i); }}
+                onMouseEnter={() => { stop(); pick(i); }}
+                style={{ cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary, transition: 'all 0.25s ease' }}
               >
                 {i + 1}. {s.label}
               </div>

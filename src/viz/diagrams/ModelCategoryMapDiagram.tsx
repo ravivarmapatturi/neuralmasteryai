@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const CATEGORIES = [
@@ -19,17 +18,25 @@ const CATEGORIES = [
  * site actually covers it in depth -- a map, not a leaderboard. */
 export default function ModelCategoryMapDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('llm');
+  const { value: selectedIdx, pick, stop } = useAutoCycle(CATEGORIES.length, 2500, 0);
   const color = getConceptColor(t, 'attention');
-  const active = CATEGORIES.find((c) => c.key === selected)!;
+  const active = CATEGORIES[selectedIdx];
 
   return (
     <VisualizationContainer footer={`${active.label} → covered in depth at "${active.route}".`}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {CATEGORIES.map((c) => {
-          const isSelected = selected === c.key;
+        {CATEGORIES.map((c, i) => {
+          const isSelected = selectedIdx === i;
           return (
-            <div key={c.key} onClick={() => setSelected(c.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(c.key); } }} onMouseEnter={() => setSelected(c.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}` }}>
+            <div
+              key={c.key}
+              onClick={() => { stop(); pick(i); }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stop(); pick(i); } }}
+              onMouseEnter={() => { stop(); pick(i); }}
+              style={{ cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}`, transition: 'all 0.25s ease' }}
+            >
               <span style={{ fontSize: 11, fontWeight: isSelected ? 700 : 500, color: isSelected ? color : t.textPrimary }}>{c.label}</span>
             </div>
           );

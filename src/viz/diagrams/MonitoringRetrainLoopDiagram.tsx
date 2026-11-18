@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, FlowDots } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STAGES = [
@@ -14,9 +13,9 @@ const STAGES = [
  * Click a stage in the cycle for what happens there. */
 export default function MonitoringRetrainLoopDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('detect');
+  const { value: activeIdx, pick, stop } = useAutoCycle(STAGES.length, 2500, 2);
   const color = getConceptColor(t, 'attention');
-  const info = STAGES.find((s) => s.key === active)!;
+  const info = STAGES[activeIdx];
   const width = 300;
   const height = 300;
   const cx = width / 2;
@@ -31,6 +30,7 @@ export default function MonitoringRetrainLoopDiagram() {
             <path d="M0,0 L6,3 L0,6 Z" fill={color} />
           </marker>
         </defs>
+        <FlowDots d="M 150 50 A 100 100 0 1 1 149.9 50 Z" color={color} dur={4} />
         {STAGES.map((_, i) => {
           const a1 = (i / STAGES.length) * 2 * Math.PI - Math.PI / 2 + 0.46;
           const a2 = ((i + 1) / STAGES.length) * 2 * Math.PI - Math.PI / 2 - 0.46;
@@ -53,10 +53,10 @@ export default function MonitoringRetrainLoopDiagram() {
           const angle = (i / STAGES.length) * 2 * Math.PI - Math.PI / 2;
           const x = cx + r * Math.cos(angle);
           const y = cy + r * Math.sin(angle);
-          const isActive = active === s.key;
+          const isActive = activeIdx === i;
           return (
-            <g key={s.key} onClick={() => setActive(s.key)} onMouseEnter={() => setActive(s.key)} style={{ cursor: 'pointer' }}>
-              <circle cx={x} cy={y} r={36} fill={isActive ? `${color}25` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
+            <g key={s.key} onClick={() => { stop(); pick(i); }} onMouseEnter={() => { stop(); pick(i); }} style={{ cursor: 'pointer' }}>
+              <circle cx={x} cy={y} r={36} fill={isActive ? `${color}25` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} style={{ transition: 'all 0.25s ease' }} />
               <text x={x} y={y - 2} textAnchor="middle" fontSize={8} fontWeight={isActive ? 700 : 500} fill={color}>{s.label.split(' (')[0]}</text>
               {s.label.includes('(') && <text x={x} y={y + 9} textAnchor="middle" fontSize={6.5} fill={t.textMuted}>({s.label.split('(')[1]}</text>}
             </g>

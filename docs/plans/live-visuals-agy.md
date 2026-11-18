@@ -291,43 +291,43 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 10
 - `src/content/docs/software-system-design/transactions-and-isolation.mdx`
-  - [ ] `src/viz/diagrams/WriteSkewExplorer.tsx`
+  - [x] `src/viz/diagrams/WriteSkewExplorer.tsx`
 - `src/content/docs/software-system-design/vertical-vs-horizontal-scaling.mdx`
-  - [ ] `src/viz/diagrams/ScalingBottleneckExplorer.tsx`
+  - [x] `src/viz/diagrams/ScalingBottleneckExplorer.tsx`
 - `src/content/docs/ml-system-design/case-studies.mdx`
-  - [ ] `src/viz/diagrams/BlendedObjectiveDiagram.tsx`
-  - [ ] `src/viz/diagrams/ColdStartDiagram.tsx`
-  - [ ] `src/viz/diagrams/DiscoverySequenceDiagram.tsx`
-  - [ ] `src/viz/diagrams/DomainAgnosticDesignDiagram.tsx`
-  - [ ] `src/viz/diagrams/GenAiCaseStudiesDiagram.tsx`
-  - [ ] `src/viz/diagrams/ProblemSolutionMapDiagram.tsx`
-  - [ ] `src/viz/diagrams/TwoStagePipelinePatternDiagram.tsx`
+  - [x] `src/viz/diagrams/BlendedObjectiveDiagram.tsx`
+  - [x] `src/viz/diagrams/ColdStartDiagram.tsx`
+  - [x] `src/viz/diagrams/DiscoverySequenceDiagram.tsx`
+  - [x] `src/viz/diagrams/DomainAgnosticDesignDiagram.tsx`
+  - [x] `src/viz/diagrams/GenAiCaseStudiesDiagram.tsx`
+  - [x] `src/viz/diagrams/ProblemSolutionMapDiagram.tsx`
+  - [x] `src/viz/diagrams/TwoStagePipelinePatternDiagram.tsx`
 - `src/content/docs/ml-system-design/model-catalog-and-benchmarking.mdx`
-  - [ ] `src/viz/diagrams/ActiveVsTotalParamsDiagram.tsx`
-  - [ ] `src/viz/diagrams/BenchmarkDimensionsSelectorDiagram.tsx`
-  - [ ] `src/viz/diagrams/ModelCardChecklistDiagram.tsx`
-  - [ ] `src/viz/diagrams/ModelCategoryMapDiagram.tsx`
-  - [ ] `src/viz/diagrams/UsageWorkflowDiagram.tsx`
+  - [x] `src/viz/diagrams/ActiveVsTotalParamsDiagram.tsx`
+  - [x] `src/viz/diagrams/BenchmarkDimensionsSelectorDiagram.tsx`
+  - [x] `src/viz/diagrams/ModelCardChecklistDiagram.tsx`
+  - [x] `src/viz/diagrams/ModelCategoryMapDiagram.tsx`
+  - [x] `src/viz/diagrams/UsageWorkflowDiagram.tsx`
 - `src/content/docs/ml-system-design/overview.mdx`
-  - [ ] `src/viz/diagrams/BatchVsOnlineServingDiagram.tsx`
-  - [ ] `src/viz/diagrams/LatencyBudgetBreakdownDiagram.tsx`
-  - [ ] `src/viz/diagrams/ModelComplexityInterpretabilityDiagram.tsx`
-  - [ ] `src/viz/diagrams/OfflineVsOnlineMetricsDiagram.tsx`
-  - [ ] `src/viz/diagrams/ProblemFormulationFunnelDiagram.tsx`
-  - [ ] `src/viz/diagrams/SectionMapDiagram.tsx`
-  - [ ] `src/viz/diagrams/ThreeDisciplinesDiagram.tsx`
-  - [ ] `src/viz/diagrams/TradeoffSpaceDiagram.tsx`
-  - [ ] `src/viz/diagrams/WhenSystemDesignMattersDiagram.tsx`
+  - [x] `src/viz/diagrams/BatchVsOnlineServingDiagram.tsx`
+  - [x] `src/viz/diagrams/LatencyBudgetBreakdownDiagram.tsx`
+  - [x] `src/viz/diagrams/ModelComplexityInterpretabilityDiagram.tsx`
+  - [x] `src/viz/diagrams/OfflineVsOnlineMetricsDiagram.tsx`
+  - [x] `src/viz/diagrams/ProblemFormulationFunnelDiagram.tsx`
+  - [x] `src/viz/diagrams/SectionMapDiagram.tsx`
+  - [x] `src/viz/diagrams/ThreeDisciplinesDiagram.tsx`
+  - [x] `src/viz/diagrams/TradeoffSpaceDiagram.tsx`
+  - [x] `src/viz/diagrams/WhenSystemDesignMattersDiagram.tsx`
 - `src/content/docs/ml-system-design/roadmap.mdx`
-  - [ ] `src/viz/diagrams/NineStepPipelineDiagram.tsx`
+  - [x] `src/viz/diagrams/NineStepPipelineDiagram.tsx`
 - `src/content/docs/ml-system-design/technology-ecosystem-map.mdx`
-  - [ ] `src/viz/diagrams/EcosystemMapDiagram.tsx`
+  - [x] `src/viz/diagrams/EcosystemMapDiagram.tsx`
 - `src/content/docs/ml-system-design/the-9-step-framework.mdx`
-  - [ ] `src/viz/diagrams/ABShadowCanaryDiagram.tsx`
-  - [ ] `src/viz/diagrams/DataBiasDiagram.tsx`
-  - [ ] `src/viz/diagrams/FeatureCategoriesDiagram.tsx`
-  - [ ] `src/viz/diagrams/MonitoringRetrainLoopDiagram.tsx`
-  - [ ] `src/viz/diagrams/TimeBasedSplitDiagram.tsx`
+  - [x] `src/viz/diagrams/ABShadowCanaryDiagram.tsx`
+  - [x] `src/viz/diagrams/DataBiasDiagram.tsx`
+  - [x] `src/viz/diagrams/FeatureCategoriesDiagram.tsx`
+  - [x] `src/viz/diagrams/MonitoringRetrainLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/TimeBasedSplitDiagram.tsx`
 
 ## Batch 11
 - `src/content/docs/agent-observability/overview.mdx`

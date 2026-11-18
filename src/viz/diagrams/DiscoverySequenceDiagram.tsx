@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, FlowDots } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -19,7 +18,7 @@ export interface DiscoveryStep {
  * need this" instead of "how did the field get here historically". */
 export default function DiscoverySequenceDiagram({ steps }: { steps: DiscoveryStep[] }) {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(0);
+  const { value: selected, pick, stop } = useAutoCycle(steps.length, 2500, 0);
   const width = Math.max(560, steps.length * 92);
   const height = 110;
   const nodeW = (width - 40) / steps.length;
@@ -28,6 +27,7 @@ export default function DiscoverySequenceDiagram({ steps }: { steps: DiscoverySt
   return (
     <VisualizationContainer footer={steps[selected].constraint}>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
+        <FlowDots d={`M 20 ${y} H ${width - 20}`} color={t.accentPrimary} dur={3} />
         {steps.map((s, i) => {
           const x = 20 + i * nodeW + nodeW / 2;
           const isSelected = selected === i;
@@ -43,8 +43,8 @@ export default function DiscoverySequenceDiagram({ steps }: { steps: DiscoverySt
                 />
               )}
               <g
-                onClick={() => setSelected(i)}
-                onMouseEnter={() => setSelected(i)}
+                onClick={() => { stop(); pick(i); }}
+                onMouseEnter={() => { stop(); pick(i); }}
                 role="button"
                 tabIndex={0}
                 aria-pressed={isSelected}
@@ -52,7 +52,8 @@ export default function DiscoverySequenceDiagram({ steps }: { steps: DiscoverySt
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    setSelected(i);
+                    stop();
+                    pick(i);
                   }
                 }}
                 style={{ cursor: 'pointer' }}

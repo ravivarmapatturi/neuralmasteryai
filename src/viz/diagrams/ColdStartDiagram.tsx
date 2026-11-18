@@ -1,16 +1,17 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Approach = 'collab' | 'content' | 'explore';
+const APPROACHES: Approach[] = ['collab', 'content', 'explore'];
 
 /** A brand-new user has no interaction history -- click through the
  * three approaches to see what each one can actually work with when
  * collaborative filtering has nothing to go on. */
 export function ColdStartDiagram() {
   const t = useVizTokens();
-  const [approach, setApproach] = useState<Approach>('content');
+  const { value: approachIdx, pick, stop } = useAutoCycle(APPROACHES.length, 3000, 1);
+  const approach = APPROACHES[approachIdx];
   const failColor = t.accentDanger;
   const okColor = getConceptColor(t, 'attention');
 
@@ -22,7 +23,17 @@ export function ColdStartDiagram() {
 
   return (
     <VisualizationContainer footer={desc[approach].text}>
-      <PillSelect<Approach> label="Approach" value={approach} onChange={setApproach} options={[{ value: 'collab', label: 'Collaborative filtering' }, { value: 'content', label: 'Content-based fallback' }, { value: 'explore', label: 'Exploration' }]} />
+      <PillSelect<Approach>
+        label="Approach"
+        value={approach}
+        onChange={(val) => {
+          const next = typeof val === 'function' ? val(approach) : val;
+          const idx = APPROACHES.indexOf(next);
+          if (idx >= 0) pick(idx);
+          stop();
+        }}
+        options={[{ value: 'collab', label: 'Collaborative filtering' }, { value: 'content', label: 'Content-based fallback' }, { value: 'explore', label: 'Exploration' }]}
+      />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
         <div style={{ padding: '0.7rem', borderRadius: 9, background: t.surfaceAlt, border: `1.5px solid ${t.border}`, textAlign: 'center' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: t.textMuted }}>New user</div>

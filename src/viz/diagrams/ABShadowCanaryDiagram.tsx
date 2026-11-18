@@ -1,16 +1,17 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Strategy = 'ab' | 'shadow' | 'canary';
+const STRATEGIES: Strategy[] = ['ab', 'shadow', 'canary'];
 
 /** Three deployment testing strategies, drawn as what traffic actually
  * touches which model and whether the new model's output affects the
  * user -- the axis that actually distinguishes them. */
 export default function ABShadowCanaryDiagram() {
   const t = useVizTokens();
-  const [strategy, setStrategy] = useState<Strategy>('canary');
+  const { value: stratIdx, pick, stop } = useAutoCycle(STRATEGIES.length, 3000, 2);
+  const strategy = STRATEGIES[stratIdx];
   const oldColor = getConceptColor(t, 'query');
   const newColor = getConceptColor(t, 'attention');
   const width = 560;
@@ -26,12 +27,22 @@ export default function ABShadowCanaryDiagram() {
 
   return (
     <VisualizationContainer footer={desc[strategy]}>
-      <PillSelect<Strategy> label="Strategy" value={strategy} onChange={setStrategy} options={[{ value: 'ab', label: 'A/B test' }, { value: 'shadow', label: 'Shadow' }, { value: 'canary', label: 'Canary' }]} />
+      <PillSelect<Strategy>
+        label="Strategy"
+        value={strategy}
+        onChange={(val) => {
+          const next = typeof val === 'function' ? val(strategy) : val;
+          const idx = STRATEGIES.indexOf(next);
+          if (idx >= 0) pick(idx);
+          stop();
+        }}
+        options={[{ value: 'ab', label: 'A/B test' }, { value: 'shadow', label: 'Shadow' }, { value: 'canary', label: 'Canary' }]}
+      />
       <svg width="100%" viewBox={`0 0 ${width} 100`} style={{ display: 'block', marginTop: 10 }}>
         <text x={20} y={20} fontSize={9} fill={t.textMuted}>traffic</text>
         <rect x={20} y={30} width={200} height={26} rx={5} fill={oldColor} opacity={0.25} />
-        <rect x={20} y={30} width={200 * (1 - newPct[strategy] / 100)} height={26} rx={5} fill={oldColor} opacity={0.7} />
-        <rect x={20 + 200 * (1 - newPct[strategy] / 100)} y={30} width={200 * (newPct[strategy] / 100)} height={26} rx={5} fill={newColor} opacity={0.7} />
+        <rect x={20} y={30} width={200 * (1 - newPct[strategy] / 100)} height={26} rx={5} fill={oldColor} opacity={0.7} style={{ transition: 'width 0.3s ease' }} />
+        <rect x={20 + 200 * (1 - newPct[strategy] / 100)} y={30} width={200 * (newPct[strategy] / 100)} height={26} rx={5} fill={newColor} opacity={0.7} style={{ transition: 'all 0.3s ease' }} />
         <text x={20} y={72} fontSize={8.5} fill={oldColor}>■ old model (user-facing)</text>
         <text x={20} y={86} fontSize={8.5} fill={newColor}>■ new model {shadowMode ? '(shadow -- logged only, not shown)' : '(user-facing)'}</text>
         {shadowMode && (

@@ -329,3 +329,44 @@ Pages covered:
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 8 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-9/`.
 
+## Batch 10 Report
+
+### Motion Rationales:
+1. `WriteSkewExplorer.tsx`: Autocycles (3500ms) between concurrent snapshot reads and serial decision order with FlowDots connecting clinician decisions, showing how concurrent reads each see the other present and allow both to leave, violating the on-call invariant.
+2. `ScalingBottleneckExplorer.tsx`: Autocycles (3000ms) replica counts [6, 4, 2, 8], demonstrating that doubling application capacity leaves total throughput capped at the shared storage ceiling (3,000 requests/s).
+3. `BlendedObjectiveDiagram.tsx`: Autocycles (3000ms) across revenue weights [40, 15, 85, 60], dynamically reordering the 4 feed items to show how business priority shifts feed rank.
+4. `ColdStartDiagram.tsx`: Autocycles (3000ms) across collaborative filtering, content-based fallback, and exploration approaches, showing that collaborative filtering fails outright for new users while content/exploration produce signal.
+5. `DiscoverySequenceDiagram.tsx`: Autocycles (2500ms) through discovery steps with FlowDots along the pipeline, showing that each technology exists to overcome the physical bottleneck of the preceding stage.
+6. `DomainAgnosticDesignDiagram.tsx`: Autocycles (3500ms) between NLP and Computer Vision domains, demonstrating that swapping the model leaves the surrounding latency, monitoring, and experimentation architecture identical.
+7. `GenAiCaseStudiesDiagram.tsx`: Autocycles (3000ms) across RAG, agent systems, and serving infrastructure categories, mapping unique metrics to the same underlying 9-step framework.
+8. `ProblemSolutionMapDiagram.tsx`: Autocycles (2500ms) through 5 recurring production ML failure modes, linking each to its proven architectural mitigation.
+9. `TwoStagePipelinePatternDiagram.tsx`: Autocycles (2500ms) through Catalog, Retrieve, Rank, and Serve with FlowDots along the candidate funnel, showing cheap high-recall filtering preceding expensive precision ranking.
+10. `ActiveVsTotalParamsDiagram.tsx`: Autocycles (3200ms) parameter presets (Mixtral 8x7B, dense Llama 70B, large MoE 128B), showing that inference compute scales with active parameters while memory footprint tracks total parameters.
+11. `BenchmarkDimensionsSelectorDiagram.tsx`: Autocycles (3500ms) between served model and retrieval benchmark dimensions, showing how evaluation criteria change with system archetype.
+12. `ModelCardChecklistDiagram.tsx`: Autocycles (2500ms) through the 12 model card attributes, explaining the operational failure mode prevented by each checklist item.
+13. `ModelCategoryMapDiagram.tsx`: Autocycles (2500ms) through 9 model categories, showing stable taxonomy mapping to corresponding platform deep-dives.
+14. `UsageWorkflowDiagram.tsx`: Autocycles (2500ms) through 4 evaluation workflow steps, moving from raw candidate lists through benchmark skepticism to attribute scoring.
+15. `BatchVsOnlineServingDiagram.tsx`: Autocycles (2500ms) through serving pipeline stages with FlowDots, showing event ingestion leading to either batch precomputation or online per-request evaluation.
+16. `LatencyBudgetBreakdownDiagram.tsx`: Autocycles (2500ms) through network, features, model, and return stages with FlowDots, illustrating that model inference is only one consumer of an end-to-end 100ms budget.
+17. `ModelComplexityInterpretabilityDiagram.tsx`: Autocycles (2500ms) through baseline, measurement, complexity increase, and operations with FlowDots, reinforcing that architectural complexity must be earned with empirical metrics.
+18. `OfflineVsOnlineMetricsDiagram.tsx`: Autocycles (2500ms) through historical data, offline proxy, A/B test, and online metrics with FlowDots, showing that offline improvement is merely a hypothesis until validated live.
+19. `ProblemFormulationFunnelDiagram.tsx`: Autocycles (2500ms) through goal, decision, target, and metric stages with FlowDots, showing the translation of vague business needs into trainable objectives.
+20. `SectionMapDiagram.tsx`: Autocycles (2500ms) through framework, case studies, catalog, and build stages with FlowDots, mapping the learning progression.
+21. `ThreeDisciplinesDiagram.tsx`: Autocycles (2800ms) across research, system design, and MLOps with FlowDots, clarifying the distinct problem boundaries of each discipline.
+22. `TradeoffSpaceDiagram.tsx`: Autocycles (2500ms) across accuracy, latency, cost, and risk constraints with FlowDots, showing that every system design selects a dominant tradeoff.
+23. `WhenSystemDesignMattersDiagram.tsx`: Autocycles (2500ms) from one-off notebooks to production systems with FlowDots, illustrating when reliability, monitoring, and rollback architectures become mandatory.
+24. `NineStepPipelineDiagram.tsx`: Autocycles (2200ms) through all 9 steps with FlowDots along the pipeline, demonstrating the progression from framing through model building to production operations.
+25. `EcosystemMapDiagram.tsx`: Autocycles (2500ms) vertically through the production software stack layers, highlighting dedicated architecture deep-dives across the platform.
+26. `ABShadowCanaryDiagram.tsx`: Autocycles (3000ms) across A/B split, shadow, and canary rollout traffic distributions, illustrating user-facing risk isolation.
+27. `DataBiasDiagram.tsx`: Autocycles (3000ms) between observed and hidden catalog items, showing how training solely on past exposure data perpetuates historical ranking blind spots.
+28. `FeatureCategoriesDiagram.tsx`: Autocycles (2800ms) across user, item, and context features with concrete attribute pills, showing how production predictions combine all three dimensions.
+29. `MonitoringRetrainLoopDiagram.tsx`: Autocycles (2500ms) through serve, monitor, detect, and retrain stages with circular FlowDots, illustrating that production MLOps is an active continuous loop.
+30. `TimeBasedSplitDiagram.tsx`: Autocycles (3500ms) between random split and time-based split, showing how random splitting leaks future temporal trends into training datasets.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 28 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-10/`.
+
+
