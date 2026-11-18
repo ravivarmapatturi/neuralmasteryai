@@ -202,10 +202,12 @@ async function main() {
         // (an interview question page was once saved before it rendered).
         if (!isDocRoute) await page.waitForSelector('h1, h2', { timeout: 15000 }).catch(() => {});
         // '#root' matches before a lazy route's chunk arrives, so wait out its Suspense fallback.
+        // Blog and other lazy pages show a plain "Loading…" div inside <article> (no role).
+        await page.waitForFunction(() => ![...document.querySelectorAll('article > div')].some((el) => el.textContent?.trim() === 'Loading…'), undefined, { timeout: 30000 }).catch(() => {});
         await page.waitForFunction(() => ![...document.querySelectorAll('[role="status"]')].some((el) => /^Loading/.test(el.textContent ?? '')), undefined, { timeout: 15000 }).catch(() => {});
 
         const html = await page.content();
-        if (isDocRoute && /<article[^>]*>\s*<div[^>]*>Loading…<\/div>\s*<\/article>/.test(html)) {
+        if (/<div[^>]*>Loading…<\/div>\s*<\/article>/.test(html)) {
           emptyDocPages.push(route);
         }
 
@@ -229,7 +231,7 @@ async function main() {
     // Never ship a Learn page whose static HTML is just the loading placeholder:
     // that is what search engines index first.
     if (emptyDocPages.length) {
-      throw new Error(`prerender-for-pagefind: ${emptyDocPages.length} doc page(s) were saved before their content loaded, e.g. ${emptyDocPages.slice(0, 5).join(', ')}`);
+      throw new Error(`prerender-for-pagefind: ${emptyDocPages.length} page(s) were saved before their content loaded, e.g. ${emptyDocPages.slice(0, 5).join(', ')}`);
     }
   } finally {
     server.kill();
