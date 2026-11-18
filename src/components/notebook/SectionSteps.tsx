@@ -21,23 +21,36 @@ export default function SectionSteps() {
   useEffect(() => {
     const article = document.querySelector('article.prose');
     if (!article) return;
-    const hs = Array.from(article.querySelectorAll<HTMLElement>(':scope > h2'))
-      .filter((h) => !NOT_STEPS.test((h.textContent ?? '').trim()));
-    hs.forEach((h, i) => h.setAttribute('data-step', String(i + 1)));
-    article.classList.add('nm-steps-on');
-    // the strip behind the bar uses the sheet's own colour, so text never shows through around it
-    let el: HTMLElement | null = article as HTMLElement;
-    while (el) { const bg = getComputedStyle(el).backgroundColor; if (bg && bg !== 'transparent' && !bg.endsWith(', 0)')) { setPaper(bg); break; } el = el.parentElement; }
-    setSecs(hs.map((h) => ({ id: h.id, title: (h.textContent ?? '').trim(), el: h })));
+    // Pages load lazily, so (re)scan the headings whenever the article's content changes.
+    let hs: HTMLElement[] = [];
     const onScroll = () => {
       const line = Math.max(window.innerHeight * 0.3, 200);
       let idx = 0;
       hs.forEach((h, i) => { if (h.getBoundingClientRect().top <= line) idx = i; });
       setCur(idx);
     };
-    onScroll();
+    const scan = () => {
+      const next = Array.from(article.querySelectorAll<HTMLElement>(':scope > h2'))
+        .filter((h) => !NOT_STEPS.test((h.textContent ?? '').trim()));
+      if (next.length === hs.length && next.every((h, i) => h === hs[i])) return;
+      hs.forEach((h) => h.removeAttribute('data-step'));
+      hs = next;
+      hs.forEach((h, i) => h.setAttribute('data-step', String(i + 1)));
+      setSecs(hs.map((h) => ({ id: h.id, title: (h.textContent ?? '').trim(), el: h })));
+      onScroll();
+    };
+    article.classList.add('nm-steps-on');
+    // the strip behind the bar uses the sheet's own colour, so text never shows through around it
+    let el: HTMLElement | null = article as HTMLElement;
+    while (el) { const bg = getComputedStyle(el).backgroundColor; if (bg && bg !== 'transparent' && !bg.endsWith(', 0)')) { setPaper(bg); break; } el = el.parentElement; }
+    scan();
+    let pending = 0;
+    const mo = new MutationObserver(() => { if (!pending) pending = window.setTimeout(() => { pending = 0; scan(); }, 150); });
+    mo.observe(article, { childList: true });
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => {
+      mo.disconnect();
+      window.clearTimeout(pending);
       window.removeEventListener('scroll', onScroll);
       article.classList.remove('nm-steps-on');
       hs.forEach((h) => h.removeAttribute('data-step'));

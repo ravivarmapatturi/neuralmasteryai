@@ -1,0 +1,463 @@
+# Live visuals: agy lane (111 pages, 321 diagrams)
+
+Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. Edit ONLY the diagram files listed in this file (the other lane owns the rest). Tick each box when done.
+
+## Batch 1
+- `src/content/docs/agents/a2a/overview.mdx`
+  - [ ] `src/viz/diagrams/AgentCardDiagram.tsx`
+  - [ ] `src/viz/diagrams/CrossOrgInteropDiagram.tsx`
+  - [ ] `src/viz/diagrams/DelegationSequenceDiagram.tsx`
+  - [ ] `src/viz/diagrams/McpVsA2aScopeDiagram.tsx`
+  - [ ] `src/viz/diagrams/TaskLifecycleDiagram.tsx`
+- `src/content/docs/agents/agent-architectures.mdx`
+  - [ ] `src/viz/diagrams/AgentEvolutionDiagram.tsx`
+  - [ ] `src/viz/diagrams/CoordinationPatternsDiagram.tsx`
+  - [ ] `src/viz/diagrams/HumanInTheLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/MemoryAsRetrievalDiagram.tsx`
+  - [ ] `src/viz/diagrams/ShortTermVsLongTermMemoryDiagram.tsx`
+- `src/content/docs/agents/agent-fundamentals.mdx`
+  - [ ] `src/viz/diagrams/AgentLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/ArgumentSchemaValidationDiagram.tsx`
+  - [ ] `src/viz/diagrams/ChatbotVsAgentDiagram.tsx`
+  - [ ] `src/viz/diagrams/ContextWindowBudgetDiagram.tsx`
+  - [ ] `src/viz/diagrams/ToolCallAnatomyDiagram.tsx`
+  - [ ] `src/viz/diagrams/ToolCallTraceDiagram.tsx`
+- `src/content/docs/agents/agentic-coding-assistants.mdx`
+  - [ ] `src/viz/diagrams/AgenticCodingLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/CodingAgentSafetyModelDiagram.tsx`
+  - [ ] `src/viz/diagrams/OversightSpectrumDiagram.tsx`
+  - [ ] `src/viz/diagrams/VerificationLayersDiagram.tsx`
+- `src/content/docs/agents/browser-automation.mdx`
+  - [ ] `src/viz/diagrams/BrowserAgentActionDiagram.tsx`
+- `src/content/docs/agents/computer-use.mdx`
+  - [ ] `src/viz/diagrams/ComputerUseLoopDiagram.tsx`
+- `src/content/docs/agents/context-engineering.mdx`
+  - [ ] `src/viz/diagrams/ContextEngineeringStrategiesDiagram.tsx`
+- `src/content/docs/agents/loops-and-graphs.mdx`
+  - [ ] `src/viz/diagrams/LoopGraphAnatomyDiagram.tsx`
+
+## Batch 2
+- `src/content/docs/agents/mcp/overview.mdx`
+  - [ ] `src/viz/diagrams/McpArchitectureDiagram.tsx`
+  - [ ] `src/viz/diagrams/McpCapabilityTypesDiagram.tsx`
+  - [ ] `src/viz/diagrams/McpInAgentLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/McpLocalVsRemoteDiagram.tsx`
+  - [ ] `src/viz/diagrams/MxNIntegrationProblemDiagram.tsx`
+  - [ ] `src/viz/diagrams/TransportComparisonDiagram.tsx`
+- `src/content/docs/agents/mcp/protocol-deep-dive.mdx`
+  - [ ] `src/viz/diagrams/OAuthAuthorizationFlowDiagram.tsx`
+  - [ ] `src/viz/diagrams/TokenAudienceBindingDiagram.tsx`
+  - [ ] `src/viz/diagrams/ToolCallFlowDiagram.tsx`
+  - [ ] `src/viz/diagrams/ToolErrorTypesDiagram.tsx`
+- `src/content/docs/agents/multi-agent-systems.mdx`
+  - [ ] `src/viz/diagrams/ParallelAgentSpeedupDiagram.tsx`
+- `src/content/docs/agents/no-code-automation.mdx`
+  - [ ] `src/viz/diagrams/ClusterNodeAssemblyDiagram.tsx`
+- `src/content/docs/agents/overview.mdx`
+  - [ ] `src/viz/diagrams/AgentFailureModesDiagram.tsx`
+  - [ ] `src/viz/diagrams/ArchitectureSpectrumDiagram.tsx`
+  - [ ] `src/viz/diagrams/AutonomySpectrumDiagram.tsx`
+  - [ ] `src/viz/diagrams/PerceiveReasonActLoopDiagram.tsx`
+- `src/content/docs/agents/plan-and-execute.mdx`
+  - [ ] `src/viz/diagrams/PlanExecuteReplanDiagram.tsx`
+- `src/content/docs/agents/reflection-self-critique.mdx`
+  - [ ] `src/viz/diagrams/ReflexionLoopDiagram.tsx`
+- `src/content/docs/agents/routing-and-supervisor.mdx`
+  - [ ] `src/viz/diagrams/RouterVsSupervisorDiagram.tsx`
+
+## Batch 3
+- `src/content/docs/agents/single-vs-multi-agent.mdx`
+  - [ ] `src/viz/diagrams/AgentSplitTradeoffDiagram.tsx`
+- `src/content/docs/mlops/ai-cost-engineering.mdx`
+  - [ ] `src/viz/diagrams/ModelRoutingSavingsDiagram.tsx`
+  - [ ] `src/viz/diagrams/QualityLatencyCostTriangleDiagram.tsx`
+  - [ ] `src/viz/diagrams/TrainingVsInferenceCostDiagram.tsx`
+  - [ ] `src/viz/diagrams/UtilizationCostDiagram.tsx`
+- `src/content/docs/mlops/caching-strategies.mdx`
+  - [ ] `src/viz/diagrams/CacheAsideFlowDiagram.tsx`
+  - [ ] `src/viz/diagrams/CacheEvictionTtlDiagram.tsx`
+  - [ ] `src/viz/diagrams/WriteThroughVsWriteBehindDiagram.tsx`
+- `src/content/docs/mlops/cicd-and-ml-cicd.mdx`
+  - [ ] `src/viz/diagrams/AutomatedRetrainLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/CiVsCdDiagram.tsx`
+  - [ ] `src/viz/diagrams/GitOpsReconciliationDiagram.tsx`
+  - [ ] `src/viz/diagrams/MlCicdPipelineStepsDiagram.tsx`
+- `src/content/docs/mlops/cloud-computing.mdx`
+  - [ ] `src/viz/diagrams/CloudDistinctiveFeaturesDiagram.tsx`
+  - [ ] `src/viz/diagrams/CloudNeutralPortabilityDiagram.tsx`
+  - [ ] `src/viz/diagrams/CloudVocabularyMapDiagram.tsx`
+  - [ ] `src/viz/diagrams/ComputeSpectrumDiagram.tsx`
+  - [ ] `src/viz/diagrams/ManagedMlPlatformTradeoffDiagram.tsx`
+  - [ ] `src/viz/diagrams/RequestPathSecurityDiagram.tsx`
+  - [ ] `src/viz/diagrams/StorageUseCaseDiagram.tsx`
+- `src/content/docs/mlops/cloud-model-deployment.mdx`
+  - [ ] `src/viz/diagrams/CloudDeploymentChoiceDiagram.tsx`
+- `src/content/docs/mlops/containers.mdx`
+  - [ ] `src/viz/diagrams/ContainerSecurityChecklistDiagram.tsx`
+  - [ ] `src/viz/diagrams/DockerArchitectureDiagram.tsx`
+  - [ ] `src/viz/diagrams/DockerfileLayerCachingDiagram.tsx`
+  - [ ] `src/viz/diagrams/ImageVsContainerDiagram.tsx`
+  - [ ] `src/viz/diagrams/MultiStageBuildDiagram.tsx`
+  - [ ] `src/viz/diagrams/RegistryComparisonDiagram.tsx`
+  - [ ] `src/viz/diagrams/VolumesAndNetworksDiagram.tsx`
+- `src/content/docs/mlops/data-engineering-and-versioning.mdx`
+  - [ ] `src/viz/diagrams/DataLineageProvenanceDiagram.tsx`
+  - [ ] `src/viz/diagrams/DataPipelineFlowDiagram.tsx`
+  - [ ] `src/viz/diagrams/DataProcessingScaleDiagram.tsx`
+  - [ ] `src/viz/diagrams/GitVsDataVersioningDiagram.tsx`
+  - [ ] `src/viz/diagrams/SchemaEvolutionDiagram.tsx`
+
+## Batch 4
+- `src/content/docs/mlops/deployment-strategies.mdx`
+  - [ ] `src/viz/diagrams/BlueGreenCutoverDiagram.tsx`
+  - [ ] `src/viz/diagrams/CanaryRampDiagram.tsx`
+  - [ ] `src/viz/diagrams/CanaryVsAbPurposeDiagram.tsx`
+  - [ ] `src/viz/diagrams/ComposedStrategyDiagram.tsx`
+  - [ ] `src/viz/diagrams/ShadowDeploymentDiagram.tsx`
+- `src/content/docs/mlops/engineering-foundations.mdx`
+  - [ ] `src/viz/diagrams/ConfigVsHardcodedDiagram.tsx`
+  - [ ] `src/viz/diagrams/DependencyPinningDiagram.tsx`
+  - [ ] `src/viz/diagrams/NotebookVsPipelineDiagram.tsx`
+  - [ ] `src/viz/diagrams/OnboardingStandardDiagram.tsx`
+- `src/content/docs/mlops/experiment-tracking.mdx`
+  - [ ] `src/viz/diagrams/HyperparameterSweepDiagram.tsx`
+  - [ ] `src/viz/diagrams/RunComparisonChartDiagram.tsx`
+  - [ ] `src/viz/diagrams/SevenAnswersChecklistDiagram.tsx`
+- `src/content/docs/mlops/feature-stores-and-model-registry.mdx`
+  - [ ] `src/viz/diagrams/FeatureFreshnessDiagram.tsx`
+  - [ ] `src/viz/diagrams/LineageChainDiagram.tsx`
+  - [ ] `src/viz/diagrams/OfflineVsOnlineStoreDiagram.tsx`
+  - [ ] `src/viz/diagrams/PromotionWorkflowDiagram.tsx`
+  - [ ] `src/viz/diagrams/TrainingServingSkewDiagram.tsx`
+- `src/content/docs/mlops/federated-learning.mdx`
+  - [ ] `src/viz/diagrams/FederatedRoundDiagram.tsx`
+- `src/content/docs/mlops/gpu-and-distributed-training.mdx`
+  - [ ] `src/viz/diagrams/CudaExecutionHierarchyDiagram.tsx`
+  - [ ] `src/viz/diagrams/CudaStreamsDiagram.tsx`
+  - [ ] `src/viz/diagrams/FsdpZeroShardingDiagram.tsx`
+  - [ ] `src/viz/diagrams/GpuMemoryHierarchyDiagram.tsx`
+  - [ ] `src/viz/diagrams/MixedPrecisionDiagram.tsx`
+  - [ ] `src/viz/diagrams/OccupancyDiagram.tsx`
+  - [ ] `src/viz/diagrams/ParallelismStrategiesDiagram.tsx`
+  - [ ] `src/viz/diagrams/PipelineBubbleDiagram.tsx`
+  - [ ] `src/viz/diagrams/ThreeDParallelismCompositionDiagram.tsx`
+  - [ ] `src/viz/diagrams/WarpDivergenceDiagram.tsx`
+- `src/content/docs/mlops/infrastructure-as-code.mdx`
+  - [ ] `src/viz/diagrams/ImmutableVsConfigMgmtDiagram.tsx`
+  - [ ] `src/viz/diagrams/RemoteStateLockingDiagram.tsx`
+  - [ ] `src/viz/diagrams/StateDriftDiagram.tsx`
+  - [ ] `src/viz/diagrams/TerraformWorkflowDiagram.tsx`
+- `src/content/docs/mlops/kubernetes.mdx`
+  - [ ] `src/viz/diagrams/ClusterArchitectureDiagram.tsx`
+  - [ ] `src/viz/diagrams/GpuSchedulingDiagram.tsx`
+  - [ ] `src/viz/diagrams/HpaAutoscalingDiagram.tsx`
+  - [ ] `src/viz/diagrams/ResourceRequestsLimitsDiagram.tsx`
+
+## Batch 5
+- `src/content/docs/mlops/legal-licensing-and-governance.mdx`
+  - [ ] `src/viz/diagrams/GovernanceApprovalFlowDiagram.tsx`
+  - [ ] `src/viz/diagrams/ModelCardVsDataCardDiagram.tsx`
+  - [ ] `src/viz/diagrams/ModelLicenseSpectrumDiagram.tsx`
+  - [ ] `src/viz/diagrams/PrivacyRegulationScopeDiagram.tsx`
+- `src/content/docs/mlops/llm-evaluation-and-ragops.mdx`
+  - [ ] `src/viz/diagrams/BleuVsSemanticDiagram.tsx`
+  - [ ] `src/viz/diagrams/NdcgRankingDiagram.tsx`
+  - [ ] `src/viz/diagrams/RagFailureLayerDiagram.tsx`
+- `src/content/docs/mlops/llm-hosting-and-serving-patterns.mdx`
+  - [ ] `src/viz/diagrams/EmbeddingRerankerPipelineDiagram.tsx`
+  - [ ] `src/viz/diagrams/FineTuningToInferenceHandoffDiagram.tsx`
+  - [ ] `src/viz/diagrams/HostingStackDiagram.tsx`
+  - [ ] `src/viz/diagrams/MultiLoraServingDiagram.tsx`
+  - [ ] `src/viz/diagrams/ServerlessColdStartDiagram.tsx`
+- `src/content/docs/mlops/llm-inference-engines.mdx`
+  - [ ] `src/viz/diagrams/BaselineVsEngineDiagram.tsx`
+  - [ ] `src/viz/diagrams/EdgeVsServerDeploymentDiagram.tsx`
+  - [ ] `src/viz/diagrams/EngineTerminologyDiagram.tsx`
+  - [ ] `src/viz/diagrams/InferenceStackLayersDiagram.tsx`
+- `src/content/docs/mlops/llm-inference-optimization.mdx`
+  - [ ] `src/viz/diagrams/FlashAttentionMemoryDiagram.tsx`
+  - [ ] `src/viz/diagrams/PrefillVsDecodeDiagram.tsx`
+  - [ ] `src/viz/diagrams/PrefixCachingDiagram.tsx`
+  - [ ] `src/viz/diagrams/TtftTpotTimelineDiagram.tsx`
+- `src/content/docs/mlops/message-queues-and-async-processing.mdx`
+  - [ ] `src/viz/diagrams/DeliverySemanticsDiagram.tsx`
+  - [ ] `src/viz/diagrams/PartitionOrderingDiagram.tsx`
+  - [ ] `src/viz/diagrams/PubSubVsPointToPointDiagram.tsx`
+  - [ ] `src/viz/diagrams/SyncVsAsyncDiagram.tsx`
+- `src/content/docs/mlops/ml-and-llm-testing.mdx`
+  - [ ] `src/viz/diagrams/JailbreakRegressionDiagram.tsx`
+  - [ ] `src/viz/diagrams/LlmTestTypesDiagram.tsx`
+  - [ ] `src/viz/diagrams/MlTestPyramidDiagram.tsx`
+  - [ ] `src/viz/diagrams/PromptAsCodeDiagram.tsx`
+- `src/content/docs/mlops/mlops-architecture-and-roadmap.mdx`
+  - [ ] `src/viz/diagrams/MlLifecyclePipelineDiagram.tsx`
+
+## Batch 6
+- `src/content/docs/mlops/model-serving.mdx`
+  - [ ] `src/viz/diagrams/AdaptiveBatchingQueueDiagram.tsx`
+  - [ ] `src/viz/diagrams/AsyncBlockingDiagram.tsx`
+  - [ ] `src/viz/diagrams/BatchOnlineStreamingDiagram.tsx`
+  - [ ] `src/viz/diagrams/ModelServingRequestFlowDiagram.tsx`
+- `src/content/docs/mlops/monitoring-and-drift.mdx`
+  - [ ] `src/viz/diagrams/DataVsConceptDriftDiagram.tsx`
+  - [ ] `src/viz/diagrams/KsTestDiagram.tsx`
+  - [ ] `src/viz/diagrams/PsiCalculatorDiagram.tsx`
+  - [ ] `src/viz/diagrams/ThreeMonitoringLayersDiagram.tsx`
+  - [ ] `src/viz/diagrams/WassersteinDistanceDiagram.tsx`
+- `src/content/docs/mlops/observability.mdx`
+  - [ ] `src/viz/diagrams/MonitoringVsObservabilityDiagram.tsx`
+  - [ ] `src/viz/diagrams/PrometheusGrafanaFlowDiagram.tsx`
+  - [ ] `src/viz/diagrams/StructuredLogsDiagram.tsx`
+  - [ ] `src/viz/diagrams/ThreePillarsIncidentDiagram.tsx`
+  - [ ] `src/viz/diagrams/TraceWaterfallDiagram.tsx`
+- `src/content/docs/mlops/pipeline-orchestration.mdx`
+  - [ ] `src/viz/diagrams/BackfillDiagram.tsx`
+  - [ ] `src/viz/diagrams/DagDependencyDiagram.tsx`
+  - [ ] `src/viz/diagrams/PipelineCachingDiagram.tsx`
+  - [ ] `src/viz/diagrams/RetryBackoffDiagram.tsx`
+- `src/content/docs/mlops/production-reliability.mdx`
+  - [ ] `src/viz/diagrams/BackpressureQueueDiagram.tsx`
+  - [ ] `src/viz/diagrams/CircuitBreakerStateDiagram.tsx`
+  - [ ] `src/viz/diagrams/GracefulDegradationLadderDiagram.tsx`
+  - [ ] `src/viz/diagrams/IdempotencyKeyDiagram.tsx`
+  - [ ] `src/viz/diagrams/TimeoutCascadeDiagram.tsx`
+- `src/content/docs/mlops/security-and-reproducibility.mdx`
+  - [ ] `src/viz/diagrams/LeastPrivilegeAgencyDiagram.tsx`
+  - [ ] `src/viz/diagrams/LlmAttackSurfaceDiagram.tsx`
+  - [ ] `src/viz/diagrams/ReproducibilityChecklistDiagram.tsx`
+  - [ ] `src/viz/diagrams/SecretsInjectionDiagram.tsx`
+- `src/content/docs/harness-engineering/autonomous-loops-and-supervisors.mdx`
+  - [ ] `src/viz/diagrams/AutonomousGoalLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/HarnessAblationStudio.tsx`
+- `src/content/docs/harness-engineering/context-and-instruction-design.mdx`
+  - [ ] `src/viz/diagrams/ContextCompactionVisualizer.tsx`
+  - [ ] `src/viz/diagrams/InstructionBudgetVisualizer.tsx`
+
+## Batch 7
+- `src/content/docs/harness-engineering/harness-architecture.mdx`
+  - [ ] `src/viz/diagrams/AgentHarnessArchitectureVisualizer.tsx`
+  - [ ] `src/viz/diagrams/PreDispatchInterceptorDiagram.tsx`
+- `src/content/docs/harness-engineering/roadmap.mdx`
+  - [ ] `src/viz/diagrams/HarnessCurriculumDiagram.tsx`
+- `src/content/docs/harness-engineering/state-continuity-and-memory.mdx`
+  - [ ] `src/viz/diagrams/TwoPassCompactionFlowDiagram.tsx`
+- `src/content/docs/harness-engineering/verification-loops.mdx`
+  - [ ] `src/viz/diagrams/VerificationFunnelDiagram.tsx`
+- `src/content/docs/software-system-design/autoscaling.mdx`
+  - [ ] `src/viz/diagrams/AutoscalingBacklogExplorer.tsx`
+- `src/content/docs/software-system-design/availability-and-slos.mdx`
+  - [ ] `src/viz/diagrams/ErrorBudgetExplorer.tsx`
+- `src/content/docs/software-system-design/caching-and-invalidation.mdx`
+  - [ ] `src/viz/diagrams/CacheInvalidationRaceExplorer.tsx`
+- `src/content/docs/software-system-design/cap-and-pacelc.mdx`
+  - [ ] `src/viz/diagrams/PartitionDecisionExplorer.tsx`
+
+## Batch 8
+- `src/content/docs/software-system-design/capacity-estimation.mdx`
+  - [ ] `src/viz/diagrams/SoftwareCapacityExplorer.tsx`
+- `src/content/docs/software-system-design/cdns.mdx`
+  - [ ] `src/viz/diagrams/CdnOriginLoadExplorer.tsx`
+- `src/content/docs/software-system-design/chat-system.mdx`
+  - [ ] `src/viz/diagrams/SoftwareCaseTrace.tsx`
+- `src/content/docs/software-system-design/consistency-models.mdx`
+  - [ ] `src/viz/diagrams/ConsistencyHistoryExplorer.tsx`
+- `src/content/docs/software-system-design/consistent-hashing.mdx`
+  - [ ] `src/viz/diagrams/ConsistentHashMembershipExplorer.tsx`
+- `src/content/docs/software-system-design/design-approach.mdx`
+  - [ ] `src/viz/diagrams/DesignDecisionExplorer.tsx`
+- `src/content/docs/software-system-design/indexing.mdx`
+  - [ ] `src/viz/diagrams/CompositeIndexExplorer.tsx`
+- `src/content/docs/software-system-design/latency.mdx`
+  - [ ] `src/viz/diagrams/LatencyFanoutExplorer.tsx`
+  - [ ] `src/viz/diagrams/RequestLatencyBudget.tsx`
+
+## Batch 9
+- `src/content/docs/software-system-design/load-balancing.mdx`
+  - [ ] `src/viz/diagrams/LoadAssignmentExplorer.tsx`
+- `src/content/docs/software-system-design/rate-limiting.mdx`
+  - [ ] `src/viz/diagrams/TokenBucketAdmissionExplorer.tsx`
+- `src/content/docs/software-system-design/replication.mdx`
+  - [ ] `src/viz/diagrams/SoftwareReplicationExplorer.tsx`
+- `src/content/docs/software-system-design/requirements.mdx`
+  - [ ] `src/viz/diagrams/RequirementBoundaryExplorer.tsx`
+- `src/content/docs/software-system-design/reverse-proxies-and-api-gateways.mdx`
+  - [ ] `src/viz/diagrams/ProxyTrustExplorer.tsx`
+- `src/content/docs/software-system-design/sharding.mdx`
+  - [ ] `src/viz/diagrams/ShardHotKeyExplorer.tsx`
+- `src/content/docs/software-system-design/sql-vs-nosql.mdx`
+  - [ ] `src/viz/diagrams/StorageOwnershipExplorer.tsx`
+- `src/content/docs/software-system-design/stateless-services.mdx`
+  - [ ] `src/viz/diagrams/StatelessSessionExplorer.tsx`
+
+## Batch 10
+- `src/content/docs/software-system-design/transactions-and-isolation.mdx`
+  - [ ] `src/viz/diagrams/WriteSkewExplorer.tsx`
+- `src/content/docs/software-system-design/vertical-vs-horizontal-scaling.mdx`
+  - [ ] `src/viz/diagrams/ScalingBottleneckExplorer.tsx`
+- `src/content/docs/ml-system-design/case-studies.mdx`
+  - [ ] `src/viz/diagrams/BlendedObjectiveDiagram.tsx`
+  - [ ] `src/viz/diagrams/ColdStartDiagram.tsx`
+  - [ ] `src/viz/diagrams/DiscoverySequenceDiagram.tsx`
+  - [ ] `src/viz/diagrams/DomainAgnosticDesignDiagram.tsx`
+  - [ ] `src/viz/diagrams/GenAiCaseStudiesDiagram.tsx`
+  - [ ] `src/viz/diagrams/ProblemSolutionMapDiagram.tsx`
+  - [ ] `src/viz/diagrams/TwoStagePipelinePatternDiagram.tsx`
+- `src/content/docs/ml-system-design/model-catalog-and-benchmarking.mdx`
+  - [ ] `src/viz/diagrams/ActiveVsTotalParamsDiagram.tsx`
+  - [ ] `src/viz/diagrams/BenchmarkDimensionsSelectorDiagram.tsx`
+  - [ ] `src/viz/diagrams/ModelCardChecklistDiagram.tsx`
+  - [ ] `src/viz/diagrams/ModelCategoryMapDiagram.tsx`
+  - [ ] `src/viz/diagrams/UsageWorkflowDiagram.tsx`
+- `src/content/docs/ml-system-design/overview.mdx`
+  - [ ] `src/viz/diagrams/BatchVsOnlineServingDiagram.tsx`
+  - [ ] `src/viz/diagrams/LatencyBudgetBreakdownDiagram.tsx`
+  - [ ] `src/viz/diagrams/ModelComplexityInterpretabilityDiagram.tsx`
+  - [ ] `src/viz/diagrams/OfflineVsOnlineMetricsDiagram.tsx`
+  - [ ] `src/viz/diagrams/ProblemFormulationFunnelDiagram.tsx`
+  - [ ] `src/viz/diagrams/SectionMapDiagram.tsx`
+  - [ ] `src/viz/diagrams/ThreeDisciplinesDiagram.tsx`
+  - [ ] `src/viz/diagrams/TradeoffSpaceDiagram.tsx`
+  - [ ] `src/viz/diagrams/WhenSystemDesignMattersDiagram.tsx`
+- `src/content/docs/ml-system-design/roadmap.mdx`
+  - [ ] `src/viz/diagrams/NineStepPipelineDiagram.tsx`
+- `src/content/docs/ml-system-design/technology-ecosystem-map.mdx`
+  - [ ] `src/viz/diagrams/EcosystemMapDiagram.tsx`
+- `src/content/docs/ml-system-design/the-9-step-framework.mdx`
+  - [ ] `src/viz/diagrams/ABShadowCanaryDiagram.tsx`
+  - [ ] `src/viz/diagrams/DataBiasDiagram.tsx`
+  - [ ] `src/viz/diagrams/FeatureCategoriesDiagram.tsx`
+  - [ ] `src/viz/diagrams/MonitoringRetrainLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/TimeBasedSplitDiagram.tsx`
+
+## Batch 11
+- `src/content/docs/agent-observability/overview.mdx`
+  - [ ] `src/viz/diagrams/AgentTraceWaterfallVisualizer.tsx`
+- `src/content/docs/ai-evaluation/evaluation-fundamentals.mdx`
+  - [ ] `src/viz/diagrams/ConstructValidityDiagram.tsx`
+  - [ ] `src/viz/diagrams/ContaminationDiagram.tsx`
+  - [ ] `src/viz/diagrams/GoldenDatasetCoverageDiagram.tsx`
+  - [ ] `src/viz/diagrams/SaturationDiagram.tsx`
+- `src/content/docs/ai-evaluation/human-and-adversarial-evaluation.mdx`
+  - [ ] `src/viz/diagrams/AdversarialRobustnessDiagram.tsx`
+  - [ ] `src/viz/diagrams/CohensKappaDiagram.tsx`
+  - [ ] `src/viz/diagrams/EloRatingDiagram.tsx`
+  - [ ] `src/viz/diagrams/StatisticalPowerDiagram.tsx`
+- `src/content/docs/ai-evaluation/llm-rag-agent-evaluation.mdx`
+  - [ ] `src/viz/diagrams/AgentTrajectoryDiagram.tsx`
+  - [ ] `src/viz/diagrams/JudgeValidationDiagram.tsx`
+  - [ ] `src/viz/diagrams/JudgeVerbosityBiasDiagram.tsx`
+- `src/content/docs/ai-safety/alignment-and-rlhf.mdx`
+  - [ ] `src/viz/diagrams/ConstitutionalAiLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/DeceptionDetectionDiagram.tsx`
+  - [ ] `src/viz/diagrams/RewardHackingSimulationDiagram.tsx`
+  - [ ] `src/viz/diagrams/SpecificationGamingDiagram.tsx`
+- `src/content/docs/ai-safety/scalable-oversight-and-frontier-safety.mdx`
+  - [ ] `src/viz/diagrams/CapabilityThresholdDiagram.tsx`
+  - [ ] `src/viz/diagrams/DebateConvergenceDiagram.tsx`
+  - [ ] `src/viz/diagrams/OversightApproachesDiagram.tsx`
+  - [ ] `src/viz/diagrams/ProcessVsOutcomeDiagram.tsx`
+  - [ ] `src/viz/diagrams/StagedDeploymentDiagram.tsx`
+- `src/content/docs/ai-security/ai-red-teaming.mdx`
+  - [ ] `src/viz/diagrams/AgenticTop10CoverageDiagram.tsx`
+- `src/content/docs/ai-security/model-and-data-attacks.mdx`
+  - [ ] `src/viz/diagrams/AdversarialPerturbationDiagram.tsx`
+  - [ ] `src/viz/diagrams/BackdoorTriggerDiagram.tsx`
+  - [ ] `src/viz/diagrams/MembershipInferenceDiagram.tsx`
+  - [ ] `src/viz/diagrams/ModelExtractionDiagram.tsx`
+
+## Batch 12
+- `src/content/docs/ai-security/owasp-llm-top-10-and-prompt-attacks.mdx`
+  - [ ] `src/viz/diagrams/DefenseInDepthDiagram.tsx`
+  - [ ] `src/viz/diagrams/DirectVsIndirectInjectionDiagram.tsx`
+  - [ ] `src/viz/diagrams/ExcessiveAgencyDiagram.tsx`
+  - [ ] `src/viz/diagrams/InstructionDataBoundaryDiagram.tsx`
+- `src/content/docs/context-engineering/overview.mdx`
+  - [ ] `src/viz/diagrams/ContextBudgetWaterfallVisualizer.tsx`
+- `src/content/docs/cs-fundamentals/apis-http-and-protocols.mdx`
+  - [ ] `src/viz/diagrams/AuthNvsAuthZDiagram.tsx`
+  - [ ] `src/viz/diagrams/CommunicationPatternSequenceDiagram.tsx`
+  - [ ] `src/viz/diagrams/DependencyInjectionDiagram.tsx`
+  - [ ] `src/viz/diagrams/FastApiRequestFlowDiagram.tsx`
+  - [ ] `src/viz/diagrams/HttpMethodsDiagram.tsx`
+  - [ ] `src/viz/diagrams/JwtStructureDiagram.tsx`
+  - [ ] `src/viz/diagrams/OAuthFlowDiagram.tsx`
+  - [ ] `src/viz/diagrams/PatternComparisonMatrixDiagram.tsx`
+  - [ ] `src/viz/diagrams/RequestResponseCycleDiagram.tsx`
+  - [ ] `src/viz/diagrams/RestResourceModelDiagram.tsx`
+  - [ ] `src/viz/diagrams/StatusCodeFamiliesDiagram.tsx`
+- `src/content/docs/cs-fundamentals/linux-git-and-tooling.mdx`
+  - [ ] `src/viz/diagrams/CompiledVsInterpretedDiagram.tsx`
+  - [ ] `src/viz/diagrams/GitObjectModelDiagram.tsx`
+  - [ ] `src/viz/diagrams/RebaseVsMergeDiagram.tsx`
+- `src/content/docs/cs-fundamentals/networking-and-distributed-systems.mdx`
+  - [ ] `src/viz/diagrams/CapTheoremDiagram.tsx`
+  - [ ] `src/viz/diagrams/ConsensusQuorumDiagram.tsx`
+  - [ ] `src/viz/diagrams/DnsResolutionDiagram.tsx`
+  - [ ] `src/viz/diagrams/LoadBalancingDiagram.tsx`
+  - [ ] `src/viz/diagrams/TcpVsUdpDiagram.tsx`
+- `src/content/docs/cs-fundamentals/operating-systems-and-concurrency.mdx`
+  - [ ] `src/viz/diagrams/ConcurrencyVsParallelismDiagram.tsx`
+  - [ ] `src/viz/diagrams/CpuCacheLatencyDiagram.tsx`
+  - [ ] `src/viz/diagrams/GilReleaseDiagram.tsx`
+  - [ ] `src/viz/diagrams/ProcessVsThreadDiagram.tsx`
+  - [ ] `src/viz/diagrams/SequentialVsRandomIoDiagram.tsx`
+- `src/content/docs/cs-fundamentals/overview.mdx`
+  - [ ] `src/viz/diagrams/SystemStackFailureDiagram.tsx`
+- `src/content/docs/cs-fundamentals/software-engineering-practices.mdx`
+  - [ ] `src/viz/diagrams/DesignPatternDiagram.tsx`
+  - [ ] `src/viz/diagrams/FlameGraphDiagram.tsx`
+  - [ ] `src/viz/diagrams/GitBisectDiagram.tsx`
+  - [ ] `src/viz/diagrams/TestingPyramidDiagram.tsx`
+
+## Batch 13
+- `src/content/docs/databases/graph/overview.mdx`
+  - [ ] `src/viz/diagrams/CypherPatternMatchDiagram.tsx`
+  - [ ] `src/viz/diagrams/DatabaseChoiceDecisionDiagram.tsx`
+  - [ ] `src/viz/diagrams/PropertyGraphDiagram.tsx`
+  - [ ] `src/viz/diagrams/RelationalVsGraphTraversalDiagram.tsx`
+- `src/content/docs/databases/overview.mdx`
+  - [ ] `src/viz/diagrams/ConsistencyVsApproximationDiagram.tsx`
+  - [ ] `src/viz/diagrams/DataShapeDecisionDiagram.tsx`
+  - [ ] `src/viz/diagrams/DatabasesSectionMapDiagram.tsx`
+  - [ ] `src/viz/diagrams/IndexingPhilosophyDiagram.tsx`
+  - [ ] `src/viz/diagrams/PolyglotArchitectureDiagram.tsx`
+  - [ ] `src/viz/diagrams/QueryPatternMatchDiagram.tsx`
+  - [ ] `src/viz/diagrams/ScaleCharacteristicsDiagram.tsx`
+  - [ ] `src/viz/diagrams/ThreeStoreComparisonDiagram.tsx`
+- `src/content/docs/databases/relational/overview.mdx`
+  - [ ] `src/viz/diagrams/IndexScanComparisonDiagram.tsx`
+  - [ ] `src/viz/diagrams/JoinTypesDiagram.tsx`
+- `src/content/docs/databases/relational/postgresql.mdx`
+  - [ ] `src/viz/diagrams/SqlExecutionOrderDiagram.tsx`
+- `src/content/docs/databases/vector/overview.mdx`
+  - [ ] `src/viz/diagrams/AnnVsExactTradeoffDiagram.tsx`
+  - [ ] `src/viz/diagrams/EmbeddingSimilaritySearchDiagram.tsx`
+  - [ ] `src/viz/diagrams/VectorDbToolComparisonDiagram.tsx`
+- `src/content/docs/domain-applications/healthcare-ai.mdx`
+  - [ ] `src/viz/diagrams/CostWeightedThresholdDiagram.tsx`
+- `src/content/docs/domain-applications/other-domain-applications.mdx`
+  - [ ] `src/viz/diagrams/SimToRealGapDiagram.tsx`
+- `src/content/docs/frameworks/core-ml-dl-frameworks.mdx`
+  - [ ] `src/viz/diagrams/ExperimentTrackingComparisonDiagram.tsx`
+
+## Batch 14
+- `src/content/docs/frameworks/llm-agent-frameworks.mdx`
+  - [ ] `src/viz/diagrams/AgentControlFlowGraphDiagram.tsx`
+  - [ ] `src/viz/diagrams/AgentFrameworkAxisDiagram.tsx`
+- `src/content/docs/frameworks/serving-mlops.mdx`
+  - [ ] `src/viz/diagrams/ContinuousBatchingSimulationDiagram.tsx`
+- `src/content/docs/interview-prep/technology-comparisons.mdx`
+  - [ ] `src/viz/diagrams/TechComparisonDiagram.tsx`
+- `src/content/docs/python-engineering/concurrency-memory-and-performance.mdx`
+  - [ ] `src/viz/diagrams/AsyncEventLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/RefCountingDiagram.tsx`
+  - [ ] `src/viz/diagrams/ThreadingVsMultiprocessingDiagram.tsx`
+  - [ ] `src/viz/diagrams/VectorizationSpeedupDiagram.tsx`
+- `src/content/docs/python-engineering/language-fundamentals-and-oop.mdx`
+  - [ ] `src/viz/diagrams/ContextManagerFlowDiagram.tsx`
+  - [ ] `src/viz/diagrams/GeneratorMemoryDiagram.tsx`
+- `src/content/docs/python-engineering/overview.mdx`
+  - [ ] `src/viz/diagrams/PythonLayerStackDiagram.tsx`
+- `src/content/docs/python-engineering/packaging-testing-and-tooling.mdx`
+  - [ ] `src/viz/diagrams/LogLevelFilterDiagram.tsx`
+  - [ ] `src/viz/diagrams/VirtualEnvIsolationDiagram.tsx`

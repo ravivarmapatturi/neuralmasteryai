@@ -1,0 +1,365 @@
+# Live visuals: codex lane (88 pages, 252 diagrams)
+
+Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. Edit ONLY the diagram files listed in this file (the other lane owns the rest). Tick each box when done.
+
+## Batch 1
+- `src/content/docs/deep-learning/activation-functions.mdx`
+  - [ ] `src/viz/diagrams/ActivationFunctionsDiagram.tsx`
+- `src/content/docs/deep-learning/advanced-architectures.mdx`
+  - [ ] `src/viz/diagrams/ClipDualEncoderDiagram.tsx`
+  - [ ] `src/viz/diagrams/MessagePassingDiagram.tsx`
+  - [ ] `src/viz/diagrams/RLNetworkFamilyDiagram.tsx`
+  - [ ] `src/viz/diagrams/SiameseTripletDiagram.tsx`
+  - [ ] `src/viz/diagrams/SslMethodsDiagram.tsx`
+  - [ ] `src/viz/diagrams/TcnDilatedConvDiagram.tsx`
+- `src/content/docs/deep-learning/attention-transformers.mdx`
+  - [ ] `src/viz/diagrams/CausalMaskAnimated.tsx`
+- `src/content/docs/deep-learning/autoencoders.mdx`
+  - [ ] `src/viz/diagrams/AutoencoderDiagram.tsx`
+- `src/content/docs/deep-learning/bert.mdx`
+  - [ ] `src/viz/diagrams/BertInputRepresentationDiagram.tsx`
+- `src/content/docs/deep-learning/cnns.mdx`
+  - [ ] `src/viz/diagrams/CnnArchitectureLineageDiagram.tsx`
+  - [ ] `src/viz/diagrams/CnnVsVitDiagram.tsx`
+  - [ ] `src/viz/diagrams/ConvolutionOperationDiagram.tsx`
+  - [ ] `src/viz/diagrams/DepthwiseSeparableConvDiagram.tsx`
+  - [ ] `src/viz/diagrams/PoolingOperationDiagram.tsx`
+  - [ ] `src/viz/diagrams/ReceptiveFieldGrowthDiagram.tsx`
+  - [ ] `src/viz/diagrams/ResNetSkipConnectionDiagram.tsx`
+- `src/content/docs/deep-learning/continual-learning.mdx`
+  - [ ] `src/viz/diagrams/CatastrophicForgettingDiagram.tsx`
+- `src/content/docs/deep-learning/generative-models.mdx`
+  - [ ] `src/viz/diagrams/DiffusionForwardProcessDiagram.tsx`
+  - [ ] `src/viz/diagrams/GanMinimaxDiagram.tsx`
+
+## Batch 2
+- `src/content/docs/deep-learning/initialization-regularization-scheduling.mdx`
+  - [ ] `src/viz/diagrams/LrSchedulesDiagram.tsx`
+- `src/content/docs/deep-learning/linear-attention-and-state-space-models.mdx`
+  - [ ] `src/viz/diagrams/LinearAttentionFactorizationDiagram.tsx`
+- `src/content/docs/deep-learning/loss-functions.mdx`
+  - [ ] `src/viz/diagrams/RegressionLossesDiagram.tsx`
+- `src/content/docs/deep-learning/nn-layers-reference.mdx`
+  - [ ] `src/viz/diagrams/AttentionLayersCatalogDiagram.tsx`
+  - [ ] `src/viz/diagrams/ConvolutionalLayersCatalogDiagram.tsx`
+  - [ ] `src/viz/diagrams/CoreBuildingBlocksDiagram.tsx`
+  - [ ] `src/viz/diagrams/NormalizationAxisDiagram.tsx`
+  - [ ] `src/viz/diagrams/RecurrentLayersCatalogDiagram.tsx`
+  - [ ] `src/viz/diagrams/TransposedConvUpsampleDiagram.tsx`
+- `src/content/docs/deep-learning/sequence-models.mdx`
+  - [ ] `src/viz/diagrams/BidirectionalRnnDiagram.tsx`
+  - [ ] `src/viz/diagrams/GruCellDiagram.tsx`
+  - [ ] `src/viz/diagrams/LstmCellDiagram.tsx`
+  - [ ] `src/viz/diagrams/RnnUnrolledDiagram.tsx`
+  - [ ] `src/viz/diagrams/Seq2SeqAttentionDiagram.tsx`
+  - [ ] `src/viz/diagrams/Seq2SeqDiagram.tsx`
+  - [ ] `src/viz/diagrams/VanishingGradientDiagram.tsx`
+- `src/content/docs/deep-learning/training-deep-networks.mdx`
+  - [ ] `src/viz/diagrams/LrScheduleDiagram.tsx`
+- `src/content/docs/deep-learning/vision-architectures.mdx`
+  - [ ] `src/viz/diagrams/DetrSetPredictionDiagram.tsx`
+  - [ ] `src/viz/diagrams/SemanticVsInstanceSegmentationDiagram.tsx`
+  - [ ] `src/viz/diagrams/SwinWindowAttentionDiagram.tsx`
+  - [ ] `src/viz/diagrams/TwoStageVsOneStageDetectionDiagram.tsx`
+  - [ ] `src/viz/diagrams/UNetArchitectureDiagram.tsx`
+  - [ ] `src/viz/diagrams/ViTVariantsDiagram.tsx`
+- `src/content/docs/llms-genai/evaluation-and-serving.mdx`
+  - [ ] `src/viz/diagrams/ContinuousBatchingDiagram.tsx`
+  - [ ] `src/viz/diagrams/JudgePositionBiasDiagram.tsx`
+  - [ ] `src/viz/diagrams/PagedAttentionDiagram.tsx`
+  - [ ] `src/viz/diagrams/SpeculativeDecodingDiagram.tsx`
+
+## Batch 3
+- `src/content/docs/llms-genai/foundation-model-internals.mdx`
+  - [ ] `src/viz/InferenceFlowVisualizer.tsx`
+  - [ ] `src/viz/diagrams/AlibiPositionalBiasDiagram.tsx`
+  - [ ] `src/viz/diagrams/ArchitectureFamiliesDiagram.tsx`
+  - [ ] `src/viz/diagrams/AttentionVariantsKvCacheDiagram.tsx`
+  - [ ] `src/viz/diagrams/BpeTokenizationDiagram.tsx`
+  - [ ] `src/viz/diagrams/ContextWindowScalingDiagram.tsx`
+  - [ ] `src/viz/diagrams/KvCacheDiagram.tsx`
+  - [ ] `src/viz/diagrams/MoeRoutingDiagram.tsx`
+  - [ ] `src/viz/diagrams/SamplingStrategiesDiagram.tsx`
+  - [ ] `src/viz/diagrams/SlidingWindowAttentionDiagram.tsx`
+  - [ ] `src/viz/diagrams/SwiGluGatingDiagram.tsx`
+- `src/content/docs/llms-genai/multimodal-generative-models.mdx`
+  - [ ] `src/viz/diagrams/AutoregressiveVsDiffusionGenerationDiagram.tsx`
+  - [ ] `src/viz/diagrams/VlmArchitectureDiagram.tsx`
+- `src/content/docs/llms-genai/overview.mdx`
+  - [ ] `src/viz/diagrams/AlignmentPipelineDiagram.tsx`
+  - [ ] `src/viz/diagrams/CapabilityCostLatencyTradeoffDiagram.tsx`
+  - [ ] `src/viz/diagrams/FrozenWeightsVsFineTuningDiagram.tsx`
+  - [ ] `src/viz/diagrams/GenAiPipelineOverviewDiagram.tsx`
+  - [ ] `src/viz/diagrams/ScalingLawsGlanceDiagram.tsx`
+- `src/content/docs/llms-genai/prompt-engineering.mdx`
+  - [ ] `src/viz/diagrams/LostInTheMiddleDiagram.tsx`
+  - [ ] `src/viz/diagrams/PromptInjectionFlowDiagram.tsx`
+  - [ ] `src/viz/diagrams/SelfConsistencyVotingDiagram.tsx`
+  - [ ] `src/viz/diagrams/TestTimeComputeScalingDiagram.tsx`
+- `src/content/docs/llms-genai/rag.mdx`
+  - [ ] `src/viz/EmbeddingSpaceExplorer.tsx`
+  - [ ] `src/viz/RagPipelineSimulator.tsx`
+  - [ ] `src/viz/diagrams/AdvancedRagArchitecturesDiagram.tsx`
+  - [ ] `src/viz/diagrams/BiEncoderVsCrossEncoderDiagram.tsx`
+  - [ ] `src/viz/diagrams/Bm25ScoringDiagram.tsx`
+  - [ ] `src/viz/diagrams/ChunkingStrategiesDiagram.tsx`
+  - [ ] `src/viz/diagrams/DenseVsSparseRetrievalDiagram.tsx`
+  - [ ] `src/viz/diagrams/GraphRagDiagram.tsx`
+  - [ ] `src/viz/diagrams/HybridSearchFusionDiagram.tsx`
+  - [ ] `src/viz/diagrams/QueryTransformationDiagram.tsx`
+  - [ ] `src/viz/diagrams/RagEvalMetricsDiagram.tsx`
+- `src/content/docs/llms-genai/retrieval-and-reranking-architectures.mdx`
+  - [ ] `src/viz/diagrams/RetrievalFunnelMissDiagram.tsx`
+  - [ ] `src/viz/diagrams/ThreeWayRetrievalArchitecturesDiagram.tsx`
+- `src/content/docs/llms-genai/training-pipeline.mdx`
+  - [ ] `src/viz/diagrams/DataPipelineStagesDiagram.tsx`
+  - [ ] `src/viz/diagrams/DistillationDiagram.tsx`
+  - [ ] `src/viz/diagrams/DpoVsRlhfDiagram.tsx`
+  - [ ] `src/viz/diagrams/GrpoVsPpoDiagram.tsx`
+  - [ ] `src/viz/diagrams/LoraMechanicsDiagram.tsx`
+  - [ ] `src/viz/diagrams/PeftMethodsComparisonDiagram.tsx`
+  - [ ] `src/viz/diagrams/PreferenceOptimizationFamilyDiagram.tsx`
+  - [ ] `src/viz/diagrams/PretrainingObjectiveDiagram.tsx`
+  - [ ] `src/viz/diagrams/QuantizationBitDepthDiagram.tsx`
+  - [ ] `src/viz/diagrams/RlhfPipelineDiagram.tsx`
+  - [ ] `src/viz/diagrams/ScalingLawsChinchillaDiagram.tsx`
+  - [ ] `src/viz/diagrams/SftBeforeAfterDiagram.tsx`
+- `src/content/docs/machine-learning/anomaly-detection.mdx`
+  - [ ] `src/viz/diagrams/IsolationPathLengthDiagram.tsx`
+
+## Batch 4
+- `src/content/docs/machine-learning/association-rules.mdx`
+  - [ ] `src/viz/diagrams/AssociationRulesDiagram.tsx`
+- `src/content/docs/machine-learning/dbscan-hdbscan.mdx`
+  - [ ] `src/viz/diagrams/DbscanLiveDiagram.tsx`
+- `src/content/docs/machine-learning/decision-tree.mdx`
+  - [ ] `src/viz/DecisionBoundaryPlayground.tsx`
+- `src/content/docs/machine-learning/elastic-net.mdx`
+  - [ ] `src/viz/ElasticNetStudio.tsx`
+- `src/content/docs/machine-learning/gmm-spectral-clustering.mdx`
+  - [ ] `src/viz/diagrams/GmmSoftAssignmentDiagram.tsx`
+- `src/content/docs/machine-learning/hyperparameter-optimization.mdx`
+  - [ ] `src/viz/diagrams/HyperparamSearchDiagram.tsx`
+- `src/content/docs/machine-learning/ica-tsne-umap.mdx`
+  - [ ] `src/viz/diagrams/IcaCocktailPartyDiagram.tsx`
+- `src/content/docs/machine-learning/lasso-regression.mdx`
+  - [ ] `src/viz/LassoRegressionStudio.tsx`
+
+## Batch 5
+- `src/content/docs/machine-learning/learning-to-rank.mdx`
+  - [ ] `src/viz/diagrams/NdcgDiagram.tsx`
+- `src/content/docs/machine-learning/linear-regression.mdx`
+  - [ ] `src/viz/diagrams/GradientDescentLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/LinearRegressionAtAGlance.tsx`
+  - [ ] `src/viz/diagrams/ResidualPlotDiagram.tsx`
+  - [ ] `src/viz/diagrams/ScatterFitDiagram.tsx`
+  - [ ] `src/viz/diagrams/TwoPathsDiagram.tsx`
+- `src/content/docs/machine-learning/ml-workflow-fundamentals.mdx`
+  - [ ] `src/viz/diagrams/DataLeakageDiagram.tsx`
+  - [ ] `src/viz/diagrams/SplitCrossValidationDiagram.tsx`
+- `src/content/docs/machine-learning/model-evaluation-metrics.mdx`
+  - [ ] `src/viz/diagrams/BiasVarianceDecompositionDiagram.tsx`
+  - [ ] `src/viz/diagrams/CalibrationDiagram.tsx`
+  - [ ] `src/viz/diagrams/RocPrCurveDiagram.tsx`
+- `src/content/docs/machine-learning/naive-bayes-lda-qda.mdx`
+  - [ ] `src/viz/diagrams/LdaQdaBoundaryDiagram.tsx`
+- `src/content/docs/machine-learning/pca-svd.mdx`
+  - [ ] `src/viz/diagrams/PcaProjectionDiagram.tsx`
+- `src/content/docs/machine-learning/random-forest.mdx`
+  - [ ] `src/viz/diagrams/BaggingVarianceDiagram.tsx`
+- `src/content/docs/machine-learning/recommender-systems.mdx`
+  - [ ] `src/viz/diagrams/MatrixFactorizationDiagram.tsx`
+
+## Batch 6
+- `src/content/docs/machine-learning/ridge-regression.mdx`
+  - [ ] `src/viz/RidgeRegressionStudio.tsx`
+- `src/content/docs/machine-learning/roadmap.mdx`
+  - [ ] `src/viz/AlgorithmSelector.tsx`
+- `src/content/docs/machine-learning/sgd-classifier-regressor.mdx`
+  - [ ] `src/viz/diagrams/SgdLossPenaltyDiagram.tsx`
+- `src/content/docs/machine-learning/support-vector-machines.mdx`
+  - [ ] `src/viz/diagrams/KernelTrickDiagram.tsx`
+- `src/content/docs/machine-learning/time-series-forecasting.mdx`
+  - [ ] `src/viz/diagrams/ArimaDifferencingDiagram.tsx`
+- `src/content/docs/machine-learning/topic-modeling.mdx`
+  - [ ] `src/viz/diagrams/TopicMixtureDiagram.tsx`
+- `src/content/docs/machine-learning/uncertainty-estimation-and-conformal-prediction.mdx`
+  - [ ] `src/viz/diagrams/ConformalPredictionDiagram.tsx`
+- `src/content/docs/machine-learning/xgboost-lightgbm-catboost.mdx`
+  - [ ] `src/viz/diagrams/TreeGrowthStrategyDiagram.tsx`
+
+## Batch 7
+- `src/content/docs/inference-engineering/continuous-batching-and-speculative-decoding.mdx`
+  - [ ] `src/viz/diagrams/SpeculativeDecodingSimulator.tsx`
+  - [ ] `src/viz/diagrams/TreeAttentionDraftDiagram.tsx`
+- `src/content/docs/inference-engineering/disaggregation-prefix-caching-and-production.mdx`
+  - [ ] `src/viz/diagrams/DisaggregatedServingArchDiagram.tsx`
+  - [ ] `src/viz/diagrams/DisaggregationPrefixCachingVisualizer.tsx`
+  - [ ] `src/viz/diagrams/RadixTreePrefixDiagram.tsx`
+- `src/content/docs/inference-engineering/edge-and-tinyml-architecture.mdx`
+  - [ ] `src/viz/diagrams/TinyMLTensorArenaVisualizer.tsx`
+- `src/content/docs/inference-engineering/hardware-acceleration-and-kernels.mdx`
+  - [ ] `src/viz/diagrams/KernelMemoryHierarchyVisualizer.tsx`
+- `src/content/docs/inference-engineering/overview.mdx`
+  - [ ] `src/viz/diagrams/PagedAttentionVisualizer.tsx`
+  - [ ] `src/viz/diagrams/QuantizationScaleVisualizer.tsx`
+  - [ ] `src/viz/diagrams/RooflineModelVisualizer.tsx`
+- `src/content/docs/inference-engineering/roadmap.mdx`
+  - [ ] `src/viz/diagrams/InferenceCurriculumDiagram.tsx`
+- `src/content/docs/search-ranking-recommendations/deep-recommenders.mdx`
+  - [ ] `src/viz/diagrams/DeepRecommendersArchitectureExplorer.tsx`
+- `src/content/docs/search-ranking-recommendations/exploration-feedback-loops.mdx`
+  - [ ] `src/viz/diagrams/ExplorationFeedbackLoopExplorer.tsx`
+
+## Batch 8
+- `src/content/docs/search-ranking-recommendations/learning-to-rank.mdx`
+  - [ ] `src/viz/diagrams/LearningToRankDiagram.tsx`
+- `src/content/docs/search-ranking-recommendations/matrix-factorization-embeddings.mdx`
+  - [ ] `src/viz/diagrams/MatrixFactorizationExplorer.tsx`
+- `src/content/docs/search-ranking-recommendations/overview.mdx`
+  - [ ] `src/viz/diagrams/SearchRecommendationPipelineDiagram.tsx`
+- `src/content/docs/search-ranking-recommendations/ranking-evaluation-metrics.mdx`
+  - [ ] `src/viz/diagrams/RankingMetricsExplorer.tsx`
+- `src/content/docs/search-ranking-recommendations/ranking-fundamentals.mdx`
+  - [ ] `src/viz/diagrams/PageRankToyGraph.tsx`
+  - [ ] `src/viz/diagrams/PageRankVisualizer.tsx`
+- `src/content/docs/search-ranking-recommendations/search-recommendation-system-design.mdx`
+  - [ ] `src/viz/diagrams/SearchSystemDesignExplorer.tsx`
+- `src/content/docs/search-ranking-recommendations/semantic-and-hybrid-search.mdx`
+  - [ ] `src/viz/diagrams/SemanticHybridSearchDiagram.tsx`
+- `src/content/docs/search-ranking-recommendations/text-search-bm25.mdx`
+  - [ ] `src/viz/diagrams/InvertedIndexVisualizer.tsx`
+
+## Batch 9
+- `src/content/docs/mathematics-for-ai/algorithms-data-structures.mdx`
+  - [ ] `src/viz/diagrams/AttentionComplexityDiagram.tsx`
+  - [ ] `src/viz/diagrams/BigOGrowthDiagram.tsx`
+  - [ ] `src/viz/diagrams/HashMapVsArrayDiagram.tsx`
+  - [ ] `src/viz/diagrams/SortingComplexityDiagram.tsx`
+- `src/content/docs/mathematics-for-ai/calculus-optimization.mdx`
+  - [ ] `src/viz/diagrams/ConvexVsNonConvexDiagram.tsx`
+  - [ ] `src/viz/diagrams/GradientDirectionDiagram.tsx`
+  - [ ] `src/viz/diagrams/HessianCurvatureDiagram.tsx`
+  - [ ] `src/viz/diagrams/LagrangeKktDiagram.tsx`
+- `src/content/docs/mathematics-for-ai/linear-algebra.mdx`
+  - [ ] `src/viz/diagrams/MatrixMultiplicationDiagram.tsx`
+  - [ ] `src/viz/diagrams/MatrixTransformationDiagram.tsx`
+  - [ ] `src/viz/diagrams/QuadraticFormContourDiagram.tsx`
+  - [ ] `src/viz/diagrams/RankSpanDiagram.tsx`
+  - [ ] `src/viz/diagrams/SvdCompressionDiagram.tsx`
+  - [ ] `src/viz/diagrams/VectorOperationsDiagram.tsx`
+- `src/content/docs/mathematics-for-ai/probability-statistics.mdx`
+  - [ ] `src/viz/diagrams/BayesUpdateDiagram.tsx`
+  - [ ] `src/viz/diagrams/BootstrapDiagram.tsx`
+  - [ ] `src/viz/diagrams/CltDemoDiagram.tsx`
+  - [ ] `src/viz/diagrams/ConfounderDiagram.tsx`
+  - [ ] `src/viz/diagrams/DistributionExplorerDiagram.tsx`
+  - [ ] `src/viz/diagrams/EntropyKlDiagram.tsx`
+  - [ ] `src/viz/diagrams/MleVsMapDiagram.tsx`
+  - [ ] `src/viz/diagrams/PermutationPValueDiagram.tsx`
+- `src/content/docs/computer-vision/modern-vision-and-multimodal.mdx`
+  - [ ] `src/viz/diagrams/NerfRayMarchingDiagram.tsx`
+  - [ ] `src/viz/diagrams/PointCloudDiagram.tsx`
+  - [ ] `src/viz/diagrams/TemporalConsistencyDiagram.tsx`
+  - [ ] `src/viz/diagrams/VideoUnderstandingArchitectureDiagram.tsx`
+- `src/content/docs/computer-vision/overview.mdx`
+  - [ ] `src/viz/diagrams/ClassicalAndLearnedVisionDiagram.tsx`
+  - [ ] `src/viz/diagrams/ImageTensorExplorerDiagram.tsx`
+  - [ ] `src/viz/diagrams/VisionDataContractDiagram.tsx`
+  - [ ] `src/viz/diagrams/VisionDataShiftDiagram.tsx`
+  - [ ] `src/viz/diagrams/VisionErrorCostDiagram.tsx`
+  - [ ] `src/viz/diagrams/VisionFeedbackLoopDiagram.tsx`
+  - [ ] `src/viz/diagrams/VisionInvarianceDiagram.tsx`
+  - [ ] `src/viz/diagrams/VisionLabelGranularityDiagram.tsx`
+  - [ ] `src/viz/diagrams/VisionSectionMapDiagram.tsx`
+  - [ ] `src/viz/diagrams/VisionTaskTaxonomyDiagram.tsx`
+- `src/content/docs/computer-vision/vision-fundamentals.mdx`
+  - [ ] `src/viz/diagrams/ConvolutionSlideDiagram.tsx`
+  - [ ] `src/viz/diagrams/DataAugmentationDiagram.tsx`
+  - [ ] `src/viz/diagrams/HogFeatureDiagram.tsx`
+  - [ ] `src/viz/diagrams/MorphologicalOpsDiagram.tsx`
+  - [ ] `src/viz/diagrams/RgbChannelDecompositionDiagram.tsx`
+- `src/content/docs/computer-vision/vision-tasks-and-models.mdx`
+  - [ ] `src/viz/diagrams/OcrPipelineDiagram.tsx`
+  - [ ] `src/viz/diagrams/OpticalFlowFieldDiagram.tsx`
+  - [ ] `src/viz/diagrams/PoseEstimationApproachDiagram.tsx`
+  - [ ] `src/viz/diagrams/StereoDepthDiagram.tsx`
+  - [ ] `src/viz/diagrams/TrackingAssociationDiagram.tsx`
+
+## Batch 10
+- `src/content/docs/nlp/classical-nlp.mdx`
+  - [ ] `src/viz/diagrams/DependencyVsConstituencyDiagram.tsx`
+  - [ ] `src/viz/diagrams/NerBioTaggingDiagram.tsx`
+  - [ ] `src/viz/diagrams/StemmingVsLemmatizationDiagram.tsx`
+  - [ ] `src/viz/diagrams/TokenizationAmbiguityDiagram.tsx`
+- `src/content/docs/nlp/nlp-task-taxonomy.mdx`
+  - [ ] `src/viz/diagrams/BagOfWordsClassifierDiagram.tsx`
+  - [ ] `src/viz/diagrams/BleuScoreDiagram.tsx`
+  - [ ] `src/viz/diagrams/ExtractiveQaSpanDiagram.tsx`
+  - [ ] `src/viz/diagrams/ExtractiveVsAbstractiveDiagram.tsx`
+- `src/content/docs/nlp/word-embeddings.mdx`
+  - [ ] `src/viz/diagrams/NegativeSamplingCostDiagram.tsx`
+- `src/content/docs/speech-audio/audio-fundamentals.mdx`
+  - [ ] `src/viz/diagrams/BitDepthQuantizationDiagram.tsx`
+  - [ ] `src/viz/diagrams/FourierSumOfSinesDiagram.tsx`
+  - [ ] `src/viz/diagrams/MelScaleDiagram.tsx`
+  - [ ] `src/viz/diagrams/MfccPipelineDiagram.tsx`
+  - [ ] `src/viz/diagrams/SamplingNyquistDiagram.tsx`
+  - [ ] `src/viz/diagrams/StftWindowTradeoffDiagram.tsx`
+  - [ ] `src/viz/diagrams/WaveformSpectrogramDiagram.tsx`
+- `src/content/docs/speech-audio/overview.mdx`
+  - [ ] `src/viz/diagrams/AudioEvaluationMetricsDiagram.tsx`
+  - [ ] `src/viz/diagrams/AudioTaskIODiagram.tsx`
+  - [ ] `src/viz/diagrams/LatencyBudgetDiagram.tsx`
+  - [ ] `src/viz/diagrams/RawAudioCompressionDiagram.tsx`
+- `src/content/docs/speech-audio/speech-audio-tasks.mdx`
+  - [ ] `src/viz/diagrams/CtcAlignmentDiagram.tsx`
+  - [ ] `src/viz/diagrams/DiarizationTimelineDiagram.tsx`
+  - [ ] `src/viz/diagrams/SpeakerVerificationDiagram.tsx`
+  - [ ] `src/viz/diagrams/SpeechEnhancementDiagram.tsx`
+  - [ ] `src/viz/diagrams/TtsPipelineDiagram.tsx`
+- `src/content/docs/reinforcement-learning/advanced-rl.mdx`
+  - [ ] `src/viz/diagrams/CompoundingErrorDiagram.tsx`
+  - [ ] `src/viz/diagrams/OfflineRlExtrapolationDiagram.tsx`
+  - [ ] `src/viz/diagrams/OverestimationBiasDiagram.tsx`
+  - [ ] `src/viz/diagrams/RlhfMappingDiagram.tsx`
+  - [ ] `src/viz/diagrams/SacEntropyDiagram.tsx`
+  - [ ] `src/viz/diagrams/WorldModelDiagram.tsx`
+- `src/content/docs/reinforcement-learning/bandits.mdx`
+  - [ ] `src/viz/diagrams/BanditRegretRaceDiagram.tsx`
+
+## Batch 11
+- `src/content/docs/reinforcement-learning/rl-environments-and-reward-engineering.mdx`
+  - [ ] `src/viz/diagrams/RlhfVsRlvrFlowDiagram.tsx`
+- `src/content/docs/reinforcement-learning/rl-fundamentals.mdx`
+  - [ ] `src/viz/diagrams/QLearningVsSarsaCliffDiagram.tsx`
+  - [ ] `src/viz/diagrams/ReturnDiscountingDiagram.tsx`
+- `src/content/docs/interpretability/classical-interpretability.mdx`
+  - [ ] `src/viz/diagrams/InterpretabilityMethodChoiceDiagram.tsx`
+  - [ ] `src/viz/diagrams/LimeLocalApproxDiagram.tsx`
+  - [ ] `src/viz/diagrams/LimeStabilityDiagram.tsx`
+  - [ ] `src/viz/diagrams/PermutationImportanceDiagram.tsx`
+  - [ ] `src/viz/diagrams/ShapWaterfallDiagram.tsx`
+  - [ ] `src/viz/diagrams/ShapleyCoalitionDiagram.tsx`
+  - [ ] `src/viz/diagrams/TreeImportanceDiagram.tsx`
+- `src/content/docs/interpretability/deep-learning-and-llm-interpretability.mdx`
+  - [ ] `src/viz/diagrams/AttentionHeadPatternDiagram.tsx`
+  - [ ] `src/viz/diagrams/CircuitDiagram.tsx`
+  - [ ] `src/viz/diagrams/InterpretabilityRigorLadderDiagram.tsx`
+  - [ ] `src/viz/diagrams/ProbingClassifierDiagram.tsx`
+  - [ ] `src/viz/diagrams/SaliencyMapDiagram.tsx`
+  - [ ] `src/viz/diagrams/SuperpositionDiagram.tsx`
+- `src/content/docs/ai-for-science/ai-for-science-fundamentals.mdx`
+  - [ ] `src/viz/diagrams/NeuralOperatorDiagram.tsx`
+  - [ ] `src/viz/diagrams/PinnLossDiagram.tsx`
+  - [ ] `src/viz/diagrams/ScreeningFunnelDiagram.tsx`
+- `src/content/docs/graph-ml/graph-ml-fundamentals.mdx`
+  - [ ] `src/viz/diagrams/GinExpressivenessDiagram.tsx`
+  - [ ] `src/viz/diagrams/GraphRepresentationDiagram.tsx`
+  - [ ] `src/viz/diagrams/GraphTaskTaxonomyDiagram.tsx`
+  - [ ] `src/viz/diagrams/RandomWalkEmbeddingDiagram.tsx`
+  - [ ] `src/viz/diagrams/TransEDiagram.tsx`
+- `src/content/docs/research-engineering/how-to-read-ai-papers.mdx`
+  - [ ] `src/viz/diagrams/PaperStructureDiagram.tsx`
+- `src/content/docs/research-engineering/paper-timeline.mdx`
+  - [ ] `src/viz/diagrams/PaperTimelineDiagram.tsx`

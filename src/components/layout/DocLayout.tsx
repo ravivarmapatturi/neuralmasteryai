@@ -9,6 +9,7 @@ import PrevNext from './PrevNext';
 import MarkUnderstoodButton from './MarkUnderstoodButton';
 import { LoveButton, LoveNudge } from './LoveButton';
 import FeedbackBox from './FeedbackBox';
+import SectionSteps from '../notebook/SectionSteps';
 import RoadmapProgressBanner from './RoadmapProgressBanner';
 import PageFeedback from './PageFeedback';
 import ThemeSkinPicker from '../ThemeSkinPicker';
@@ -131,6 +132,7 @@ export default function DocLayout() {
           </header>
           <article className="prose">
             {page.route.endsWith('/roadmap') && <RoadmapProgressBanner section={page.section} />}
+            <SectionSteps key={page.route} />
             <ErrorBoundary level="route">
               <Suspense fallback={<div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--nm-text-muted)', fontSize: 14 }}>Loading…</div>}>
                 <Component />
