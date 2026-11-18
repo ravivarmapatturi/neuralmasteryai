@@ -18,6 +18,9 @@ import DistillationDiagram from '../../../viz/diagrams/DistillationDiagram';
 import QuantizationBitDepthDiagram from '../../../viz/diagrams/QuantizationBitDepthDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Training Pipeline
 
 Going from a randomly-initialized Transformer to something like ChatGPT is a multi-stage pipeline, not a single training run.
@@ -30,6 +33,17 @@ Everything below makes each of those stages exact — the real objectives, the r
 
 </ELI5>
 
+## Why it exists
+
+Training turns raw data into a next-token model, then preference and task-specific stages shape behavior. The page explains how data, compute, preference optimization, parameter-efficient tuning, distillation, and quantization alter the trained system.
+
+## The big picture
+
+<PenFlow title="From data to aligned model" ariaLabel="From data to aligned model" rows={[{ steps: { title: 'Prepare corpus', lines: ['Clean, deduplicate, tokenize, pack'], tone: 'blue' } }, { steps: { title: 'Pretrain', lines: ['Predict the next token'], tone: 'purple' } }, { steps: { title: 'Shape behavior', lines: ['SFT and preference optimization'], tone: 'orange' } }, { steps: { title: 'Adapt and deploy', lines: ['PEFT, distillation, quantization'], tone: 'green' } }]} caption="Each stage has a different objective and changes a different part of the model." />
+
+<Worksheet title="Training compute and data ratio" ariaLabel="Training compute and data ratio" stages={[{ tag: 'Page values', color: 'yellow', note: 'Formula and ratio stated in the training chapter.', grid: { head: ['', 'Training relation'], rows: [{ label: 'Forward pass', cells: ['2N FLOPs per token'] }, { label: 'Backward pass', cells: ['4N FLOPs per token'] }, { label: 'Total', cells: ['C ≈ 6ND'] }, { label: 'Chinchilla ratio', cells: ['About 20 training tokens per parameter'] }] } }]} />
+
+
 ## Pretraining
 
 The model is trained on massive amounts of text with a simple self-supervised objective: predict the next token, given everything before it. Loss is cross-entropy between the predicted token distribution and the actual next token (see [Probability & Statistics](/docs/mathematics-for-ai/probability-statistics)). This single objective, at sufficient scale, produces a model with broad world knowledge, grammar, reasoning patterns, and style — but one that isn't yet reliably *helpful* or *instructable*; it just continues text plausibly.
@@ -40,9 +54,7 @@ The model is trained on massive amounts of text with a simple self-supervised ob
 
 Pretraining data is not "download the internet and go" — it's a multi-stage pipeline, and the quality of each stage directly shows up in the final model:
 
-```
-Crawl → Clean → Deduplicate → Filter → Tokenize → Pack → Pretraining
-```
+Crawl → Clean → Deduplicate → Filter → Tokenize → Pack → Pretraining.
 
 - **Crawl**: raw sources — Common Crawl (a public web crawl), curated sources (Wikipedia, books, code repositories), and increasingly licensed/proprietary data.
 - **Clean**: strip HTML/boilerplate, fix encoding issues, remove obviously broken or non-natural-language text — raw web crawl is dominated by navigation menus, ads, and garbage that provides no useful training signal.
@@ -171,5 +183,31 @@ Train a smaller "student" model to mimic a larger "teacher" model's output distr
 Reduces the numerical precision used to store model weights — from 32-bit or 16-bit floats down to 8-bit or 4-bit integers (int8, int4; GPTQ and AWQ are popular quantization algorithms). Cuts memory footprint and can speed up inference substantially, at a small, often negligible, cost to output quality — essential for running large models on limited hardware.
 
 <QuantizationBitDepthDiagram />
+
+## Worked example
+
+For a model with N parameters trained on D tokens, the page derives approximately 2N forward FLOPs plus 4N backward FLOPs per token, so total compute is C ≈ 6ND. The chapter cites about 20 training tokens per parameter as the Chinchilla compute-optimal ratio.
+
+## Try it yourself
+
+Choose a hypothetical parameter count and apply the page’s 20-token-per-parameter ratio. Then explain which terms in C ≈ 6ND change if the corpus doubles.
+
+```python
+# Try it: Choose a hypothetical parameter count and apply the page’s 20-token-per-parameter ratio. Then explain which terms in C ≈ 6ND change if the corpus doubles.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat pretraining data as interchangeable | Data quality and mixture change learned behavior | Track provenance, quality, and mixture composition |
+| Use one objective for every stage | Pretraining, SFT, and preference tuning solve different problems | Match the objective to the behavior being changed |
+| Fine-tune all weights by default | Full copies cost memory per variant | Compare PEFT against full tuning for the requirement |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+| A single-stage question with no learning-path decision | Use the specific chapter directly |
 
 Next: [Prompt Engineering](/docs/llms-genai/prompt-engineering) — getting the most out of a model without touching its weights at all.

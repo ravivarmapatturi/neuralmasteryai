@@ -12,6 +12,9 @@ import CapabilityCostLatencyTradeoffDiagram from '../../../viz/diagrams/Capabili
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # LLMs and Generative AI, The Big Picture
 
 [Deep Learning](/docs/deep-learning/attention-transformers) ended with the transformer: an architecture that turns a sequence of tokens into a prediction of the next one. This section is about how that architecture becomes a system people actually use, such as Claude, GPT, Gemini or Llama: how it is trained in two very different phases, how its behaviour is changed afterwards without retraining, how its quality is measured, and how it is served to millions of people at a cost that makes sense. This page is the map. It follows a model through its life from raw text to production, gives the compute arithmetic that explains several otherwise puzzling decisions, and links each stage to the page that covers it in depth. For the inside of the model alone, token by token, use the [LLM Internals Hub](/docs/llms-genai/llm-internals-hub).
@@ -27,6 +30,17 @@ Finally they start work. You give them reference material for each task, check t
 Reading the library is pretraining, coaching is post-training, and the job is prompting, retrieval and serving. Everything below is those three stages made exact.
 
 </ELI5>
+
+## Why it exists
+
+A language model is trained as a next-token predictor, shaped into an assistant, then placed behind an application and serving system. This overview ties those stages together and shows how input-token compute compounds as a run grows.
+
+## The big picture
+
+<PenFlow title="From pretraining to a served answer" ariaLabel="From pretraining to a served answer" rows={[{ steps: { title: 'Pretrain', lines: ['Learn next-token patterns'], tone: 'blue' } }, { steps: { title: 'Post-train', lines: ['Shape assistant behavior'], tone: 'purple' } }, { steps: { title: 'Build application', lines: ['Prompt, tools, retrieval, checks'], tone: 'orange' } }, { steps: { title: 'Serve and evaluate', lines: ['Manage compute, latency, and quality'], tone: 'green' } }]} caption="A useful generative system includes training, application design, and production serving." />
+
+<Worksheet title="Training and inference compute" ariaLabel="Training and inference compute" stages={[{ tag: 'Printed execution', color: 'yellow', note: 'Model sizes, token counts, FLOPs, and break-even values copied from output.', grid: { head: ['', 'Recorded result'], rows: [{ label: 'Chinchilla-optimal', cells: ['0.16T tokens; 20 tokens/parameter; 7.7e+21 FLOPs'] }, { label: 'Llama 3 8B', cells: ['15.00T tokens; 1,875 tokens/parameter; 7.2e+23 FLOPs'] }, { label: 'Serving break-even', cells: ['45T tokens; 123 years at 1B/day; 450 days at 100B/day'] }] } }]} />
+
 
 ## 1. The Pipeline, End to End
 
@@ -127,7 +141,7 @@ print(f"inference matches training compute after {breakeven/1e12:.0f}T tokens se
 print(f"at 1 billion tokens a day that is {breakeven / 1e9 / 365:.0f} years; at 100 billion a day, {breakeven / 100e9:.0f} days")
 ```
 
-```text
+```output
 Chinchilla-optimal     0.16T tokens      20 tokens/param  training 7.7e+21 FLOPs
 Llama 3 8B actual     15.00T tokens    1875 tokens/param  training 7.2e+23 FLOPs
 inference matches training compute after 45T tokens served
@@ -162,7 +176,31 @@ Post-training improves calibration (models trained to say "I don't know" do so m
 
 </GoDeeper>
 
-## 9. When *Not* to Use an LLM
+## Worked example
+
+The 8B-parameter example prints 0.16T tokens at the Chinchilla ratio (20 tokens per parameter), versus 15T tokens for Llama 3 8B. Its training compute is 7.7e+21 versus 7.2e+23 FLOPs. Serving reaches the latter model’s training-compute total after 45T tokens.
+
+## Try it yourself
+
+Change the serving volume in the example and calculate how long 45T tokens take at that rate. Compare training compute with inference compute.
+
+```python
+# Try it: Change the serving volume in the example and calculate how long 45T tokens take at that rate. Compare training compute with inference compute.
+```
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Count only training compute | Popular models may be served for years | Include lifetime inference in the cost model |
+| Treat benchmark scores as application quality | Public tasks differ from production inputs | Evaluate on representative task data |
+| Ignore context growth | Later calls resend earlier history | Use caching, compact results, and bounded loops |
+
+## When not to use it
+
+| Situation | Better choice |
+|---|---|
+
 
 | Situation | Better choice |
 |---|---|
