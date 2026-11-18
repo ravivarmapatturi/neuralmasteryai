@@ -14,6 +14,8 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 import PenFlow from '../../../components/notebook/PenFlow';
 
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Feature Stores & Model Registry
 <ELI5>
 
@@ -34,9 +36,14 @@ Everything below is those two ideas made exact.
 
 ## The big picture
 
-The steps connect a request or change to a running service. Each handoff leaves evidence that the next step can check.
+One timestamped feature definition supplies both historical joins and online values.
 
-<PenFlow ariaLabel="Feature to model path" rows={[{ steps: { title: 'Define timestamped features', tone: 'blue' } }, { steps: { title: 'Join at prediction time', tone: 'purple' } }, { steps: { title: 'Register model version', tone: 'green' } }, { steps: { title: 'Promote with evidence', tone: 'orange' } }]} caption="In order: define timestamped features → join at prediction time → register model version → promote with evidence." />
+<PenFlow ariaLabel="Feature to model path" rows={[{ steps: { title: 'Define timestamped features', tone: 'blue' } }, { steps: { title: 'Join at prediction time', tone: 'purple' } }, { steps: { title: 'Register model version', tone: 'green' } }, { steps: { title: 'Promote with evidence', tone: 'orange' } }]} caption="Timestamped feature values connect historical training joins to online lookup and model promotion." />
+
+<Worksheet title="Use only information available then" ariaLabel="Worksheet for point-in-time feature joins" stages={[
+  { tag: 'Events', color: 'blue', note: 'User 42 has feature values 48.5 on October 5 and 220.0 on October 9.', grid: { head: ['Label time', 'Value available at that time'], rows: [{ label: 'October 6', cells: ['48.5'] }, { label: 'October 10', cells: ['220.0'] }] } },
+  { tag: 'Avoid leakage', color: 'red', note: 'Do not attach the October 9 value to the October 6 label.', children: <>The training join must select the latest feature timestamp at or before each label timestamp.</> },
+]} />
 
 
 ## 1. Two Systems That Must Agree
@@ -92,18 +99,16 @@ print("naive:\n", naive.sort_values("label_time").to_string(index=False))
 print("point-in-time:\n", pit[["user_id", "label_time", "is_fraud", "avg_txn_amount_7d"]].to_string(index=False))
 ```
 
-```output
-naive:
-  user_id label_time  is_fraud  avg_txn_amount_7d
-       7 2026-10-03         0               15.5
-      42 2026-10-06         0              220.0
-      42 2026-10-10         1              220.0
-point-in-time:
-  user_id label_time  is_fraud  avg_txn_amount_7d
-       7 2026-10-03         0               12.0
-      42 2026-10-06         0              48.5
-      42 2026-10-10         1              220.0
-```
+- naive:
+-   user_id label_time  is_fraud  avg_txn_amount_7d
+-        7 2026-10-03         0               15.5
+-       42 2026-10-06         0              220.0
+-       42 2026-10-10         1              220.0
+- point-in-time:
+-   user_id label_time  is_fraud  avg_txn_amount_7d
+-        7 2026-10-03         0               12.0
+-       42 2026-10-06         0              48.5
+-       42 2026-10-10         1              220.0
 
 Look at user 42's row on October 6. The naive join gave it 220.0, a value computed on October 9, after the fraud spree that the 220.0 reflects. In training, the model learns that a high 7-day average goes with this user, using a number from the future. In production, it will never have that number in time. This is **label leakage through time**, and models trained with it show excellent offline metrics that collapse on deployment.
 
@@ -187,48 +192,8 @@ user_features = FeatureView(
 
 `data/user_stats.parquet` holds the same five snapshots as section 2. Running `feast apply` registers the definitions and creates the online table:
 
-```output
-Created feature view user_features
-Created sqlite table fraud_user_features
-```
-
-Now use the store from both sides:
-
-```python
-import pandas as pd
-from feast import FeatureStore
-
-store = FeatureStore(repo_path="repo")
-
-# Training: one row per labelled event, each with the time the prediction would have been made
-labels = pd.DataFrame({
-    "user_id": [42, 42, 7],
-    "event_timestamp": pd.to_datetime(["2026-10-06", "2026-10-10", "2026-10-03"], utc=True),
-    "is_fraud": [0, 1, 0],
-})
-train = store.get_historical_features(entity_df=labels, features=["user_features:avg_txn_amount_7d"]).to_df()
-print(train.sort_values("event_timestamp").to_string(index=False))
-
-# Serving: load the latest values into the online store, then look one up
-store.materialize_incremental(end_date=pd.Timestamp("2026-10-23", tz="UTC"))
-online = store.get_online_features(features=["user_features:avg_txn_amount_7d"], entity_rows=[{"user_id": 42}]).to_dict()
-print(online)
-```
-
-```output
- user_id           event_timestamp  is_fraud  avg_txn_amount_7d
-       7 2026-10-03 00:00:00+00:00         0               12.0
-      42 2026-10-06 00:00:00+00:00         0               48.5
-      42 2026-10-10 00:00:00+00:00         1              220.0
-{'user_id': [42], 'avg_txn_amount_7d': [220.0]}
-```
-
-The training frame matches the hand-written as-of join exactly: user 42's October 6 row gets 48.5, not the future 220.0. The online lookup returns 220.0, the latest value, because that's what the model should see if user 42 transacts today. One definition produced both.
-
-Two details worth noticing:
-
-- **`ttl=timedelta(days=30)`** bounds how far back the as-of join will look. A label with no feature value in the previous 30 days gets a null rather than a stale value from a year ago, and the online store treats older values as expired.
-- **`materialize_incremental`** copies only values newer than the last materialization. In production a scheduler runs it every few minutes or hours, which determines how fresh the online features are.
+- Created feature view user_features
+- Created sqlite table fraud_user_features
 
 ## 5. Freshness: How Old Can a Feature Be?
 
@@ -310,7 +275,65 @@ A typical gate for moving `@champion` to a new version checks, in order:
 
 **Model registries:** MLflow Model Registry (open source, and the basis of the managed registries on Databricks and elsewhere), Unity Catalog models on Databricks, SageMaker Model Registry, Vertex AI Model Registry, Azure ML's registry, and the W&B Registry. The concepts on this page (versions, aliases, lineage, gated promotion) map onto all of them; the main difference is which identity and permission system they plug into.
 
-## 9. When *Not* to Use a Feature Store
+## Worked example
+
+User 42 has a feature value of 48.5 on October 5 and 220.0 on October 9. A label dated October 6 must join to 48.5; the later value was not available when that prediction would have been made. A label dated October 10 can use 220.0.
+
+Now use the store from both sides:
+
+```python
+import pandas as pd
+from feast import FeatureStore
+
+store = FeatureStore(repo_path="repo")
+
+# Training: one row per labelled event, each with the time the prediction would have been made
+labels = pd.DataFrame({
+    "user_id": [42, 42, 7],
+    "event_timestamp": pd.to_datetime(["2026-10-06", "2026-10-10", "2026-10-03"], utc=True),
+    "is_fraud": [0, 1, 0],
+})
+train = store.get_historical_features(entity_df=labels, features=["user_features:avg_txn_amount_7d"]).to_df()
+print(train.sort_values("event_timestamp").to_string(index=False))
+
+# Serving: load the latest values into the online store, then look one up
+store.materialize_incremental(end_date=pd.Timestamp("2026-10-23", tz="UTC"))
+online = store.get_online_features(features=["user_features:avg_txn_amount_7d"], entity_rows=[{"user_id": 42}]).to_dict()
+print(online)
+```
+
+-  user_id           event_timestamp  is_fraud  avg_txn_amount_7d
+-        7 2026-10-03 00:00:00+00:00         0               12.0
+-       42 2026-10-06 00:00:00+00:00         0               48.5
+-       42 2026-10-10 00:00:00+00:00         1              220.0
+- &#123;'user_id': [42], 'avg_txn_amount_7d': [220.0]&#125;
+
+The training frame matches the hand-written as-of join exactly: user 42's October 6 row gets 48.5, not the future 220.0. The online lookup returns 220.0, the latest value, because that's what the model should see if user 42 transacts today. One definition produced both.
+
+Two details worth noticing:
+
+- **`ttl=timedelta(days=30)`** bounds how far back the as-of join will look. A label with no feature value in the previous 30 days gets a null rather than a stale value from a year ago, and the online store treats older values as expired.
+- **`materialize_incremental`** copies only values newer than the last materialization. In production a scheduler runs it every few minutes or hours, which determines how fresh the online features are.
+
+
+## Try it yourself
+
+Inspect one historical training row and one online lookup for the same entity. Confirm that the training join uses the event timestamp and that the online value has a freshness limit.
+
+```bash
+feast apply
+python materialize.py
+```
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Training sees a future feature value | The join uses the latest value today | Join at or before each label timestamp |
+| Online features are stale | Materialization stopped or lagged | Monitor freshness and define a maximum age |
+| Registry promotion loses lineage | The model is registered without its source run | Store the training run and artifact identity with the version |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

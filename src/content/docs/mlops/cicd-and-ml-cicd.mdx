@@ -13,6 +13,8 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 import PenFlow from '../../../components/notebook/PenFlow';
 
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # CI/CD & ML CI/CD
 <ELI5>
 
@@ -33,9 +35,14 @@ Everything below is what those checks are and how they are wired together.
 
 ## The big picture
 
-The steps connect a request or change to a running service. Each handoff leaves evidence that the next step can check.
+Tests and model gates turn a source change into a versioned artifact that can be promoted.
 
-<PenFlow ariaLabel="Delivery path" rows={[{ steps: { title: 'Change code or data', tone: 'blue' } }, { steps: { title: 'Run checks', tone: 'purple' } }, { steps: { title: 'Build versioned artifact', tone: 'green' } }, { steps: { title: 'Promote behind a gate', tone: 'orange' } }]} caption="In order: change code or data → run checks → build versioned artifact → promote behind a gate." />
+<PenFlow ariaLabel="Delivery path" rows={[{ steps: { title: 'Change code or data', tone: 'blue' } }, { steps: { title: 'Run checks', tone: 'purple' } }, { steps: { title: 'Build versioned artifact', tone: 'green' } }, { steps: { title: 'Promote behind a gate', tone: 'orange' } }]} caption="Each gate adds evidence before the next artifact or traffic promotion." />
+
+<Worksheet title="Read the candidate gate" ariaLabel="Worksheet comparing the two candidate model gate results" stages={[
+  { tag: 'Compare', color: 'blue', note: 'The gate reports a paired confidence interval for candidate minus champion AUC.', grid: { head: ['Candidate', 'AUC difference interval', 'Decision'], rows: [{ label: 'A', cells: ['-0.0045 to +0.0006', 'Pass: not clearly worse'] }, { label: 'B', cells: ['-0.0120 to -0.0040', 'Reject: clearly worse'] }] } },
+  { tag: 'Interpret', color: 'yellow', note: 'A passing gate is a release condition, not proof that the candidate is better.', children: <>Keep the champion when uncertainty remains or the candidate fails a safety or data-quality gate.</> },
+]} />
 
 
 ## 1. What Is CI/CD?
@@ -172,13 +179,11 @@ def test_directional_larger_tumour_raises_risk(fitted):
 
 All three test files pass, along with the linter:
 
-```output
-$ ruff check .
-All checks passed!
-$ pytest -q
-......                                                                   [100%]
-6 passed in 5.67s
-```
+- $ ruff check .
+- All checks passed!
+- $ pytest -q
+- ......                                                                   [100%]
+- 6 passed in 5.67s
 
 These use a small model trained inside the test, so they run on every pull request in seconds. **The fourth kind**, comparing a freshly trained candidate against the production champion, needs a real training run and real evaluation data, and it's subtle enough to need its own section.
 
@@ -234,17 +239,15 @@ print("PASS")
 
 With a champion trained at regularization strength `C=1.0`, two candidates (`C=0.3` and `C=0.001`) give:
 
-```output
-$ python gate.py candidate_a.joblib champion.joblib     # C=0.3
-candidate AUC 0.9942  champion AUC 0.9956
-difference 95% CI: [-0.0045, +0.0006]
-PASS
+- $ python gate.py candidate_a.joblib champion.joblib     # C=0.3
+- candidate AUC 0.9942  champion AUC 0.9956
+- difference 95% CI: [-0.0045, +0.0006]
+- PASS
 
-$ python gate.py candidate_b.joblib champion.joblib     # C=0.001
-candidate AUC 0.9737  champion AUC 0.9956
-difference 95% CI: [-0.0406, -0.0073]
-FAIL: the candidate may be more than 0.005 AUC worse
-```output
+- $ python gate.py candidate_b.joblib champion.joblib     # C=0.001
+- candidate AUC 0.9737  champion AUC 0.9956
+- difference 95% CI: [-0.0406, -0.0073]
+- FAIL: the candidate may be more than 0.005 AUC worse
 
 Candidate A measured slightly lower than the champion, but the interval shows the difference is within noise and can't be worse than the tolerance, so it passes. A strict "must beat" gate would have blocked it. Candidate B is clearly worse, and the gate exits with code 1, which is exactly what stops a CI job.
 
@@ -394,7 +397,30 @@ Whatever the trigger, the pipeline ends with the same gate as the CI workflow: t
 
 Two cautions specific to CT. First, training on recent data can make the model learn its own past behaviour: a fraud model that blocked certain transactions never sees whether they were fraud, so its next version is trained on a biased sample. Keeping a small fraction of traffic unaffected by the model, or labelling a random sample, keeps an unbiased view. Second, the gate's evaluation set must itself be refreshed, or every new model is judged against last year's world.
 
-## 8. When *Not* to Build Full ML CI/CD
+## Worked example
+
+Candidate A has an AUC difference interval from -0.0045 to +0.0006 relative to the champion. Because the interval includes zero, the paired evaluation does not show clear harm, so A passes the non-regression gate. Candidate B’s interval is entirely below zero and fails.
+
+
+## Try it yourself
+
+Run the repository checks locally, then inspect the workflow artifact and gate report for one pull request. Confirm that the report names the code, data, model, and evaluation split before approving promotion.
+
+```bash
+ruff check .
+pytest -q
+python gate.py candidate.joblib champion.joblib
+```
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| A test split is reused for model selection | The gate is tuned against the final evaluation set | Keep an untouched test set for reporting |
+| A model passes despite broken data | Only code tests ran | Add schema, freshness, and distribution checks |
+| A workflow publishes an untraceable model | The artifact lacks run lineage | Attach code, data, parameters, and metrics |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

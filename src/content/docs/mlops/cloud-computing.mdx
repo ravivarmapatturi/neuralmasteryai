@@ -14,6 +14,7 @@ import CloudNeutralPortabilityDiagram from '../../../viz/diagrams/CloudNeutralPo
 import { Remember } from '../../../components/content/Remember';
 import { ELI5 } from '../../../components/content/ExpandableDepth';
 import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Cloud Computing for ML
 
@@ -31,7 +32,13 @@ Almost nothing in this section runs on a laptop in production — pick one cloud
 
 An ML workload needs compute to run, storage for data and artifacts, and network and identity rules to connect them safely. The path below shows how those pieces fit around one training or serving job.
 
-<PenFlow ariaLabel="Cloud ML workload path" rows={[{ steps: { title: 'Store data', lines: ['Dataset and model artifacts'], tone: 'blue' } }, { steps: { title: 'Choose compute', lines: ['VM, container, or managed job'], tone: 'purple' } }, { steps: { title: 'Control access', lines: ['Network and identity rules'], tone: 'green' } }, { steps: { title: 'Run and monitor', lines: ['Track cost and service health'], tone: 'orange' } }]} caption="Compute, storage, and access work together as one deployed system." />
+<PenFlow ariaLabel="Cloud ML workload path" rows={[{ steps: { title: 'Store data', lines: ['Dataset and model artifacts'], tone: 'blue' } }, { steps: { title: 'Choose compute', lines: ['VM, container, or managed job'], tone: 'purple' } }, { steps: { title: 'Control access', lines: ['Network and identity rules'], tone: 'green' } }, { steps: { title: 'Run and monitor', lines: ['Track cost and service health'], tone: 'orange' } }]} caption="Compute, storage, identity, and monitoring form one connected cloud workload." />
+
+<Worksheet title="Place each ML workload" ariaLabel="Worksheet matching common ML workloads to cloud services" stages={[
+  { tag: 'Store', color: 'blue', note: 'Choose the storage shape from how the workload reads and writes.', grid: { head: ['Workload', 'Service shape'], rows: [{ label: 'Versioned model files', cells: ['Object storage'] }, { label: 'VM operating system disk', cells: ['Block storage'] }, { label: 'Online feature lookup', cells: ['Database or key-value store'] }] } },
+  { tag: 'Compute', color: 'purple', note: 'Choose how much control the workload needs.', grid: { head: ['Workload', 'Compute shape'], rows: [{ label: 'Custom GPU training job', cells: ['GPU virtual machine or managed job'] }, { label: 'Container fleet', cells: ['Container service or Kubernetes'] }, { label: 'Small event handler', cells: ['Serverless function'] }] } },
+  { tag: 'Check', color: 'yellow', note: 'Keep identity and network rules beside the service choice.', children: <>A model artifact belongs in object storage; the training process reads it with a role limited to the needed bucket path.</> },
+]} />
 
 
 ## Compute
@@ -172,4 +179,49 @@ Regardless of which cloud a stack runs on, the architecture patterns from the re
 
 <CloudNeutralPortabilityDiagram />
 
+
+
+## Worked example
+
+A training job reads a versioned dataset from S3, runs on a GPU instance, and writes a model artifact back to a separate prefix. The instance role grants access only to those paths. A serving endpoint then reads the published artifact; its network entry point stays separate from the private training network.
+
+## Try it yourself
+
+Use the AWS CLI to inspect the resources before changing anything. Replace the bucket and region with values from your own account, then confirm the role and network path in the cloud console.
+
+```bash
+aws s3 ls s3://my-ml-bucket/models/
+aws ec2 describe-instances --filters "Name=instance-state-name,Values=running"
+```
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Leaving a GPU instance running | Compute keeps accruing cost after the job ends | Stop or terminate it after saving the artifact |
+| Giving a job broad account access | A convenience role was reused | Grant only the required actions and resource paths |
+| Treating object storage like a disk | Whole objects are read and replaced over HTTP | Use block storage or a database for mutable random access |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| A local experiment fits on one workstation | Run locally until the workload needs shared infrastructure |
+| The team cannot own cloud permissions or cost alerts | Use a managed platform with account controls and an owner |
+
+## Remember
+
+| Idea | Keep in mind |
+| --- | --- |
+| Compute | Match the resource to the job and stop it when idle |
+| Storage | Pick by access pattern, not by familiar service name |
+| Access | Identity and network rules are part of the deployment |
+
+
 Next: [Deploying Models on AWS & Azure](/docs/mlops/cloud-model-deployment) — the concrete methods (SageMaker, Azure ML, and the container-native alternatives) for actually getting a model running on this infrastructure.
+
+## Sources
+
+- [Amazon EC2 User Guide](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/)
+- [Amazon S3 User Guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html)
+- [AWS Well-Architected Machine Learning Lens](https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/machine-learning-lens.html)

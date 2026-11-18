@@ -13,6 +13,8 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 import PenFlow from '../../../components/notebook/PenFlow';
 
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Infrastructure as Code
 <ELI5>
 
@@ -33,9 +35,15 @@ Everything below is how that comparison works and where it goes wrong.
 
 ## The big picture
 
-The steps connect a request or change to a running service. Each handoff leaves evidence that the next step can check.
+A configuration change becomes a reviewed plan before Terraform changes infrastructure.
 
-<PenFlow ariaLabel="Infrastructure change path" rows={[{ steps: { title: 'Write configuration', tone: 'blue' } }, { steps: { title: 'Review plan', tone: 'purple' } }, { steps: { title: 'Apply changes', tone: 'green' } }, { steps: { title: 'Watch for drift', tone: 'orange' } }]} caption="In order: write configuration → review plan → apply changes → watch for drift." />
+<PenFlow ariaLabel="Infrastructure change path" rows={[{ steps: { title: 'Write configuration', tone: 'blue' } }, { steps: { title: 'Review plan', tone: 'purple' } }, { steps: { title: 'Apply changes', tone: 'green' } }, { steps: { title: 'Watch for drift', tone: 'orange' } }]} caption="A reviewed plan exposes resource replacements before Terraform changes infrastructure." />
+
+<Worksheet title="Read the Terraform plan" ariaLabel="Worksheet following the infrastructure replacement plan" stages={[
+  { tag: 'Configuration', color: 'blue', note: 'The example declares a development training cluster with one GPU.', grid: { head: ['Field', 'Declared value'], rows: [{ label: 'Environment', cells: ['dev'] }, { label: 'GPU count', cells: ['1'] }, { label: 'Instance', cells: ['g6e.xlarge'] }] } },
+  { tag: 'Change', color: 'purple', note: 'The revised plan changes the GPU count and instance type.', grid: { head: ['Field', 'Old', 'New'], rows: [{ label: 'GPU count', cells: ['1', '8'] }, { label: 'Instance', cells: ['g6e.xlarge', 'p5.48xlarge'] }] } },
+  { tag: 'Decision', color: 'yellow', note: 'The plan reports one resource to add and one to destroy because the resource must be replaced.', children: <>Review the replacement impact and cost before applying the plan.</> },
+]} />
 
 
 ## 1. What Is Infrastructure as Code?
@@ -120,71 +128,6 @@ output "cluster_file" {
   value = local_file.training_cluster.filename
 }
 ```
-
-**First plan.** After `terraform init`, `terraform plan -out=tfplan` (Terraform 1.16) shows one resource to create, with its computed content:
-
-```output
-  # local_file.training_cluster will be created
-  + resource "local_file" "training_cluster" {
-      + content              = jsonencode(
-            {
-              + environment = "dev"
-              + gpus        = 1
-              + instance    = "g6e.xlarge"
-            }
-        )
-      + filename             = "./out/dev-cluster.json"
-      + id                   = (known after apply)
-      ...
-    }
-
-Plan: 1 to add, 0 to change, 0 to destroy.
-```output
-
-**Apply, then plan again.** `terraform apply tfplan` creates the file. Running `terraform plan` a second time does nothing, which is the declarative guarantee:
-
-```output
-No changes. Your infrastructure matches the configuration.
-
-Terraform has compared your real infrastructure against your configuration
-and found no differences, so no changes are needed.
-```output
-
-**Drift.** Now someone changes the resource outside Terraform, the equivalent of a console click during an incident, by overwriting the file with `{"gpus":8}`. The next plan refreshes, notices the real object no longer matches what state recorded, and plans to put it back:
-
-```output
-local_file.training_cluster: Refreshing state... [id=21b5908698071c60bcfff9894e3fcfc207fcb40f]
-  # local_file.training_cluster will be created
-Plan: 1 to add, 0 to change, 0 to destroy.
-```
-
-<StateDriftDiagram />
-
-**Drift** is any difference between real infrastructure and what Terraform last applied. Terraform only sees it when someone runs a plan, so teams run a scheduled plan (for example nightly in CI) and alert if it isn't empty. The plan's fix is to overwrite the manual change. If the manual change was right, the fix is to put it into the configuration, not to keep reverting it.
-
-**Forced replacement.** Finally, a legitimate change: `terraform plan -var gpu_count=8`. Changing a resource's content in this provider can't be done in place, so Terraform plans to destroy and recreate it, and says which attribute forces that:
-
-```output
-  # local_file.training_cluster must be replaced
-              ~ gpus        = 1 -> 8
-              ~ instance    = "g6e.xlarge" -> "p5.48xlarge"
-            } # forces replacement
-Plan: 1 to add, 0 to change, 1 to destroy.
-```
-
-Cloud resources behave the same way. Some arguments can be updated in place (tags, an autoscaling group's size); others force replacement (a database's engine, many resources' names, a subnet's address range). **Reading the plan for `must be replaced` is the most important review step in IaC**, because replacing a database or a bucket destroys its contents.
-
-<PredictFirst
-  question="A pull request renames the local name of a production database resource from aws_db_instance.main to aws_db_instance.primary, with no other changes. What does terraform plan show?"
-  options={[
-    'No changes, because the real database is identical',
-    'An in-place update renaming the database',
-    'Destroy aws_db_instance.main and create aws_db_instance.primary, because state tracks resources by address',
-    'An error, because resource names cannot be changed',
-  ]}
-  correctIndex={2}
-  explanation="State maps each resource address (type plus local name) to a real object. A renamed address looks like one resource deleted from the config and a new one added, so the plan is to destroy the existing database and create an empty one. The fix is a moved block (moved { from = aws_db_instance.main  to = aws_db_instance.primary }), which tells Terraform the address changed and the object did not. This is exactly why plans must be read before apply."
-/>
 
 ## 5. Remote State and Locking
 
@@ -275,9 +218,7 @@ output "artifact_bucket_arn" {
 
 With the AWS provider v6.70 installed, `terraform fmt -check` passes and `terraform validate` reports:
 
-```output
-Success! The configuration is valid.
-```
+- Success! The configuration is valid.
 
 and a plan with `-var environment=qa` stops with `Error: Invalid value for variable` before touching anything. Validation catches typos, but not mistakes that only the cloud API can detect, such as a bucket name already taken; those appear at plan or apply time.
 
@@ -347,7 +288,86 @@ The files are only half of IaC; the other half is how changes reach production. 
 
 For most ML teams the choice matters less than the practice: one tool, everything in it, plans reviewed, no hand changes.
 
-## 10. When *Not* to Use Infrastructure as Code
+## Worked example
+
+The first plan creates a development training cluster with one GPU. Changing the configuration to eight GPUs and a larger instance forces replacement, so the plan shows one resource to add and one to destroy. Review that replacement and its cost before applying.
+
+**First plan.** After `terraform init`, `terraform plan -out=tfplan` (Terraform 1.16) shows one resource to create, with its computed content:
+
+-   \# local_file.training_cluster will be created
+-   + resource "local_file" "training_cluster" &#123;
+-       + content              = jsonencode(
+-             &#123;
+-               + environment = "dev"
+-               + gpus        = 1
+-               + instance    = "g6e.xlarge"
+-             &#125;
+-         )
+-       + filename             = "./out/dev-cluster.json"
+-       + id                   = (known after apply)
+-       ...
+-     &#125;
+
+- Plan: 1 to add, 0 to change, 0 to destroy.
+
+**Apply, then plan again.** `terraform apply tfplan` creates the file. Running `terraform plan` a second time does nothing, which is the declarative guarantee:
+
+- No changes. Your infrastructure matches the configuration.
+
+- Terraform has compared your real infrastructure against your configuration
+- and found no differences, so no changes are needed.
+
+**Drift.** Now someone changes the resource outside Terraform, the equivalent of a console click during an incident, by overwriting the file with `{"gpus":8}`. The next plan refreshes, notices the real object no longer matches what state recorded, and plans to put it back:
+
+- local_file.training_cluster: Refreshing state... [id=21b5908698071c60bcfff9894e3fcfc207fcb40f]
+-   \# local_file.training_cluster will be created
+- Plan: 1 to add, 0 to change, 0 to destroy.
+
+<StateDriftDiagram />
+
+**Drift** is any difference between real infrastructure and what Terraform last applied. Terraform only sees it when someone runs a plan, so teams run a scheduled plan (for example nightly in CI) and alert if it isn't empty. The plan's fix is to overwrite the manual change. If the manual change was right, the fix is to put it into the configuration, not to keep reverting it.
+
+**Forced replacement.** Finally, a legitimate change: `terraform plan -var gpu_count=8`. Changing a resource's content in this provider can't be done in place, so Terraform plans to destroy and recreate it, and says which attribute forces that:
+
+-   \# local_file.training_cluster must be replaced
+-               ~ gpus        = 1 -> 8
+-               ~ instance    = "g6e.xlarge" -> "p5.48xlarge"
+-             &#125; # forces replacement
+- Plan: 1 to add, 0 to change, 1 to destroy.
+
+Cloud resources behave the same way. Some arguments can be updated in place (tags, an autoscaling group's size); others force replacement (a database's engine, many resources' names, a subnet's address range). **Reading the plan for `must be replaced` is the most important review step in IaC**, because replacing a database or a bucket destroys its contents.
+
+<PredictFirst
+  question="A pull request renames the local name of a production database resource from aws_db_instance.main to aws_db_instance.primary, with no other changes. What does terraform plan show?"
+  options={[
+    'No changes, because the real database is identical',
+    'An in-place update renaming the database',
+    'Destroy aws_db_instance.main and create aws_db_instance.primary, because state tracks resources by address',
+    'An error, because resource names cannot be changed',
+  ]}
+  correctIndex={2}
+  explanation="State maps each resource address (type plus local name) to a real object. A renamed address looks like one resource deleted from the config and a new one added, so the plan is to destroy the existing database and create an empty one. The fix is a moved block (moved { from = aws_db_instance.main  to = aws_db_instance.primary }), which tells Terraform the address changed and the object did not. This is exactly why plans must be read before apply."
+/>
+
+
+## Try it yourself
+
+In a disposable development directory, run the plan before and after changing one non-production input. Compare the planned actions, then restore the input without applying the plan.
+
+```bash
+terraform plan -out=tfplan
+terraform show tfplan
+```
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Applying a plan nobody reviewed | A plan file was treated as routine output | Inspect and approve the exact saved plan |
+| Two runs modify one state at once | State locking is disabled or bypassed | Use a remote backend with locking |
+| A secret appears in state | Sensitive values were passed through ordinary resource inputs | Use a secret manager and restrict state access |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

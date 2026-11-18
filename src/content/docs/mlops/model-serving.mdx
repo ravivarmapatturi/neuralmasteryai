@@ -13,6 +13,8 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
 import PenFlow from '../../../components/notebook/PenFlow';
 
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # APIs & Model Serving
 <ELI5>
 
@@ -33,9 +35,14 @@ Everything below is how that kitchen is built and why it slows down.
 
 ## The big picture
 
-The steps connect a request or change to a running service. Each handoff leaves evidence that the next step can check.
+A client request passes through validation, model inference, and a monitored response.
 
-<PenFlow ariaLabel="Prediction request path" rows={[{ steps: { title: 'Validate request', tone: 'blue' } }, { steps: { title: 'Load model', tone: 'purple' } }, { steps: { title: 'Predict within budget', tone: 'green' } }, { steps: { title: 'Return and measure', tone: 'orange' } }]} caption="In order: validate request → load model → predict within budget → return and measure." />
+<PenFlow ariaLabel="Prediction request path" rows={[{ steps: { title: 'Validate request', tone: 'blue' } }, { steps: { title: 'Load model', tone: 'purple' } }, { steps: { title: 'Predict within budget', tone: 'green' } }, { steps: { title: 'Return and measure', tone: 'orange' } }]} caption="A request passes through validation and inference before its latency and errors return to operators." />
+
+<Worksheet title="Estimate queueing near capacity" ariaLabel="Worksheet estimating model server latency at increasing utilization" stages={[
+  { tag: 'Capacity', color: 'blue', note: 'The example server handles at most 100 requests per second.', grid: { head: ['Traffic', 'Utilization', 'Queueing factor 1/(1 - utilization)'], rows: [{ label: '50 requests/s', cells: ['50%', '2'] }, { label: '90 requests/s', cells: ['90%', '10'] }, { label: '99 requests/s', cells: ['99%', '100'] }] } },
+  { tag: 'Decision', color: 'yellow', note: 'Leave headroom and scale before the service approaches saturation.', children: <>At or above capacity, arrivals match or exceed completions and the queue cannot stay bounded.</> },
+]} />
 
 
 ## 1. What Model Serving Is
@@ -159,12 +166,10 @@ with TestClient(app) as client:                         # runs the lifespan, so 
     print(nokey.status_code, nokey.json())
 ```
 
-```output
-{'status': 'ready', 'model_version': '3'}
-200 {'probability': 0.6588, 'model_version': '3'}
-422 List should have at least 30 items after validation, not 5
-401 {'detail': 'invalid API key'}
-```
+- &#123;'status': 'ready', 'model_version': '3'&#125;
+- 200 &#123;'probability': 0.6588, 'model_version': '3'&#125;
+- 422 List should have at least 30 items after validation, not 5
+- 401 &#123;'detail': 'invalid API key'&#125;
 
 Each piece answers a production need:
 
@@ -226,11 +231,9 @@ for path in ["/async-blocking", "/sync", "/async-offloaded"]:
 server.should_exit = True
 ```
 
-```output
-/async-blocking   20 concurrent requests took 2.06 s
-/sync             20 concurrent requests took 0.12 s
-/async-offloaded  20 concurrent requests took 0.22 s
-```
+- /async-blocking   20 concurrent requests took 2.06 s
+- /sync             20 concurrent requests took 0.12 s
+- /async-offloaded  20 concurrent requests took 0.22 s
 
 The blocking `async def` handled the 20 requests one at a time: 20 × 100 ms ≈ 2 seconds. The plain `def` and the offloaded version overlapped them. The rule: **use `async def` only when everything slow inside it is awaited**; otherwise use `def`, or move the blocking call to a thread with `asyncio.to_thread` or `run_in_threadpool`.
 
@@ -245,30 +248,6 @@ Two numbers describe a service's performance. **Latency** is how long one reques
 $$
 L = \lambda W
 $$
-
-At 200 requests a second and 50 ms each, about 10 requests are in flight at any moment, so the server needs at least 10 concurrent slots (threads, processes or batch positions) or requests will queue.
-
-The more important result is about **utilization** $\rho = \lambda / \mu$, the arrival rate divided by the service's maximum throughput $\mu$. In the simplest queueing model (random arrivals, one server, the M/M/1 queue) the average time in the system is
-
-$$
-W = \frac{1}{\mu - \lambda} = \frac{1}{\mu}\cdot\frac{1}{1 - \rho}
-$$
-
-At 50% utilization, requests take twice the bare service time; at 90%, ten times; at 99%, a hundred times. And when $\rho \geq 1$, arrivals outpace service and the queue grows without bound. **Latency doesn't degrade gracefully as load rises; it degrades suddenly near capacity.** This is why services are sized to run well below their maximum, typically 50 to 70% at peak, and why autoscaling triggers before saturation, not at it.
-
-<PredictFirst
-  question="A model server's measured maximum throughput is 100 requests per second, and latency at very low load is 10 ms. Traffic grows from 50 to 95 requests per second. Roughly what happens to the average latency?"
-  options={[
-    'It stays around 10 ms, since the server is still under capacity',
-    'It roughly doubles, in proportion to the load',
-    'It rises about tenfold, because queueing delay grows as 1/(1 - utilization)',
-    'It falls, because the server warms up under load',
-  ]}
-  correctIndex={2}
-  explanation="With random arrivals, time in system scales like 1/(1 - rho). At rho = 0.5 that factor is 2; at rho = 0.95 it is 20. Going from 50 to 95 requests per second multiplies the queueing factor by about ten, so average latency goes from roughly 20 ms to roughly 200 ms, and the p99 gets much worse still. Being 'under capacity' is not enough; you need headroom."
-/>
-
-On a GPU, one lever changes $\mu$ itself: processing several requests in one forward pass.
 
 ## 6. Dynamic Batching
 
@@ -326,11 +305,9 @@ for max_batch, max_wait in [(1, 0.0), (16, 0.005), (64, 0.005)]:
     asyncio.run(run(max_batch, max_wait))
 ```
 
-```output
-max_batch= 1 max_wait= 0 ms: p50   5211 ms  p99  10285 ms  throughput    47 req/s
-max_batch=16 max_wait= 5 ms: p50     48 ms  p99     68 ms  throughput   239 req/s
-max_batch=64 max_wait= 5 ms: p50     48 ms  p99     69 ms  throughput   242 req/s
-```
+- max_batch= 1 max_wait= 0 ms: p50   5211 ms  p99  10285 ms  throughput    47 req/s
+- max_batch=16 max_wait= 5 ms: p50     48 ms  p99     68 ms  throughput   239 req/s
+- max_batch=64 max_wait= 5 ms: p50     48 ms  p99     69 ms  throughput   242 req/s
 
 (The script asks for 300 requests a second; asyncio's timer granularity makes the real arrival rate about 240, which is why the batched runs report that throughput: they kept up with everything that arrived.)
 
@@ -374,7 +351,53 @@ The serving layer controls queues and batching. The model's own speed is the oth
 - **Cache.** Identical requests (the same product page, the same query) can return a cached prediction; see [Caching Strategies](/docs/mlops/caching-strategies).
 - **Measure before optimizing.** A trace often shows the model takes 5 ms of a 60 ms request and the feature lookup takes 40 ([Observability](/docs/mlops/observability#5-instrumenting-a-model-api)).
 
-## 9. When *Not* to Run Your Own Online Service
+## Worked example
+
+At 200 requests per second with 50 ms service time, about ten requests are in flight at once. For a server rated at 100 requests per second, raising traffic from 50 to 95 requests per second moves utilization from 50% to 95%; the simple queueing factor rises from 2 to 20. The service needs headroom before that point.
+
+At 200 requests a second and 50 ms each, about 10 requests are in flight at any moment, so the server needs at least 10 concurrent slots (threads, processes or batch positions) or requests will queue.
+
+The more important result is about **utilization** $\rho = \lambda / \mu$, the arrival rate divided by the service's maximum throughput $\mu$. In the simplest queueing model (random arrivals, one server, the M/M/1 queue) the average time in the system is
+
+$$
+W = \frac{1}{\mu - \lambda} = \frac{1}{\mu}\cdot\frac{1}{1 - \rho}
+$$
+
+At 50% utilization, requests take twice the bare service time; at 90%, ten times; at 99%, a hundred times. And when $\rho \geq 1$, arrivals outpace service and the queue grows without bound. **Latency doesn't degrade gracefully as load rises; it degrades suddenly near capacity.** This is why services are sized to run well below their maximum, typically 50 to 70% at peak, and why autoscaling triggers before saturation, not at it.
+
+<PredictFirst
+  question="A model server's measured maximum throughput is 100 requests per second, and latency at very low load is 10 ms. Traffic grows from 50 to 95 requests per second. Roughly what happens to the average latency?"
+  options={[
+    'It stays around 10 ms, since the server is still under capacity',
+    'It roughly doubles, in proportion to the load',
+    'It rises about tenfold, because queueing delay grows as 1/(1 - utilization)',
+    'It falls, because the server warms up under load',
+  ]}
+  correctIndex={2}
+  explanation="With random arrivals, time in system scales like 1/(1 - rho). At rho = 0.5 that factor is 2; at rho = 0.95 it is 20. Going from 50 to 95 requests per second multiplies the queueing factor by about ten, so average latency goes from roughly 20 ms to roughly 200 ms, and the p99 gets much worse still. Being 'under capacity' is not enough; you need headroom."
+/>
+
+On a GPU, one lever changes $\mu$ itself: processing several requests in one forward pass.
+
+
+## Try it yourself
+
+Use the included load simulation with a small request rate first, then increase arrivals toward the measured service limit. Compare p50 and p99 latency; stop before the queue grows without bound.
+
+```bash
+pytest -q
+uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Latency jumps near capacity | Queueing delay grows sharply as utilization approaches one | Scale with headroom and watch queue depth |
+| Async handler blocks the event loop | Synchronous model work runs inside `async def` | Use a sync route or offload blocking work |
+| Batches wait too long | Maximum batch wait is too high for the latency budget | Measure latency and reduce the wait bound |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

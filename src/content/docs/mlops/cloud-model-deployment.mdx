@@ -8,6 +8,7 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import CloudDeploymentChoiceDiagram from '../../../viz/diagrams/CloudDeploymentChoiceDiagram';
 
 import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Deploying Models on AWS & Azure
 <ELI5>
@@ -25,9 +26,14 @@ A trained model sitting on a laptop is like a chef who can cook but has no resta
 
 ## The big picture
 
-The steps connect a request or change to a running service. Each handoff leaves evidence that the next step can check.
+Each handoff binds a deployment mode to a versioned artifact, then exposes it through monitored traffic.
 
-<PenFlow ariaLabel="Deployment path" rows={[{ steps: { title: 'Choose mode', tone: 'blue' } }, { steps: { title: 'Match latency and volume', tone: 'purple' } }, { steps: { title: 'Deploy model and artifact', tone: 'green' } }, { steps: { title: 'Route traffic and observe', tone: 'orange' } }]} caption="In order: choose mode → match latency and volume → deploy model and artifact → route traffic and observe." />
+<PenFlow ariaLabel="Deployment path" rows={[{ steps: { title: 'Choose mode', tone: 'blue' } }, { steps: { title: 'Match latency and volume', tone: 'purple' } }, { steps: { title: 'Deploy model and artifact', tone: 'green' } }, { steps: { title: 'Route traffic and observe', tone: 'orange' } }]} caption="Endpoint mode follows the caller’s latency requirement and traffic shape." />
+
+<Worksheet title="Choose an endpoint shape" ariaLabel="Worksheet matching traffic needs to managed model deployment modes" stages={[
+  { tag: 'Traffic', color: 'blue', note: 'Start with how a caller expects the answer.', grid: { head: ['Need', 'Deployment shape'], rows: [{ label: 'Immediate response, steady traffic', cells: ['Real-time endpoint'] }, { label: 'Immediate response, sparse traffic', cells: ['Serverless endpoint if limits fit'] }, { label: 'Long-running request, return later', cells: ['Asynchronous endpoint'] }, { label: 'Large file, no request-time deadline', cells: ['Batch transform'] }] } },
+  { tag: 'Check', color: 'green', note: 'Confirm resource limits and the caller contract before launch.', children: <>The deployment method must preserve the same input schema, model version, and output contract used by the caller.</> },
+]} />
 
 
 ## AWS: Amazon SageMaker
@@ -331,4 +337,48 @@ The same decision criteria as [Batch, Online, and Streaming Inference](/docs/mlo
 
 <CloudDeploymentChoiceDiagram />
 
+
+
+## Worked example
+
+A fraud model scores a daily file of transactions stored in S3. Because no caller needs an immediate answer, a batch transform job reads the input prefix and writes results to a separate output prefix. The job configuration pins the model name, instance count, and input format so the run can be repeated and inspected.
+
+## Try it yourself
+
+Run the read-only command to inspect an endpoint after deployment, then compare its status with the health checks used by your caller. Use the region where the endpoint was created.
+
+```bash
+aws sagemaker describe-endpoint --endpoint-name fraud-detector --region us-east-1
+```
+
+## Common mistakes
+
+| Failure | Why it happens | Fix |
+| --- | --- | --- |
+| Choosing a real-time endpoint for a nightly file | Request mode was chosen before traffic shape | Use batch inference when no synchronous response is needed |
+| Pointing a new endpoint at an unverified artifact | Model and container versions drift | Pin and record both artifact and image versions |
+| Sending an oversized request to a synchronous endpoint | Request limits were not checked | Split the work or use asynchronous/batch inference |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The model does not need network access | Run batch inference in the existing data pipeline |
+| The provider limits do not fit the model or request size | Serve a container on infrastructure with suitable limits |
+
+## Remember
+
+| Idea | Keep in mind |
+| --- | --- |
+| Endpoint mode | Match it to latency and traffic shape |
+| Artifact | Version the model and container together |
+| Contract | Keep input and output schemas stable for callers |
+
+
 Next: [Kubernetes](/docs/mlops/kubernetes) — the orchestration layer underneath the EKS/AKS paths above, in full depth.
+
+## Sources
+
+- [Amazon SageMaker inference options](https://docs.aws.amazon.com/sagemaker/latest/dg/deploy-model-options.html)
+- [Azure Machine Learning managed online endpoints](https://learn.microsoft.com/azure/machine-learning/concept-endpoints-online)
+- [Azure Machine Learning batch endpoints](https://learn.microsoft.com/azure/machine-learning/concept-endpoints-batch)
