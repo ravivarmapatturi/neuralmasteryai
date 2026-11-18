@@ -1,49 +1,42 @@
 import { useEffect, useState } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
-import { collection, doc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
-import { firebaseConfig } from './firebaseConfig';
-
-// Loves work like social-media likes: anyone can love a page without signing in.
-// Each browser gets a silent guest identity from a SEPARATE Firebase app
-// instance, so the site's real sign-in state is never touched. The guest id
-// is remembered by the browser, so one browser = one love per page.
-const loveApp = initializeApp(firebaseConfig, 'loves');
-const loveAuth = getAuth(loveApp);
-const db = getFirestore(loveApp);
-
-let guestPromise: Promise<string> | null = null;
-export function guestId(): Promise<string> {
-  if (loveAuth.currentUser) return Promise.resolve(loveAuth.currentUser.uid);
-  guestPromise ??= signInAnonymously(loveAuth).then((c) => c.user.uid).finally(() => { guestPromise = null; });
-  return guestPromise;
-}
-
-/** The guest id once the browser has one (null before the first love). */
-function useGuestUid() {
-  const [uid, setUid] = useState<string | null>(loveAuth.currentUser?.uid ?? null);
-  useEffect(() => onAuthStateChanged(loveAuth, (u) => setUid(u?.uid ?? null)), []);
-  return uid;
-}
+import type { Firestore } from 'firebase/firestore';
 
 /**
- * Page loves. Firestore layout (rules in firestore.rules, "pageLoves"):
+ * Page loves, like social-media likes: anyone can love a page without a
+ * sign-in step. Loving uses the visitor's one account (their real account, or
+ * the guest account created on the spot by the first love), so one account =
+ * one love per page.
+ * Firestore layout (rules in firestore.rules, "pageLoves"):
  *   pageLoves/{pageId}            { count }          public read
- *   pageLoves/{pageId}/by/{uid}   { at }             only that user
- * A signed-in reader can love a page once; the counter moves by exactly 1
- * together with their own marker, enforced server-side by the rules.
+ *   pageLoves/{pageId}/by/{uid}   { at }             only that account
+ * The counter moves by exactly 1 together with the account's own marker,
+ * enforced server-side by the rules.
+ * Firebase is imported lazily so this module costs nothing at load time.
  */
 export const pageIdFor = (route: string) => route.replace(/^\/+|\/+$/g, '').replace(/\//g, '__') || 'home';
 
+async function fb() {
+  const [{ auth, db }, fs, au] = await Promise.all([import('./firebase'), import('firebase/firestore'), import('firebase/auth')]);
+  return { auth, db: db as Firestore, fs, au };
+}
+
+/** The visitor's account id, creating a guest account if they have none. */
+export async function guestId(): Promise<string> {
+  const { auth, au } = await fb();
+  if (auth.currentUser) return auth.currentUser.uid;
+  return (await au.signInAnonymously(auth)).user.uid;
+}
+
 export async function setLove(route: string, uid: string, love: boolean): Promise<void> {
+  const { db, fs } = await fb();
   const id = pageIdFor(route);
-  const pageRef = doc(db, 'pageLoves', id);
-  const byRef = doc(db, 'pageLoves', id, 'by', uid);
-  await runTransaction(db, async (tx) => {
+  const pageRef = fs.doc(db, 'pageLoves', id);
+  const byRef = fs.doc(db, 'pageLoves', id, 'by', uid);
+  await fs.runTransaction(db, async (tx) => {
     const [page, by] = await Promise.all([tx.get(pageRef), tx.get(byRef)]);
     const count = page.exists() ? (page.data().count as number) ?? 0 : 0;
     if (love && !by.exists()) {
-      tx.set(byRef, { at: serverTimestamp() });
+      tx.set(byRef, { at: fs.serverTimestamp() });
       tx.set(pageRef, { count: count + 1 });
     } else if (!love && by.exists()) {
       tx.delete(byRef);
@@ -52,19 +45,39 @@ export async function setLove(route: string, uid: string, love: boolean): Promis
   });
 }
 
-/** Live count for one page and whether this browser has loved it. */
+function useAccountUid() {
+  const [uid, setUid] = useState<string | null>(null);
+  useEffect(() => {
+    let off: (() => void) | undefined; let dead = false;
+    fb().then(({ auth, au }) => { if (!dead) off = au.onAuthStateChanged(auth, (u) => setUid(u?.uid ?? null)); }).catch(() => {});
+    return () => { dead = true; off?.(); };
+  }, []);
+  return uid;
+}
+
+/** Live count for one page and whether this visitor has loved it. */
 export function usePageLove(route: string) {
-  const uid = useGuestUid();
+  const uid = useAccountUid();
   const id = pageIdFor(route);
   const [count, setCount] = useState<number | null>(null);
   const [loved, setLoved] = useState(false);
   useEffect(() => {
     setCount(null);
-    return onSnapshot(doc(db, 'pageLoves', id), (s) => setCount(s.exists() ? (s.data().count as number) ?? 0 : 0), () => setCount(null));
+    let off: (() => void) | undefined; let dead = false;
+    fb().then(({ db, fs }) => {
+      if (dead) return;
+      off = fs.onSnapshot(fs.doc(db, 'pageLoves', id), (s) => setCount(s.exists() ? (s.data().count as number) ?? 0 : 0), () => setCount(null));
+    }).catch(() => {});
+    return () => { dead = true; off?.(); };
   }, [id]);
   useEffect(() => {
     if (!uid) { setLoved(false); return; }
-    return onSnapshot(doc(db, 'pageLoves', id, 'by', uid), (s) => setLoved(s.exists()), () => setLoved(false));
+    let off: (() => void) | undefined; let dead = false;
+    fb().then(({ db, fs }) => {
+      if (dead) return;
+      off = fs.onSnapshot(fs.doc(db, 'pageLoves', id, 'by', uid), (s) => setLoved(s.exists()), () => setLoved(false));
+    }).catch(() => {});
+    return () => { dead = true; off?.(); };
   }, [id, uid]);
   return { count, loved, setLoved };
 }
@@ -72,8 +85,15 @@ export function usePageLove(route: string) {
 /** Live total of loves across every page (for the home page). */
 export function useTotalLoves() {
   const [total, setTotal] = useState<number | null>(null);
-  useEffect(() => onSnapshot(collection(db, 'pageLoves'),
-    (snap) => setTotal(snap.docs.reduce((s, d) => s + ((d.data().count as number) ?? 0), 0)),
-    () => setTotal(null)), []);
+  useEffect(() => {
+    let off: (() => void) | undefined; let dead = false;
+    fb().then(({ db, fs }) => {
+      if (dead) return;
+      off = fs.onSnapshot(fs.collection(db, 'pageLoves'),
+        (snap) => setTotal(snap.docs.reduce((s, d) => s + ((d.data().count as number) ?? 0), 0)),
+        () => setTotal(null));
+    }).catch(() => {});
+    return () => { dead = true; off?.(); };
+  }, []);
   return total;
 }

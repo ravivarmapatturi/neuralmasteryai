@@ -4,7 +4,7 @@ test.describe('Framework Tier Mode (v1: react-agent-loop)', () => {
   test('mode toggle, educational disclaimer, gap completion, and Pyodide Run/Submit execution', async ({ page }) => {
     // 1. Navigate to react-agent-loop practice page
     await page.goto('/practice/react-agent-loop');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
 
     // 2. Verify mode toggle is present with all modes
     const toggle = page.locator('[data-testid="canvas-python-toggle"]');

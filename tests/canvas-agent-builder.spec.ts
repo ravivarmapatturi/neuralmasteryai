@@ -4,7 +4,7 @@ test.describe('Canvas Agent Builder (v1: react-agent-loop)', () => {
   test('mode toggle, node interaction, mistake detection, and verification flow', async ({ page }) => {
     // 1. Navigate to react-agent-loop practice page
     await page.goto('/practice/react-agent-loop');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
 
     // Verify Canvas/Python toggle is present
     const toggle = page.locator('[data-testid="canvas-python-toggle"]');

@@ -4,7 +4,7 @@ test.describe('Guided Build Mode (v1: react-agent-loop)', () => {
   test('toggle guided mode, progressive 5-step scaffold, real reference assembly, and Pyodide verification', async ({ page }) => {
     // 1. Navigate to react-agent-loop practice page
     await page.goto('/practice/react-agent-loop');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
 
     // Verify Workspace Mode toggle includes Canvas, Python, and Guided
     const toggle = page.locator('[data-testid="canvas-python-toggle"]');

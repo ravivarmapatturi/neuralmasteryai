@@ -11,6 +11,10 @@ interface AuthContextValue {
   syncUser: User | null;
   /** True while the visitor is on their automatic guest account. */
   isGuest: boolean;
+  /** Creates the visitor's guest account if they have none yet. Called on the
+   * first action worth saving (XP, love, feedback), not on page load, so
+   * readers who only browse, and search-engine crawlers, never create one. */
+  ensureAccount: () => Promise<void>;
   /** True only until Firebase's first onAuthStateChanged callback fires --
    * lets a consumer avoid flashing "signed out" UI before the real answer
    * (a persisted session, restored from IndexedDB) is known. */
@@ -63,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     Promise.all([import('../lib/firebase'), import('firebase/auth')]).then(
-      ([{ auth }, { onAuthStateChanged, getRedirectResult, signInAnonymously }]) => {
+      ([{ auth }, { onAuthStateChanged, getRedirectResult }]) => {
         if (cancelled) return;
         getRedirectResult(auth).catch(() => {});
 
@@ -74,11 +78,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             import('../lib/guestName').then(({ ensureGuestName }) => ensureGuestName(u))
               .then((name) => { if (name) setNameTick((x) => x + 1); })
               .catch(() => { /* name is cosmetic; Guest_XXXX fallback stays */ });
-          }
-          // Every visitor gets a guest account automatically, so progress saves
-          // from the first visit. Signing in later upgrades it in place.
-          if (!u && typeof signInAnonymously === 'function') {
-            try { void signInAnonymously(auth)?.catch?.(() => {}); } catch { /* guest sign-in is best-effort */ }
           }
         });
       },
@@ -133,6 +132,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const ensureAccount = useCallback(async () => {
+    const [{ auth }, { signInAnonymously }] = await Promise.all([import('../lib/firebase'), import('firebase/auth')]);
+    if (auth.currentUser) return;
+    await signInAnonymously(auth);
+  }, []);
+
   const signUpWithEmail = useCallback(async (email: string, password: string) => {
     const [{ auth }, { createUserWithEmailAndPassword, EmailAuthProvider, linkWithCredential }] = await Promise.all([import('../lib/firebase'), import('firebase/auth')]);
     const guest = auth.currentUser?.isAnonymous ? auth.currentUser : null;
@@ -167,8 +172,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, syncUser: account, isGuest, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, signOutUser }),
-    [user, account, isGuest, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, signOutUser],
+    () => ({ user, syncUser: account, isGuest, ensureAccount, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, signOutUser }),
+    [user, account, isGuest, ensureAccount, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, signOutUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

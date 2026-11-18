@@ -251,7 +251,7 @@ function mayListOnLeaderboard(user: User, events: AwardEvent[]) {
  * deterministic in tests, even without fake timers involved at all.
  */
 export function GamificationProvider({ children }: { children: React.ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, ensureAccount } = useAuth();
   const [events, setEvents] = useState<AwardEvent[]>([]);
   // `award()` reads this ref, never the `events` state closure directly.
   // React batches/defers state updates, so two award() calls firing back
@@ -456,6 +456,8 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
     (permalink: string, kind: AwardEvent['kind'], points: number, hintUsed?: boolean) => {
       const events = eventsRef.current; // see eventsRef's own comment: never read the `events` state closure here
       if (hasAward(events, permalink, kind)) return; // already awarded once, ever -- no double-counting on repeat marks/reruns
+      // first XP of a visitor with no account: create their guest account now (saved locally first, merged on creation)
+      if (!user) void ensureAccount().catch(() => { /* stays local-only; retried on the next award */ });
       const now = new Date(Date.now());
       const nextEvents: AwardEvent[] = [
         ...events,
@@ -525,7 +527,7 @@ export function GamificationProvider({ children }: { children: React.ReactNode }
 
       commit(nextEvents);
     },
-    [commit, user],
+    [commit, user, ensureAccount],
   );
 
 

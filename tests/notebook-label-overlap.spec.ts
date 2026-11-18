@@ -87,7 +87,7 @@ for (const route of ROUTES) {
       } catch {}
     });
     await page.setViewportSize({ width: WIDTHS[0], height: 900 });
-    await page.goto(`/${route}`, { waitUntil: 'networkidle', timeout: 120000 });
+    await page.goto(`/${route}`, { waitUntil: 'load', timeout: 120000 });
     await page.locator('article.prose h1').waitFor({ state: 'visible', timeout: 60000 });
     await page.waitForFunction(() => (document.querySelector('article.prose')?.innerText.length ?? 0) > 150, { timeout: 60000 });
     await page.locator('article svg').first().waitFor({ state: 'attached', timeout: 60000 });
