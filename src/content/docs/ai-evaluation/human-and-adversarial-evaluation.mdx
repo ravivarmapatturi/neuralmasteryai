@@ -4,11 +4,20 @@ sidebar_position: 5
 description: "Human eval methodology and adversarial red-teaming -- two structurally different rigor gaps, one hiding as noise, the other invisible until attacked."
 ---
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
 
 import CohensKappaDiagram from '../../../viz/diagrams/CohensKappaDiagram';
 import StatisticalPowerDiagram from '../../../viz/diagrams/StatisticalPowerDiagram';
 import EloRatingDiagram from '../../../viz/diagrams/EloRatingDiagram';
 import AdversarialRobustnessDiagram from '../../../viz/diagrams/AdversarialRobustnessDiagram';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
+<ELI5>
+
+Automated scores miss subjective quality and adversarial failures. Human judgments need agreement and enough examples to separate a real improvement from noise; adversarial review needs inputs designed to expose weaknesses.
+
+</ELI5>
 
 # Human & Adversarial Evaluation
 
@@ -86,3 +95,36 @@ print(f"Need {required_n:.0f} raters per group for 80% power -- know this BEFORE
 ```
 
 AI Evaluation section complete. Next: [ML System Design](/docs/ml-system-design/roadmap) — where these evaluation choices become part of a production system's design from the start, not bolted on afterward.
+
+## Why it exists
+
+Automated scores miss subjective quality and adversarial failures. Human judgments need agreement and enough examples to separate a real improvement from noise; adversarial review needs inputs designed to expose weaknesses.
+
+## The big picture
+
+<PenFlow ariaLabel="ai-evaluation human-and-adversarial-evaluation overview" rows={[{ steps: { title: 'Define judgment', lines: ['specific rubric and target effect'], tone: 'blue' } }, { steps: { title: 'Check raters', lines: ['agreement beyond chance'], tone: 'purple' } }, { steps: { title: 'Size the study', lines: ['power before recruiting'], tone: 'orange' } }, { steps: { title: 'Attack the system', lines: ['adversarial cases feed regression tests'], tone: 'green' } }]} caption="specific rubric and target effect." />
+
+<Worksheet title="Power study inputs" ariaLabel="Power study inputs" stages={[{ tag: "Inputs", color: "yellow", note: "The example asks for enough raters to detect a five percentage point difference.", grid: { head: ['', 'value'], rows: [{ label: 'baseline proportion', cells: ['0.50'] }, { label: 'target proportion', cells: ['0.55'] }, { label: 'significance level', cells: ['0.05'] }, { label: 'desired power', cells: ['0.80'] }] } }]} />
+
+## Worked example
+
+The power calculation uses p1=0.55, p2=0.50, alpha=0.05 and target power=0.80; the page code computes required group size from those inputs.
+
+## Try it yourself
+
+# Try it: change the target proportion from 0.55 to 0.60 and compare required sample size; larger effects need fewer raters.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Reporting raw agreement alone | Chance agreement can inflate the score | Use Cohen’s kappa and inspect the confusion matrix |
+| Running an underpowered study | A real difference may look like noise | Calculate sample size before recruitment |
+| Stopping at the red-team report | Findings do not improve the system by themselves | Add confirmed cases to regression tests and fix causes |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| Judgment is objective and cheap to label | Use a validated automated metric with human audits |
+| There is no safe attack test environment | Build a controlled red-team environment first |

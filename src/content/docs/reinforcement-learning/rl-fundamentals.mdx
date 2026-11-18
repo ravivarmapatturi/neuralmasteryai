@@ -4,12 +4,21 @@ sidebar_position: 3
 description: "MDPs, the Bellman equations, and Q-learning derived from one repeating loop -- the formal problem every RL algorithm, from tabular to PPO, is solving."
 ---
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 import MdpLoopDiagram from '../../../viz/diagrams/MdpLoopDiagram';
 import ReturnDiscountingDiagram from '../../../viz/diagrams/ReturnDiscountingDiagram';
 import GridWorldBellmanDiagram from '../../../viz/diagrams/GridWorldBellmanDiagram';
 import QValueUpdateDiagram from '../../../viz/diagrams/QValueUpdateDiagram';
 import QLearningVsSarsaCliffDiagram from '../../../viz/diagrams/QLearningVsSarsaCliffDiagram';
+
+<ELI5>
+
+A sequence of decisions cannot be judged by immediate reward alone: an action can change what happens later. MDPs make those dependencies explicit, and Bellman updates turn long-term value into repeated local calculations.
+
+</ELI5>
 
 # RL Fundamentals
 
@@ -99,6 +108,8 @@ The distinction generalizes to every RL algorithm, and there's no better place t
 
 ```python
 import numpy as np
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Value iteration -- the exact backup the grid diagram animates above.
 def value_iteration(P, R, gamma, n_states, n_actions, iterations=100):
@@ -115,4 +126,35 @@ def q_learning_update(Q, s, a, r, s_next, alpha=0.5, gamma=0.9):
     return Q
 ```
 
-Next: [Advanced RL](/docs/reinforcement-learning/advanced-rl) — scaling these tabular ideas up with deep learning, and the variants (offline RL, imitation learning) that relax this section's core assumptions.
+## Why it exists
+
+A sequence of decisions cannot be judged by immediate reward alone: an action can change what happens later. MDPs make those dependencies explicit, and Bellman updates turn long-term value into repeated local calculations.
+
+## The big picture
+
+<PenFlow ariaLabel="reinforcement-learning rl-fundamentals overview" rows={[{ steps: { title: 'State and action', lines: ['the current situation and choice'], tone: 'blue' } }, { steps: { title: 'Transition and reward', lines: ['next state plus immediate feedback'], tone: 'purple' } }, { steps: { title: 'Value backup', lines: ['reward + discounted next value'], tone: 'orange' } }, { steps: { title: 'Improve policy', lines: ['choose actions with higher expected return'], tone: 'green' } }]} caption="the current situation and choice." />
+
+<Worksheet title="One Q-learning update" ariaLabel="One Q-learning update" stages={[{ tag: "Inputs", color: "yellow", note: "Using the page defaults and an initially zero next-state row: target = r + 0.9 × max Q(next); Q moves halfway toward that target.", grid: { head: ['', 'value'], rows: [{ label: 'alpha', cells: ['0.5'] }, { label: 'gamma', cells: ['0.9'] }, { label: 'current Q', cells: ['0.0'] }, { label: 'reward r', cells: ['1.0'] }, { label: 'max Q(next)', cells: ['0.0'] }, { label: 'updated Q', cells: ['0.5'] }] } }]} />
+
+## Worked example
+
+With alpha=0.5, gamma=0.9, Q=0, reward=1 and next-state max=0, target=1 and updated Q=0.5.
+
+## Try it yourself
+
+# Try it: set max Q(next)=2.0 and reward=1.0; compute the target and updated Q using alpha=0.5 and gamma=0.9.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Using the wrong next action value | Q-learning uses the best next action while exploring | Use max over next-state actions in its target |
+| Choosing gamma without considering horizon | A high discount values distant outcomes strongly | Match discounting to task duration |
+| Using Q-learning’s target for SARSA | SARSA follows the actual next action | Use Q(s',a') in SARSA and max Q in Q-learning |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| Actions do not affect future states | A bandit may fit with less machinery |
+| The transition model is known and planning is enough | Use dynamic programming or search |

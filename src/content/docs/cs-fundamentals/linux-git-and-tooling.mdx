@@ -4,11 +4,20 @@ sidebar_position: 6
 description: "Real shell commands, Git internals (blobs, trees, rebase vs. merge), and SSH/systemd/cron essentials every AI engineering job assumes you already know."
 ---
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
 
 import PipeChainDiagram from '../../../viz/diagrams/PipeChainDiagram';
 import GitObjectModelDiagram from '../../../viz/diagrams/GitObjectModelDiagram';
 import RebaseVsMergeDiagram from '../../../viz/diagrams/RebaseVsMergeDiagram';
 import CompiledVsInterpretedDiagram from '../../../viz/diagrams/CompiledVsInterpretedDiagram';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
+<ELI5>
+
+Training and serving jobs often run on Linux hosts, where logs, permissions, processes and GPU use are visible through shell tools. Understanding Git objects and process tools makes failures easier to locate and safer to repair.
+
+</ELI5>
 
 # Linux, Git & Developer Tooling
 
@@ -210,4 +219,35 @@ git tag                                                 # list all tags in this 
 
 <CompiledVsInterpretedDiagram />
 
-Next: [Software Engineering Practice](/docs/cs-fundamentals/software-engineering-practices) — turning this tooling fluency into code that survives contact with a team and a production system.
+## Why it exists
+
+Training and serving jobs often run on Linux hosts, where logs, permissions, processes and GPU use are visible through shell tools. Understanding Git objects and process tools makes failures easier to locate and safer to repair.
+
+## The big picture
+
+<PenFlow ariaLabel="cs-fundamentals linux-git-and-tooling overview" rows={[{ steps: { title: 'Observe', lines: ['logs, processes, GPU use'], tone: 'blue' } }, { steps: { title: 'Isolate', lines: ['filter output and inspect permissions'], tone: 'purple' } }, { steps: { title: 'Change safely', lines: ['edit config or repair Git history'], tone: 'orange' } }, { steps: { title: 'Keep services running', lines: ['SSH, systemd, cron and hooks'], tone: 'green' } }]} caption="logs, processes, GPU use." />
+
+<Worksheet title="Debug a stuck run from its evidence" ariaLabel="Debug a stuck run from its evidence" stages={[{ tag: "Inputs", color: "yellow", note: "The shell sequence filters logs, checks the GPU, then locates and stops the process.", grid: { head: ['', 'command purpose'], rows: [{ label: 'last 20 loss values', cells: ['grep + tail'] }, { label: 'GPU utilization and memory', cells: ['nvidia-smi'] }, { label: 'process matching train.py', cells: ['ps aux | grep'] }, { label: 'force stop only as last resort', cells: ['kill -9'] }] } }]} />
+
+## Worked example
+
+The shell sequence filters the log, checks GPU activity, and inspects the matching process before taking action.
+
+## Try it yourself
+
+# Try it: replace `kill -9` with `kill` first and inspect whether the process exits cleanly.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Using kill -9 first | It prevents cleanup and checkpoint flushing | Try normal termination before forcing exit |
+| Rebasing shared commits | Rebase creates new commit hashes and splits history | Rebase private work; merge shared work |
+| Granting broad permissions | A quick fix can expose files unnecessarily | Inspect permissions and change only what is needed |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| You need managed cluster operations | Use your platform operations guide |
+| You need production service design | Use MLOps architecture and deployment pages |

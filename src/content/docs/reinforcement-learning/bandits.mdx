@@ -4,12 +4,13 @@ sidebar_position: 5
 description: "Multi-armed and contextual bandits: regret, epsilon-greedy, UCB1 and Thompson sampling simulated in code, LinUCB, and off-policy evaluation of a new policy from logged data."
 ---
 
-
 import BanditRegretRaceDiagram from '../../../viz/diagrams/BanditRegretRaceDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Multi-Armed & Contextual Bandits
 
@@ -139,24 +140,38 @@ print(f"logged rounds that showed 1: {int((actions == 1).sum())} of {n}; each ca
 Store the probability of the chosen action with every logged decision. Without it, off-policy evaluation is impossible and every new policy has to be tested live with an A/B test.
 </NotebookCallout>
 
-## Common Problems & Fixes
+## Why it exists
 
-| Problem | Cause | Fix |
+The name comes from a row of slot machines with unknown payout rates. Every pull teaches you about one option but gives up the chance to learn about another; bandits formalize that explore/exploit tradeoff.
+
+## The big picture
+
+<PenFlow ariaLabel="reinforcement-learning bandits overview" rows={[{ steps: { title: 'Choose an arm', lines: ['each option has an unknown reward rate'], tone: 'blue' } }, { steps: { title: 'Observe reward', lines: ['update only the chosen option'], tone: 'purple' } }, { steps: { title: 'Balance uncertainty and reward', lines: ['ε-greedy, UCB1 or Thompson sampling'], tone: 'orange' } }, { steps: { title: 'Evaluate safely', lines: ['reweight logged actions with propensity'], tone: 'green' } }]} caption="each option has an unknown reward rate." />
+
+<Worksheet title="Off-policy IPS example" ariaLabel="Off-policy IPS example" stages={[{ tag: "Inputs", color: "yellow", note: "The printed sample uses 50,000 logged rounds; article 1 appeared 2,482 times and each observation receives weight 20.", grid: { head: ['', 'printed value'], rows: [{ label: 'logged click rate', cells: ['0.0400'] }, { label: 'IPS estimate for article 1', cells: ['0.0550'] }, { label: 'true article 1 click rate', cells: ['0.0600'] }, { label: 'rounds showing article 1', cells: ['2,482 of 50,000'] }, { label: 'importance weight', cells: ['20'] }] } }]} />
+
+## Worked example
+
+In the printed run, the old policy click rate is 0.0400; IPS estimates article 1 at 0.0550 versus true 0.0600 from 2,482 logged rounds weighted by 20.
+
+## Try it yourself
+
+# Try it: set eps = 0.0. Article 1 is never logged, so there is no logged evidence to estimate its reward.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
 | --- | --- | --- |
-| A once-best arm keeps winning after it got worse | Rewards change over time | Discount old observations or use a sliding window |
-| Estimates are biased towards fast feedback | Rewards arrive hours later | Delayed-feedback corrections; update on a schedule |
-| New items never get shown | Exploitation dominates; no prior | Optimistic priors for new arms; a minimum exploration rate |
-| Offline estimates swing wildly | Large importance weights | Clip weights, use self-normalised IPS or doubly robust estimators |
-| Clicks go up, long-term satisfaction goes down | Click is a proxy reward | Reward a later signal, such as dwell time or retention |
+| Never exploring new arms | They never collect feedback | Keep exploration or use optimistic priors |
+| Using huge IPS weights without checking variance | Rare actions dominate estimates | Clip weights or use SNIPS and report uncertainty |
+| Optimizing clicks alone | Clicks can conflict with satisfaction | Reward the outcome you actually value |
 
-## When *Not* to Use It
+## When not to use it
 
 | Situation | Better choice |
 | --- | --- |
-| Today's action changes tomorrow's options | Full RL with states; see [RL Fundamentals](/docs/reinforcement-learning/rl-fundamentals) |
-| Two variants, a fixed decision date, and a need for clean statistics | A classic A/B test |
-| Hundreds of thousands of arms | A learned ranking model with exploration on top |
-| No way to observe the reward | Bandits need feedback on every round |
+| Actions change future states | Use a full MDP and RL |
+| Two variants need a fixed-date experiment | Use a randomized A/B test |
 
 ## Remember
 

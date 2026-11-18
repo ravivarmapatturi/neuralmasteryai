@@ -4,12 +4,21 @@ sidebar_position: 4
 description: "LLM-as-judge position/verbosity bias, judge validation, and agent trajectory evaluation -- why the thing doing the measuring needs its own evaluation too."
 ---
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 import JudgePositionBiasDiagram from '../../../viz/diagrams/JudgePositionBiasDiagram';
 import JudgeVerbosityBiasDiagram from '../../../viz/diagrams/JudgeVerbosityBiasDiagram';
 import JudgeValidationDiagram from '../../../viz/diagrams/JudgeValidationDiagram';
 import AgentTrajectoryDiagram from '../../../viz/diagrams/AgentTrajectoryDiagram';
 import { Remember } from '../../../components/content/Remember';
+
+<ELI5>
+
+A judge can be biased by presentation, a RAG system can fail at different pipeline stages, and an agent can reach the right answer through an unreliable trajectory. Each system needs checks matched to what it produces.
+
+</ELI5>
 
 # LLM, RAG & Agent Evaluation
 
@@ -104,6 +113,9 @@ The same check the position/verbosity diagrams above simulate, runnable against 
 
 ```python
 import numpy as np
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 from scipy.stats import pearsonr
 
 # Position bias: run every pairwise comparison in both orders, flag flips.
@@ -119,4 +131,35 @@ if abs(r) > 0.3 and p_value < 0.01:
     print(f"Judge score correlates with length (r={r:.2f}) -- likely verbosity bias.")
 ```
 
-Next: [Human & Adversarial Evaluation](/docs/ai-evaluation/human-and-adversarial-evaluation) — where automated evaluation isn't enough on its own.
+## Why it exists
+
+A judge can be biased by presentation, a RAG system can fail at different pipeline stages, and an agent can reach the right answer through an unreliable trajectory. Each system needs checks matched to what it produces.
+
+## The big picture
+
+<PenFlow ariaLabel="ai-evaluation llm-rag-agent-evaluation overview" rows={[{ steps: { title: 'Single response', lines: ['check judge position and verbosity bias'], tone: 'blue' } }, { steps: { title: 'Retrieved answer', lines: ['separate retrieval, ranking and generation'], tone: 'purple' } }, { steps: { title: 'Agent trajectory', lines: ['score success, tool calls, steps and cost'], tone: 'orange' } }, { steps: { title: 'Regression gate', lines: ['run the golden set after each change'], tone: 'green' } }]} caption="check judge position and verbosity bias." />
+
+<Worksheet title="Judge-bias smoke test" ariaLabel="Judge-bias smoke test" stages={[{ tag: "Inputs", color: "yellow", note: "The code flags a judge whose scores track response length more than quality.", grid: { head: ['', 'threshold'], rows: [{ label: 'correlation magnitude', cells: ['0.30'] }, { label: 'p-value', cells: ['0.01'] }, { label: 'warning condition', cells: ['abs(r) > 0.3 and p < 0.01'] }] } }]} />
+
+## Worked example
+
+The smoke test flags a possible verbosity bias when |r| exceeds 0.30 and p is below 0.01.
+
+## Try it yourself
+
+# Try it: vary response lengths while keeping their quality fixed; a score correlation signals verbosity bias.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Trusting one judge ordering | Position bias can flip pairwise verdicts | Run both response orders |
+| Scoring only final agent success | A lucky path hides fragile tool use and wasted steps | Inspect trajectories, tool-call accuracy, cost and latency |
+| Combining all RAG stages into one score | The result does not identify which stage failed | Measure retrieval, ranking and generation separately |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The task has no observable outcome | Define the evaluation target before choosing a judge |
+| The transformation is deterministic | Use direct unit tests instead of LLM judges |
