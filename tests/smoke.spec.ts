@@ -154,9 +154,9 @@ test.describe('Visualization', () => {
     await container.locator('svg').first().scrollIntoViewIfNeeded();
     await expect(container.locator('svg').first()).toBeVisible();
 
-    const before = await container.locator('text=/^Step \\d/').innerText();
+    const before = await container.locator('.nm-viz-content').locator('text=/^Step \\d/').innerText();
     await container.getByRole('button', { name: 'Step', exact: true }).click();
-    const after = await container.locator('text=/^Step \\d/').innerText();
+    const after = await container.locator('.nm-viz-content').locator('text=/^Step \\d/').innerText();
     expect(after).not.toBe(before);
     expect(errors.errors()).toEqual([]);
   });
@@ -189,9 +189,9 @@ test.describe('Visualization', () => {
     await expect(container.locator('svg').first()).toBeVisible();
 
     await container.getByRole('button', { name: 'Gradient Descent Lab' }).click();
-    const before = await container.locator('text=/^Step \\d/').innerText();
+    const before = await container.locator('.nm-viz-content').locator('text=/^Step \\d/').innerText();
     await container.getByRole('button', { name: 'Step', exact: true }).click();
-    const after = await container.locator('text=/^Step \\d/').innerText();
+    const after = await container.locator('.nm-viz-content').locator('text=/^Step \\d/').innerText();
     expect(after).not.toBe(before);
     expect(errors.errors()).toEqual([]);
   });
