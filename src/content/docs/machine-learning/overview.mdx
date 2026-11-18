@@ -6,10 +6,11 @@ description: "What learning from data means, made precise: the three choices eve
 
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Machine Learning: The Overview
-
-This section covers classical machine learning: fitting a line through points, splitting data with a tree of yes/no questions, drawing the widest possible boundary between classes, finding clusters with no labels at all. These methods came before deep learning, and they're still the right tool for much of the data businesses actually have. This page sets up the frame that every later page uses. It defines what "learning" means precisely, shows that every algorithm in the section is three choices (a model, a loss and an optimizer), explains why minimizing error on your data isn't the same as doing well on new data, runs six standard algorithms on one real dataset to show what that looks like, and says when machine learning is the wrong approach altogether. [Mathematics for AI](/docs/mathematics-for-ai/overview) covers the calculus and linear algebra the derivations use.
 
 <ELI5>
 
@@ -18,6 +19,35 @@ A child learning to tell cats from dogs isn't given a rulebook. They see lots of
 Machine learning is that, done by a computer: show it examples with answers, let it adjust a set of numbers until its answers on those examples are good, and then use it on new examples. The hard part, and most of this section, is making sure "good on the examples" turns into "good on new ones". Everything below is that idea made exact.
 
 </ELI5>
+
+## Why it exists
+
+This section covers classical machine learning: fitting a line through points, splitting data with a tree of yes/no questions, drawing the widest possible boundary between classes, finding clusters with no labels at all. These methods came before deep learning, and they're still the right tool for much of the data businesses actually have. This page sets up the frame that every later page uses. It defines what "learning" means precisely, shows that every algorithm in the section is three choices (a model, a loss and an optimizer), explains why minimizing error on your data isn't the same as doing well on new data, runs six standard algorithms on one real dataset to show what that looks like, and says when machine learning is the wrong approach altogether. [Mathematics for AI](/docs/mathematics-for-ai/overview) covers the calculus and linear algebra the derivations use.
+
+## The big picture
+
+<PenFlow title="Three choices shape a learning algorithm" ariaLabel="Machine learning path from examples through model, loss, and optimizer to predictions" rows={[
+  { steps: { title: 'Examples', lines: ['Inputs with observed outcomes'], tone: 'blue' } },
+  { steps: { title: 'Model', lines: ['Choose which functions are allowed'], tone: 'purple' } },
+  { steps: { title: 'Loss', lines: ['Define which errors count'], tone: 'green' } },
+  { steps: { title: 'Optimizer', lines: ['Search for a low-loss function'], tone: 'orange' } },
+]} caption="Every algorithm in this section makes these choices before it can predict new examples." />
+
+
+<Worksheet title="Compare six models on one dataset" ariaLabel="Cross-validation accuracies from the six-model breast cancer comparison" stages={[{ tag: "Five-fold results", color: "yellow", note: "One scikit-learn 1.7 run on 569 tumours; the standard deviations show variation across folds.", grid: { head: ['Model', 'Mean accuracy', 'Fold spread'], rows: [{ label: 'Majority baseline', cells: ['0.627', '0.004'] }, { label: 'Logistic regression', cells: ['0.979', '0.014'] }, { label: 'k-nearest neighbours', cells: ['0.965', '0.021'] }, { label: 'SVM', cells: ['0.977', '0.007'] }, { label: 'Random forest', cells: ['0.965', '0.015'] }, { label: 'Gradient boosting', cells: ['0.970', '0.009'] }] } }]} />
+
+## The chapters
+
+- [Workflow fundamentals](/docs/machine-learning/ml-workflow-fundamentals): split data and measure generalization honestly.
+- [Supervised learning](/docs/machine-learning/supervised-learning): connect labels, losses, and model families.
+- [Linear models](/docs/machine-learning/linear-regression): fit and regularize predictions.
+- [Trees and ensembles](/docs/machine-learning/decision-tree): build rules and combine models.
+- [Unsupervised learning](/docs/machine-learning/unsupervised-learning): find structure without labels.
+
+## Start here
+
+Read the [Machine Learning Roadmap](/docs/machine-learning/roadmap), then begin with [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) before fitting a model.
+
 
 ## 1. What "Learning" Means
 
@@ -107,11 +137,40 @@ That sounds bleak, but the resolution is practical. Real problems are not drawn 
 
 Deep learning dominates when the input is raw perception or language: pixels, audio, text. Those inputs have a structure (spatial, temporal, sequential) that neural network architectures are designed to exploit, and there are usually huge amounts of data. Classical methods can't learn useful features from raw pixels.
 
-For **tabular data**, rows and columns as in a spreadsheet or a database table, the picture reverses. Grinsztajn, Oyallon and Varoquaux (2022) benchmarked tree-based models against deep architectures on 45 tabular datasets and found tree ensembles (XGBoost, random forests) still outperformed them on medium-sized data, while training far faster. Their analysis pointed to three reasons: tabular targets are often irregular functions that trees fit easily and neural networks smooth over; tabular data has many uninformative features, which trees ignore more robustly; and the columns have individual meanings, so the rotation-invariance of standard networks is a handicap rather than a help. Newer tabular foundation models have narrowed the gap on small datasets, but gradient-boosted trees remain the default to beat (see [XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost)).
+For **tabular data**, rows and columns as in a spreadsheet or a database table, the picture reverses. Grinsztajn, Oyallon and Varoquaux (2022) benchmarked tree-based models against deep architectures on 45 tabular datasets and found tree ensembles (XGBoost, random forests) still outperformed them on medium-sized data, while training far faster. Their analysis pointed to three reasons: tabular targets are often irregular functions that trees fit easily and neural networks smooth over; tabular data has many uninformative features, which trees ignore more reliably; and the columns have individual meanings, so the rotation-invariance of standard networks is a handicap rather than a help. Newer tabular foundation models have narrowed the gap on small datasets, but gradient-boosted trees remain the default to beat (see [XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost)).
 
 Classical methods also win when you need to explain a prediction (a linear model's weights and a short tree's splits can be read directly), when data is small, when training must be cheap or fast, or when the model must run on modest hardware. And the ideas carry over: loss functions, gradient descent, regularization, bias and variance, cross-validation, and calibration are all introduced in this section in their simplest form, and every one reappears in [Deep Learning](/docs/deep-learning/overview).
 
-## 6. Minimal Implementation: Six Models on One Dataset
+## 7. How This Section Is Organized
+
+The section follows the three choices and the generalization problem.
+
+**Start with the discipline.** [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) covers train, validation and test splits, cross-validation, data leakage, missing data and imbalanced classes. Most real projects that fail do so here, whatever the algorithm.
+
+**Supervised learning**, learning from labelled examples. The [Supervised Learning](/docs/machine-learning/supervised-learning) hub surveys every algorithm, and each has its own full-depth page:
+
+- *Linear models*: [linear regression](/docs/machine-learning/linear-regression) (the one to derive completely by hand first), [ridge](/docs/machine-learning/ridge-regression), [lasso](/docs/machine-learning/lasso-regression), [elastic net](/docs/machine-learning/elastic-net), [logistic regression](/docs/machine-learning/logistic-regression), and the [SGD](/docs/machine-learning/sgd-classifier-regressor) framing that trains them all.
+- *Trees and ensembles*: [decision trees](/docs/machine-learning/decision-tree), [random forests](/docs/machine-learning/random-forest), [boosting](/docs/machine-learning/boosting), [XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost).
+- *Margins, neighbours and generative classifiers*: [SVMs](/docs/machine-learning/support-vector-machines), [k-nearest neighbours](/docs/machine-learning/k-nearest-neighbors), [naive Bayes, LDA & QDA](/docs/machine-learning/naive-bayes-lda-qda).
+- *Problems with their own structure*: [time series forecasting](/docs/machine-learning/time-series-forecasting), [survival analysis](/docs/machine-learning/survival-analysis), [recommender systems](/docs/machine-learning/recommender-systems), [learning to rank](/docs/machine-learning/learning-to-rank).
+
+**Unsupervised learning**, finding structure without labels. The [Unsupervised Learning](/docs/machine-learning/unsupervised-learning) hub covers clustering ([k-means & hierarchical](/docs/machine-learning/kmeans-hierarchical-clustering), [DBSCAN & HDBSCAN](/docs/machine-learning/dbscan-hdbscan), [GMMs & spectral clustering](/docs/machine-learning/gmm-spectral-clustering)), dimensionality reduction ([PCA & SVD](/docs/machine-learning/pca-svd), [ICA, t-SNE & UMAP](/docs/machine-learning/ica-tsne-umap)), [association rules](/docs/machine-learning/association-rules), [topic modeling](/docs/machine-learning/topic-modeling) and [anomaly detection](/docs/machine-learning/anomaly-detection).
+
+**Judging and tuning models.** [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) (read it after your first algorithm, when there are predictions to evaluate), [Hyperparameter Optimization](/docs/machine-learning/hyperparameter-optimization), and [Uncertainty Estimation & Conformal Prediction](/docs/machine-learning/uncertainty-estimation-and-conformal-prediction).
+
+If you're new to machine learning, read in this order: Workflow Fundamentals, Linear Regression, Logistic Regression, Model Evaluation, Decision Trees, then whatever your problem needs. The [roadmap](/docs/machine-learning/roadmap) lays out the full path.
+
+<GoDeeper title="Go deeper: the two cultures">
+
+In 2001 Leo Breiman, who invented random forests and co-invented CART trees, wrote an essay arguing that statistics had split into two cultures. The **data modelling** culture assumes the data comes from a known stochastic model (say, linear with Gaussian noise), fits its parameters, and draws conclusions from them: this coefficient is significantly positive. The **algorithmic modelling** culture treats the process as unknown and judges a model only by how well it predicts held-out data.
+
+This section uses both, and it matters which one you're in. When you report a logistic regression's odds ratios as findings about the world, you're in the first culture, and the model's assumptions (linearity in the log-odds, independent observations, no omitted confounders) are what make the conclusions valid. When you pick gradient boosting because it scored best in cross-validation, you're in the second, and the model's internals may mean nothing at all. Good prediction does not imply correct explanation: a model can predict hospital readmission well by using a feature that is a consequence of illness rather than a cause of it. Breiman's point was that prediction accuracy is an honest, checkable standard; the caution that goes with it is that it answers "what will happen?" and not "what would happen if we intervened?", which needs causal methods.
+
+</GoDeeper>
+
+## Worked example
+
+### 6. Minimal Implementation: Six Models on One Dataset
 
 The best way to see Sections 3 to 5 is to run several algorithms with very different biases on the same data, measured the same honest way. The data is the Wisconsin breast-cancer dataset: 569 tumours, 30 measurements of cell nuclei each, labelled benign or malignant. Every model is scored by 5-fold cross-validation, with scaling inside the pipeline where the model needs it (see [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals)):
 
@@ -145,9 +204,8 @@ for name, model in models.items():
     print(f"{name:24s} accuracy {scores.mean():.3f} ± {scores.std():.3f}   ({time.perf_counter() - start:.2f} s)")
 ```
 
+```output
 Output (scikit-learn 1.7; timings from one run on one machine):
-
-```
 always predict majority  accuracy 0.627 ± 0.004   (0.01 s)
 logistic regression      accuracy 0.979 ± 0.014   (0.10 s)
 k-nearest neighbours     accuracy 0.965 ± 0.021   (0.05 s)
@@ -165,34 +223,27 @@ Four things to take from it:
 
 The standard workflow follows directly: start with a trivial baseline and a simple model, add complexity only when held-out performance says it pays, and keep the simplest model that's statistically as good as the best.
 
-## 7. How This Section Is Organized
+## Try it yourself
 
-The section follows the three choices and the generalization problem.
+<RunnableCode code={`scores = [0.627, 0.979, 0.965, 0.977, 0.965, 0.970]
+baseline = scores[0]
+best = max(scores[1:])
+print("best cross-validation accuracy:", best)
+print("gain over baseline:", round(best - baseline, 3))
 
-**Start with the discipline.** [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) covers train, validation and test splits, cross-validation, data leakage, missing data and imbalanced classes. Most real projects that fail do so here, whatever the algorithm.
+# Try it: replace the best model score with 0.94 and recompute the gain.`} />
 
-**Supervised learning**, learning from labelled examples. The [Supervised Learning](/docs/machine-learning/supervised-learning) hub surveys every algorithm, and each has its own full-depth page:
+## Common mistakes
 
-- *Linear models*: [linear regression](/docs/machine-learning/linear-regression) (the one to derive completely by hand first), [ridge](/docs/machine-learning/ridge-regression), [lasso](/docs/machine-learning/lasso-regression), [elastic net](/docs/machine-learning/elastic-net), [logistic regression](/docs/machine-learning/logistic-regression), and the [SGD](/docs/machine-learning/sgd-classifier-regressor) framing that trains them all.
-- *Trees and ensembles*: [decision trees](/docs/machine-learning/decision-tree), [random forests](/docs/machine-learning/random-forest), [boosting](/docs/machine-learning/boosting), [XGBoost, LightGBM & CatBoost](/docs/machine-learning/xgboost-lightgbm-catboost).
-- *Margins, neighbours and generative classifiers*: [SVMs](/docs/machine-learning/support-vector-machines), [k-nearest neighbours](/docs/machine-learning/k-nearest-neighbors), [naive Bayes, LDA & QDA](/docs/machine-learning/naive-bayes-lda-qda).
-- *Problems with their own structure*: [time series forecasting](/docs/machine-learning/time-series-forecasting), [survival analysis](/docs/machine-learning/survival-analysis), [recommender systems](/docs/machine-learning/recommender-systems), [learning to rank](/docs/machine-learning/learning-to-rank).
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Treating the top score as a universal winner | Fold noise and dataset choice affect the ranking. | Compare on the target data and inspect uncertainty. |
+| Skipping a simple baseline | A model score has no useful context by itself. | Report the majority or constant baseline beside it. |
+| Reading prediction as explanation | Predictive patterns need not be causal. | Use a causal design for intervention questions. |
 
-**Unsupervised learning**, finding structure without labels. The [Unsupervised Learning](/docs/machine-learning/unsupervised-learning) hub covers clustering ([k-means & hierarchical](/docs/machine-learning/kmeans-hierarchical-clustering), [DBSCAN & HDBSCAN](/docs/machine-learning/dbscan-hdbscan), [GMMs & spectral clustering](/docs/machine-learning/gmm-spectral-clustering)), dimensionality reduction ([PCA & SVD](/docs/machine-learning/pca-svd), [ICA, t-SNE & UMAP](/docs/machine-learning/ica-tsne-umap)), [association rules](/docs/machine-learning/association-rules), [topic modeling](/docs/machine-learning/topic-modeling) and [anomaly detection](/docs/machine-learning/anomaly-detection).
+## When not to use it
 
-**Judging and tuning models.** [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) (read it after your first algorithm, when there are predictions to evaluate), [Hyperparameter Optimization](/docs/machine-learning/hyperparameter-optimization), and [Uncertainty Estimation & Conformal Prediction](/docs/machine-learning/uncertainty-estimation-and-conformal-prediction).
-
-If you're new to machine learning, read in this order: Workflow Fundamentals, Linear Regression, Logistic Regression, Model Evaluation, Decision Trees, then whatever your problem needs. The [roadmap](/docs/machine-learning/roadmap) lays out the full path.
-
-<GoDeeper title="Go deeper: the two cultures">
-
-In 2001 Leo Breiman, who invented random forests and co-invented CART trees, wrote an essay arguing that statistics had split into two cultures. The **data modelling** culture assumes the data comes from a known stochastic model (say, linear with Gaussian noise), fits its parameters, and draws conclusions from them: this coefficient is significantly positive. The **algorithmic modelling** culture treats the process as unknown and judges a model only by how well it predicts held-out data.
-
-This section uses both, and it matters which one you're in. When you report a logistic regression's odds ratios as findings about the world, you're in the first culture, and the model's assumptions (linearity in the log-odds, independent observations, no omitted confounders) are what make the conclusions valid. When you pick gradient boosting because it scored best in cross-validation, you're in the second, and the model's internals may mean nothing at all. Good prediction does not imply correct explanation: a model can predict hospital readmission well by using a feature that is a consequence of illness rather than a cause of it. Breiman's point was that prediction accuracy is an honest, checkable standard; the caution that goes with it is that it answers "what will happen?" and not "what would happen if we intervened?", which needs causal methods.
-
-</GoDeeper>
-
-## 8. When *Not* to Use Machine Learning
+### 8. When *Not* to Use Machine Learning
 
 Machine learning is a way to build software from examples. It's the wrong way when the examples, or the need for them, aren't there:
 

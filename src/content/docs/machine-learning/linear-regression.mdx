@@ -12,11 +12,11 @@ import PredictFirst from '../../../viz/primitives/PredictFirst';
 import GradientDescentLoopDiagram from '../../../viz/diagrams/GradientDescentLoopDiagram';
 import TwoPathsDiagram from '../../../viz/diagrams/TwoPathsDiagram';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Linear Regression
-
-[Supervised Learning](/docs/machine-learning/supervised-learning) introduced linear regression in a couple of sentences. This page derives it properly — the cost function, the gradient step by step, the closed-form solution, and where gradient descent actually comes from — because "minimize squared error" means nothing until you've done the derivative by hand at least once.
-
 <ELI5>
 
 Say you're guessing how well a friend will do on a test based on how many hours they studied. Plot "hours vs. score" for everyone you know and you'll see a cloud of dots, not a perfect line — real life is noisy, so no single line hits every point. Linear regression is just a precise way of picking *one best* line through that cloud: out of every line you could draw, it picks the one where the total "distance from the line, squared and added up across every point" is as small as possible. The squaring matters — it means one wildly-wrong guess hurts far more than several slightly-wrong ones.
@@ -24,6 +24,23 @@ Say you're guessing how well a friend will do on a test based on how many hours 
 Everything below is that same idea, made exact: the actual formula for "how wrong," and the actual math for finding the line that minimizes it.
 
 </ELI5>
+
+## Why it exists
+
+[Supervised Learning](/docs/machine-learning/supervised-learning) introduced linear regression in a couple of sentences. This page derives it properly — the cost function, the gradient step by step, the closed-form solution, and where gradient descent actually comes from — because "minimize squared error" means nothing until you've done the derivative by hand at least once.
+
+## The big picture
+
+<PenFlow title="Fit and inspect a straight-line prediction" ariaLabel="Fit and inspect a straight-line prediction" rows={[
+  { steps: { title: 'Measure pairs', lines: ['Record input x and outcome y'], tone: 'blue' } },
+  { steps: { title: 'Fit slope and intercept', lines: ['Choose the line with least squared residuals'], tone: 'purple' } },
+  { steps: { title: 'Predict', lines: ['Apply the line to a new x'], tone: 'green' } },
+  { steps: { title: 'Inspect residuals', lines: ['Look for patterns the line missed'], tone: 'orange' } }
+]} caption="The fitted line summarizes the data, while residuals reveal where that summary fails." />
+
+<Worksheet title="Fit a line by hand" ariaLabel="Fit a line by hand" stages={[{ tag: "Worked numbers", color: "yellow", note: "The points (0, 1), (1, 3), and (2, 5) lie on y = 2x + 1.", grid: { head: ['Input x', 'Observed y', 'Prediction'], rows: [{ label: '0', cells: ['0', '1', '1'] }, { label: '1', cells: ['1', '3', '3'] }, { label: '2', cells: ['2', '5', '5'] }] } }]} />
+
+
 
 <LinearRegressionAtAGlance />
 
@@ -226,8 +243,9 @@ The model — and its statistical guarantees — rely on a few assumptions worth
 
 If you instead saw a curve (points systematically above zero for small/large $x$ and below for the middle, or vice versa), that would signal a nonlinear relationship — linearity violated. If the spread visibly widens or narrows across $x$, that's heteroscedasticity — homoscedasticity violated. This one plot is the fastest real-world check for two of the five assumptions above.
 
-## 9. Minimal Implementation
+## Worked example
 
+### 9. Minimal Implementation
 The entire training loop from Section 6, in plain NumPy — no framework, so every line maps directly to a formula above:
 
 ```python
@@ -276,7 +294,27 @@ Forming $X^TX$ <Mark>squares the condition number</Mark>. If $X$ itself is only 
 
 </GoDeeper>
 
-## 10. When *Not* to Use Linear Regression
+## Try it yourself
+
+<RunnableCode code={`x = [0, 1, 2]
+y = [1, 3, 5]
+x_bar = sum(x) / len(x)
+y_bar = sum(y) / len(y)
+slope = sum((a - x_bar) * (b - y_bar) for a, b in zip(x, y)) / sum((a - x_bar) ** 2 for a in x)
+intercept = y_bar - slope * x_bar
+print("slope:", slope, "intercept:", intercept)
+
+# Try it: change the last y value to 6 and inspect the fitted line.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Extrapolating far beyond the data | A straight line keeps its slope forever. | Treat distant predictions as unsupported. |
+| Reading association as cause | A fitted slope does not remove confounding. | Use a causal design for causal claims. |
+| Ignoring residual shape | Curvature or changing spread breaks assumptions. | Plot residuals against fitted values and inputs. |
+
+## When not to use it
 
 The assumptions in Section 8 aren't just theory — violate them badly enough and the model quietly gives you confident, wrong answers. Reach for something else when:
 
@@ -291,6 +329,31 @@ The assumptions in Section 8 aren't just theory — violate them badly enough an
 
 **Why Ridge comes right after this page:** Section 8 flagged multicollinearity as an assumption violation — in practice, it's one of the most common ones. When features are correlated, $X^TX$ becomes near-singular, and the normal equation's solution becomes wildly sensitive to small changes in the data: tiny noise in $y$ can flip a coefficient's sign or blow up its magnitude, even though predictions stay reasonable. [Ridge Regression](/docs/machine-learning/ridge-regression) fixes exactly this by penalizing large weights, trading a little bias for a lot less variance in the coefficients.
 
+
+## Remember
+
+| Idea | In one line |
+|---|---|
+| Model | $\hat{y}=\mathbf{w}^T\mathbf{x}+b$ maps features to a numeric prediction. |
+| Residual | Observed value minus predicted value. |
+| Squared-error fit | Chooses weights that minimize the average squared residual. |
+| Gradient | Points toward the steepest increase in cost; descend in the opposite direction. |
+| Normal equation | Solves the least-squares system directly when the problem is well conditioned. |
+| Numerical stability | QR or SVD avoids explicitly inverting $X^TX$. |
+| Residual plot | Curvature or changing spread signals a broken assumption. |
+| Extrapolation | A straight line keeps extending, even where the data gives no support. |
+| Ridge | Shrinks weights when correlated features make least squares unstable. |
+
+
 ---
 
 Next: [Ridge Regression](/docs/machine-learning/ridge-regression) — what happens when we penalize large weights — and [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) for how to judge whether the resulting model is actually good.
+
+
+## Sources
+
+- A. M. Legendre, [Nouvelles méthodes pour la détermination des orbites des comètes](https://gallica.bnf.fr/ark:/12148/bpt6k775978), 1805.
+- C. F. Gauss, [Theoria Motus Corporum Coelestium](https://archive.org/details/theoriamotuscorp00gaus), 1809.
+- T. Hastie, R. Tibshirani and J. Friedman, [The Elements of Statistical Learning](https://hastie.su.domains/ElemStatLearn/), 2nd edition, 2009, Chapter 3.
+- scikit-learn, [Ordinary Least Squares](https://scikit-learn.org/stable/modules/linear_model.html#ordinary-least-squares).
+- NumPy, [`numpy.linalg.lstsq`](https://numpy.org/doc/stable/reference/generated/numpy.linalg.lstsq.html).

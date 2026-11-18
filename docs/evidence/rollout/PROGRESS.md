@@ -108,3 +108,38 @@ All static gates pass on the combined 16-page MLOps change set: notebook (0 viol
 Standardized AI Cost Engineering, Caching Strategies, Legal Licensing & Governance, Security & Reproducibility, ML & LLM Testing, Production Reliability, and MLOps Architecture & Roadmap. Added matched cost, latency, legal timeline, confidence interval, and availability worksheets; preserved the security chapter without adding an artificial numeric exercise. Replaced the architecture page's ASCII drawing with lifecycle and ML CI/CD diagrams. Legal references now point to primary EU sources.
 
 Static checks pass: notebook (7 pages/0 violations), MDX, links, math, typecheck, tracker, and diff check. Full Vitest passes (231 files/1,172 tests); the three-viewport SVG guard passes 7/7. Four-view evidence for AI Cost Engineering and MLOps Architecture is saved in `mlops-4/`; desktop-light and phone-dark captures were inspected. Banned-word scan returned no hits. Build skipped because available RAM is below 5 GiB. No push.
+
+### Machine Learning batch 1 — eight pages, locally committed
+
+Pages: overview, roadmap, ML Workflow Fundamentals, Supervised Learning, Linear Regression, Ridge Regression, Lasso Regression, and Elastic Net. Each technical page now opens with the ELI5 box, Why it exists, and a page-specific PenFlow plus Worksheet; it has Worked example, Try it yourself, Common mistakes, When not to use it, Remember, Next, and Sources in the required order. Existing numerical examples and program output remain present in their fences; output blocks now carry the `output` language label. The linear-regression change preserves the old `#9-minimal-implementation` inbound link.
+
+The overview and roadmap gained short path sections, but their original detailed content and runnable checkpoints remain below them to preserve the code/output material required by READ FIRST. This is a partial match to the short-variant rule and is documented in the scorecard rather than marked as fully compliant.
+
+Static gates passed: notebook (8 pages/0 violations), math (1991 pages), MDX (2019/2019), links (2147 routes/0 broken), typecheck, tracker validation, and diff check. Full Vitest passed (231 files/1,172 tests). The three-viewport SVG label guard passed 8/8 after repairing the clipped gradient-descent labels. The new six Pyodide exercises printed the recorded results. Four-view screenshots for Overview and Linear Regression are saved in `ml-1/`; both routes had no console/page errors or horizontal overflow. Available RAM was 3 GiB, so the production build was deferred under the repository threshold. Agy failed to launch (`unknown agent "Antigravity"`); Codex implemented the batch as instructed. No push.
+
+See `ml-1/scorecard.md` and `ml-1/browser-results.json` for per-page notes, route diagnostics, and runtime output.
+
+### Machine Learning batch 1 final structure and rerun
+
+Overview and Roadmap now also carry the hard-rule Worked example, Try it yourself, and Common mistakes headings, with a matching model-score Worksheet and six-stage roadmap Worksheet. Their longer survey material and runnable checkpoints stay in place, so they meet the ordered heading rule while remaining longer than the strict short landing-page variant. The final browser capture JSON contains all eight view captures and runtime output for all eight RunnableCode exercises; console/page errors and overflow are empty. The overlap guard passed 8/8 again after these final page edits.
+
+Final verification rerun: notebook 8/0, math 1991, MDX 2019/2019, links 2147 routes with 0 broken links and 0 broken anchors, typecheck exit 0, full Vitest 231/1,172, tracker validation, and `git diff --check`. The banned-word scan returned no matches. Build remains deferred at 3 GiB available (<5 GiB). See the output and screenshot details in `ml-1/scorecard.md` and `ml-1/browser-results.json`.
+
+```output
+Overview exercise:
+best cross-validation accuracy: 0.979
+gain over baseline: 0.352
+
+Roadmap exercise:
+curvature ratio: 443
+error left in the slow direction: 0.009
+
+Full unit suite:
+Test Files  231 passed (231)
+Tests  1172 passed (1172)
+
+Three-viewport overlap guard:
+8 passed (44.1s)
+```
+
+Linear Regression's final audit added the previously missing `Remember` table and a five-item source list. Its four screenshots were refreshed after that edit. The final browser results still show 8/8 captures, 375px/1440px widths without overflow, and no console/page errors.

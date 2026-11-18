@@ -8,11 +8,11 @@ import SplitCrossValidationDiagram from '../../../viz/diagrams/SplitCrossValidat
 import DataLeakageDiagram from '../../../viz/diagrams/DataLeakageDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # ML Workflow Fundamentals
-
-The [Machine Learning Overview](/docs/machine-learning/overview) described what models do. This page is about the procedure around them: how data is split, how a model is tuned and compared, and how its final score is measured. Every algorithm later in this section assumes this procedure is done right. When it isn't, a model can report 87% accuracy on data that is pure noise, which Section 4 explains and Section 7 demonstrates. Most models that disappoint in production were not bad algorithms; they were measured wrongly.
-
 <ELI5>
 
 A teacher wants to know whether a student understands algebra. If the teacher hands out the exam questions as homework the week before, the student can memorize the answers and score 100% without understanding anything. The score is real, but it measures memory, not algebra.
@@ -20,6 +20,23 @@ A teacher wants to know whether a student understands algebra. If the teacher ha
 A machine learning model is a very good memorizer. The whole workflow below exists to keep the exam questions away from it: to set aside examples it never learns from, so that its score on them measures what it learned rather than what it saw. Everything below is that idea made exact, including the surprising number of ways the exam questions leak into the homework.
 
 </ELI5>
+
+## Why it exists
+
+The [Machine Learning Overview](/docs/machine-learning/overview) described what models do. This page is about the procedure around them: how data is split, how a model is tuned and compared, and how its final score is measured. Every algorithm later in this section assumes this procedure is done right. When it isn't, a model can report 87% accuracy on data that is pure noise, which Section 4 explains and Section 7 demonstrates. Most models that disappoint in production were not bad algorithms; they were measured wrongly.
+
+## The big picture
+
+<PenFlow title="A model evaluation path from untouched test set to final estimate" ariaLabel="A model evaluation path from untouched test set to final estimate" rows={[
+  { steps: { title: 'Set aside', lines: ['Keep 200 test rows unseen'], tone: 'blue' } },
+  { steps: { title: 'Fit inside folds', lines: ['Learn preprocessing from training rows'], tone: 'purple' } },
+  { steps: { title: 'Choose settings', lines: ['Use validation data or inner folds'], tone: 'green' } },
+  { steps: { title: 'Report once', lines: ['Score the untouched test set'], tone: 'orange' } }
+]} caption="A valid score follows the same path as the data: no test information enters fitting or selection." />
+
+<Worksheet title="Keep the test set untouched" ariaLabel="Keep the test set untouched" stages={[{ tag: "Worked numbers", color: "yellow", note: "A 1,000-row dataset split into 600 training, 200 validation, and 200 test examples.", grid: { head: ['Training', 'Validation', 'Test'], rows: [{ label: 'Rows', cells: ['600', '200', '200'] }] } }]} />
+
+
 
 ## 1. The Goal Is Generalization
 
@@ -152,11 +169,11 @@ Real data has holes, extreme values and lopsided classes. Each needs a decision,
 | MAR: missing at random | Missingness depends on *observed* variables | Older patients skip an online form more often, and age is recorded | Imputation from the observed variables can correct for it |
 | MNAR: missing not at random | Missingness depends on the missing value itself | High earners decline to state income | No imputation fully fixes it; the fact of missingness is information |
 
-The practical toolkit: drop a column that is mostly empty; impute numeric values with the median (robust to outliers) and categories with the most frequent value or an explicit "missing" category; or use a model-based imputer that predicts each missing value from the others. In MAR and MNAR cases, add a binary **missingness indicator** per column, so the model can learn that "income not given" is itself predictive. Gradient-boosted tree libraries handle missing values natively by learning which branch to send them down.
+The practical toolkit: drop a column that is mostly empty; impute numeric values with the median (less affected by outliers) and categories with the most frequent value or an explicit "missing" category; or use a model-based imputer that predicts each missing value from the others. In MAR and MNAR cases, add a binary **missingness indicator** per column, so the model can learn that "income not given" is itself predictive. Gradient-boosted tree libraries handle missing values natively by learning which branch to send them down.
 
 The imputer's statistics (the medians) are computed from data, so the imputer is fitted inside the pipeline like everything else.
 
-**Outliers.** An extreme value can be an error (a height of 1,750 cm) or the most important thing in the dataset (a fraudulent transaction). Investigate before removing. If they're errors, fix or drop them; if they're real but hurt a squared-error model, use a robust loss (Huber), a transformation (log), or a model that doesn't care about scale (trees).
+**Outliers.** An extreme value can be an error (a height of 1,750 cm) or the most important thing in the dataset (a fraudulent transaction). Investigate before removing. If they're errors, fix or drop them; if they're real but hurt a squared-error model, use Huber loss, a transformation (log), or a model that doesn't care about scale (trees).
 
 **Imbalanced classes.** With 1% fraud, a model that always says "not fraud" is 99% accurate and useless. Three responses, in order of preference:
 
@@ -196,8 +213,7 @@ How much does it matter? Varma and Simon (2006) showed that reporting the inner 
 
 </GoDeeper>
 
-## 7. Minimal Implementation
-
+## Worked example
 Two short scripts. The first is the leakage demonstration promised in Section 4. The data is pure noise: 5,000 random features, random labels, so no model can honestly beat 50%. The only difference between the two scores is *where* feature selection happens.
 
 ```python
@@ -226,9 +242,8 @@ print(f"selection outside CV: {leaky.mean():.2f} accuracy")
 print(f"selection inside CV:  {honest.mean():.2f} accuracy")
 ```
 
+```output
 Output:
-
-```
 selection outside CV: 0.87 accuracy
 selection inside CV:  0.50 accuracy
 ```
@@ -269,9 +284,8 @@ print(f"cross-validated accuracy: {search.best_score_:.3f}")
 print(f"test accuracy: {search.score(X_test, y_test):.3f} on {len(y_test)} examples")
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
 best C: 0.1
 cross-validated accuracy: 0.958
 test accuracy: 0.956 on 114 examples
@@ -279,7 +293,23 @@ test accuracy: 0.956 on 114 examples
 
 The imputer's medians and the scaler's means are recomputed inside every fold from that fold's training rows, so no validation row ever influences them. `GridSearchCV` refits the best configuration on the full training set, and the test set is touched once. The cross-validated and test scores agree closely, which is what an honest workflow looks like. By the formula in Section 3, the test score's standard error is about 0.02, so "95.6%" means "somewhere around 92% to 99%."
 
-## 8. When *Not* to Use a Random Split
+## Try it yourself
+
+<RunnableCode code={`sizes = [600, 200, 200]
+print("total:", sum(sizes))
+print("shares:", [round(s / sum(sizes), 2) for s in sizes])
+
+# Try it: change the validation split to 150 and move the freed rows to training.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Selecting features before splitting | Validation labels influence feature choice. | Fit selection inside each training fold. |
+| Tuning on the test set | Repeated looks turn the test into validation data. | Keep one final test evaluation. |
+| Randomly splitting time data | Future records can leak into past predictions. | Use a chronological split. |
+
+## When not to use it
 
 Everything above assumes examples are independent draws from one fixed distribution. When that's false, a random split gives a confident wrong answer.
 

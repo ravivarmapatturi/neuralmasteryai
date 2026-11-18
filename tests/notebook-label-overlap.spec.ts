@@ -55,6 +55,14 @@ const ROUTES = [
   'docs/mlops/ml-and-llm-testing',
   'docs/mlops/production-reliability',
   'docs/mlops/mlops-architecture-and-roadmap',
+  'docs/machine-learning/overview',
+  'docs/machine-learning/roadmap',
+  'docs/machine-learning/ml-workflow-fundamentals',
+  'docs/machine-learning/supervised-learning',
+  'docs/machine-learning/linear-regression',
+  'docs/machine-learning/ridge-regression',
+  'docs/machine-learning/lasso-regression',
+  'docs/machine-learning/elastic-net',
   // Keep the already-approved pilot last so the Vite dev server has warmed its
   // route modules before this large lazy-loaded page is checked.
   'docs/search-ranking-recommendations/tf-idf',

@@ -6,11 +6,11 @@ description: "The supervised learning problem made precise: regression and class
 
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Supervised Learning
-
-The [overview](/docs/machine-learning/overview) defined learning as choosing a function that does well on new examples, and [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) showed how to measure that honestly. This page covers the most common setting, supervised learning, where every training example comes with the right answer. It shows that choosing a loss already decides what the ideal prediction is, before any model is chosen; it lays out the model families in this section by the assumption each one makes about the data; it measures what those assumptions do when a model is asked about inputs unlike its training data; and it covers combining models. Each family links to its own full-depth page.
-
 <ELI5>
 
 A child learning to estimate how far away things are gets told the right answer each time: "that tree is about 50 metres", "that car is about 200 metres". After enough examples, they can guess distances to things they've never been told about. That's supervised learning: examples with answers, then guesses for new cases.
@@ -18,6 +18,23 @@ A child learning to estimate how far away things are gets told the right answer 
 How the child gets graded changes what they learn. If being off by a lot is punished much more than being off by a little, they learn to avoid big mistakes. If every metre of error counts the same, they learn something slightly different. And how they think about distance (using the size of familiar objects, or how hazy things look) decides which situations they'll get right. Everything below is those two ideas made exact.
 
 </ELI5>
+
+## Why it exists
+
+The [overview](/docs/machine-learning/overview) defined learning as choosing a function that does well on new examples, and [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) showed how to measure that honestly. This page covers the most common setting, supervised learning, where every training example comes with the right answer. It shows that choosing a loss already decides what the ideal prediction is, before any model is chosen; it lays out the model families in this section by the assumption each one makes about the data; it measures what those assumptions do when a model is asked about inputs unlike its training data; and it covers combining models. Each family links to its own full-depth page.
+
+## The big picture
+
+<PenFlow title="From labeled examples to a prediction rule" ariaLabel="From labeled examples to a prediction rule" rows={[
+  { steps: { title: 'Pair inputs and answers', lines: ['Each row has features x and target y'], tone: 'blue' } },
+  { steps: { title: 'Choose a loss', lines: ['State which errors matter most'], tone: 'purple' } },
+  { steps: { title: 'Fit a model', lines: ['Search within a chosen model family'], tone: 'green' } },
+  { steps: { title: 'Check new cases', lines: ['Measure on examples held aside'], tone: 'orange' } }
+]} caption="Labels define the target, while the loss defines which prediction counts as best." />
+
+<Worksheet title="See how loss changes the answer" ariaLabel="See how loss changes the answer" stages={[{ tag: "Worked numbers", color: "yellow", note: "For labels 1, 3, and 10, squared error is minimized by the mean; absolute error by the median.", grid: { head: ['Squared error', 'Absolute error'], rows: [{ label: 'Best constant', cells: ['14/3 ≈ 4.67', '3'] }] } }]} />
+
+
 
 ## 1. The Setup
 
@@ -127,8 +144,7 @@ Some supervised problems don't fit the plain "one input, one label, independent 
 - **[Survival analysis](/docs/machine-learning/survival-analysis)**: the target is a time until an event, and for some subjects the event hasn't happened yet (censoring), which plain regression mishandles.
 - **[Recommender systems](/docs/machine-learning/recommender-systems)** and **[learning to rank](/docs/machine-learning/learning-to-rank)**: the target is a preference or an ordering, and the metric (such as NDCG) cares about the top of a list, not each prediction alone.
 
-## 7. Minimal Implementation
-
+## Worked example
 Three experiments, one per idea above: the best constant under each loss for a skewed target (Section 2); four models inside and outside their training range (Section 4); and stacking on a real dataset (Section 5):
 
 ```python
@@ -177,9 +193,8 @@ for name, m in base + [("stacked", StackingClassifier(base, final_estimator=Logi
     print(f"{name:8s} cross-validated log loss {-s.mean():.4f}")
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
 best constant under squared error 1.65   mean   1.65
 best constant under absolute error 1.00   median 1.00
 model                  error inside training range   error outside (x in 8..10)
@@ -198,7 +213,25 @@ stacked  cross-validated log loss 0.0724
 - **Flexible inside, flat outside.** The three flexible models fit the curve about five times better than the line inside the training range, and do about twice as badly as the line from 8 to 10.
 - **Stacking edges out the best model.** Log loss 0.0724 against 0.0738 for logistic regression alone. On this nearly linear dataset, the simplest base model was already close to the best possible.
 
-## 8. When *Not* to Use Supervised Learning
+## Try it yourself
+
+<RunnableCode code={`labels = [1, 3, 10]
+mean = sum(labels) / len(labels)
+median = sorted(labels)[len(labels) // 2]
+print("squared-loss choice:", round(mean, 2))
+print("absolute-loss choice:", median)
+
+# Try it: change the largest label and compare how the mean and median move.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Using one loss for every goal | Squared error gives large misses extra influence. | Choose a loss that matches the cost of mistakes. |
+| Reading a score as a probability | A margin or score may not be calibrated. | Calibrate probabilities when decisions need them. |
+| Ignoring class imbalance | Accuracy can hide a rare positive class. | Inspect class-specific metrics and decision costs. |
+
+## When not to use it
 
 | Situation | Better approach |
 |---|---|

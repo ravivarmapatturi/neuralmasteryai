@@ -9,11 +9,11 @@ import ridgePathDark from './img/ridge-path.png';
 import RidgeRegressionStudio from '../../../viz/RidgeRegressionStudio';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Ridge Regression
-
-[Linear Regression](/docs/machine-learning/linear-regression) ended with a warning: when features are correlated, $X^TX$ is close to singular, and the least-squares weights become unstable. This page makes that warning exact, then derives the fix. Ridge regression adds a penalty on the size of the weights. The sections below show how much correlated features inflate the variance of the ordinary weights, how the penalty changes the gradient and the closed-form solution, what it does to each direction in the data, why trading a little bias for less variance is a good deal, and how to choose the penalty's strength.
-
 <ELI5>
 
 Imagine two friends who always go everywhere together, and you're trying to work out how much each one contributes to the noise in a room. Since they're always together, you can't tell. One answer is "Alex makes all the noise and Sam is silent"; another is "Alex makes twice the noise and Sam makes negative noise"; they all explain what you heard equally well. Plain linear regression picks one of these answers almost at random, and a slightly different recording would give a wildly different one.
@@ -21,6 +21,23 @@ Imagine two friends who always go everywhere together, and you're trying to work
 Ridge regression adds one rule: prefer answers where nobody's contribution is extreme. Among all the explanations that fit about equally well, that rule picks the calm one, "they each make about half", and it picks the same one every time. Everything below is that rule made exact.
 
 </ELI5>
+
+## Why it exists
+
+[Linear Regression](/docs/machine-learning/linear-regression) ended with a warning: when features are correlated, $X^TX$ is close to singular, and the least-squares weights become unstable. This page makes that warning exact, then derives the fix. Ridge regression adds a penalty on the size of the weights. The sections below show how much correlated features inflate the variance of the ordinary weights, how the penalty changes the gradient and the closed-form solution, what it does to each direction in the data, why trading a little bias for less variance is a good deal, and how to choose the penalty's strength.
+
+## The big picture
+
+<PenFlow title="Stabilize weights when features move together" ariaLabel="Stabilize weights when features move together" rows={[
+  { steps: { title: 'Find correlated inputs', lines: ['Several weights can explain the same signal'], tone: 'blue' } },
+  { steps: { title: 'Add an L2 cost', lines: ['Large coefficient vectors cost more'], tone: 'purple' } },
+  { steps: { title: 'Shrink the solution', lines: ['Share weight across similar directions'], tone: 'green' } },
+  { steps: { title: 'Tune on held-out data', lines: ['Choose penalty strength without test leakage'], tone: 'orange' } }
+]} caption="Ridge prefers a smaller coefficient vector among fits with similar prediction error." />
+
+<Worksheet title="Share weight across duplicate features" ariaLabel="Share weight across duplicate features" stages={[{ tag: "Worked numbers", color: "yellow", note: "If two identical features must sum to a prediction weight of 3, the minimum squared-weight solution is 1.5 for each.", grid: { head: ['Feature 1', 'Feature 2', 'Total'], rows: [{ label: 'Least-squares example', cells: ['3', '0', '3'] }, { label: 'Ridge minimum-norm split', cells: ['1.5', '1.5', '3'] }] } }]} />
+
+
 
 ## 1. Why Least Squares Becomes Unstable
 
@@ -211,12 +228,11 @@ $$
 y^{(i)} - \hat{y}^{(i)}_{-i} = \frac{y^{(i)} - \hat{y}^{(i)}}{1 - H_{ii}}
 $$
 
-where $H_{ii}$ is the $i$-th diagonal entry of $H$, the **leverage** of example $i$. So exact leave-one-out cross-validation costs one fit per $\lambda$ instead of $n$, and with the SVD from Section 4 computed once, every $\lambda$ on the grid is almost free. That's what scikit-learn's `RidgeCV` does by default. Golub, Heath and Wahba (1979) proposed a smoothed variant, **generalized cross-validation**, which replaces each $H_{ii}$ by their average $\operatorname{df}(\lambda)/n$.
+where $H_{ii}$ is the $i$-th diagonal entry of $H$, the amount of influence example $i$ has on its own fitted value. So exact leave-one-out cross-validation costs one fit per $\lambda$ instead of $n$, and with the SVD from Section 4 computed once, every $\lambda$ on the grid is almost free. That's what scikit-learn's `RidgeCV` does by default. Golub, Heath and Wahba (1979) proposed a smoothed variant, **generalized cross-validation**, which replaces each $H_{ii}$ by their average $\operatorname{df}(\lambda)/n$.
 
 The scale must come from training data only: put `StandardScaler` and the ridge model in one pipeline, so the scaling inside each fold doesn't see the held-out examples.
 
-## 8. Minimal Implementation
-
+## Worked example
 The closed form computed through the SVD, as in Section 4, which is both cheaper across many $\lambda$ values and more numerically stable than inverting $X^TX + \lambda I$. The data has two features with correlation 0.99:
 
 ```python
@@ -256,9 +272,8 @@ cv = RidgeCV(alphas=np.logspace(-3, 3, 61)).fit(X, y)
 print(f"RidgeCV picked lambda = {cv.alpha_:.2f}")
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
 corr(x1, x2) = 0.990
 from scratch: [1.952 1.797 1.025] -0.208
 scikit-learn: [1.952 1.797 1.025] -0.208
@@ -269,7 +284,25 @@ RidgeCV picked lambda = 1.26
 
 The six-line SVD solver matches scikit-learn exactly. The bootstrap rows are Section 1 and Section 5 in numbers. With $\lambda = 0$ (least squares), the two correlated weights have a standard deviation of about 1.1 across resamples, against 0.14 for the uncorrelated $x_3$: an eightfold inflation, close to the $\sqrt{50} \approx 7$ the formula predicts. Their means (2.74 and 1.25) are unbiased on average but any single fit can be far off. With $\lambda = 5$, both standard deviations drop to 0.11, the same as the uncorrelated feature's, and both weights settle near the true value of 2, slightly shrunk. Leave-one-out cross-validation chose $\lambda \approx 1.3$, a milder penalty than 5, because on this data the predictions (which depend on the sum) were already fine.
 
-## 9. When *Not* to Use Ridge
+## Try it yourself
+
+<RunnableCode code={`target = 3.0
+weights = [target / 2, target / 2]
+print("weights:", weights)
+print("prediction weight:", sum(weights))
+print("squared size:", sum(w * w for w in weights))
+
+# Try it: split the same total across three duplicate features.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Leaving features on very different scales | The penalty then treats equal effects differently. | Scale inputs using training data only. |
+| Penalizing the intercept by accident | The baseline level is not a feature effect. | Keep the intercept outside the penalty. |
+| Calling ridge feature selection | Ridge shrinks weights but rarely makes them zero. | Use lasso or elastic net when sparsity is needed. |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

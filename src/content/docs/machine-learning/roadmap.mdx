@@ -7,10 +7,11 @@ description: "An ordered path through classical machine learning: what to learn 
 import AlgorithmSelector from '../../../viz/AlgorithmSelector';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Machine Learning Roadmap
-
-The [overview](/docs/machine-learning/overview) explained what machine learning is and why every algorithm is a model, a loss and an optimizer. This page is the order to learn it in. The section has more than thirty pages, and reading them in sidebar order would put clustering before you know how to evaluate a model, and gradient boosting before you know what a gradient step does. Below, the material is arranged in six stages, each with the reason it comes where it does, what you should be able to do at the end of it, and a concrete check. After the stages come a guide to choosing an algorithm for a new problem, and the problems that come up on almost every real project, with their standard fixes.
 
 <ELI5>
 
@@ -19,6 +20,35 @@ Learning to cook, you don't start with a soufflé. You learn to use a knife and 
 This roadmap is that order for machine learning. The early stages are the knife and the heat: how to split data honestly, and how one simple model is fitted. Everything later uses them.
 
 </ELI5>
+
+## Why it exists
+
+The [overview](/docs/machine-learning/overview) explained what machine learning is and why every algorithm is a model, a loss and an optimizer. This page is the order to learn it in. The section has more than thirty pages, and reading them in sidebar order would put clustering before you know how to evaluate a model, and gradient boosting before you know what a gradient step does. Below, the material is arranged in six stages, each with the reason it comes where it does, what you should be able to do at the end of it, and a concrete check. After the stages come a guide to choosing an algorithm for a new problem, and the problems that come up on almost every real project, with their standard fixes.
+
+## The big picture
+
+<PenFlow title="Build skills in dependency order" ariaLabel="Roadmap from honest measurement to linear models, trees, broader methods, and structured problems" rows={[
+  { steps: { title: 'Measure honestly', lines: ['Learn splits and evaluation first'], tone: 'blue' } },
+  { steps: { title: 'Fit simple models', lines: ['Derive linear predictions by hand'], tone: 'purple' } },
+  { steps: { title: 'Add model families', lines: ['Trees, margins, and ensembles'], tone: 'green' } },
+  { steps: { title: 'Choose by data shape', lines: ['Clustering, time, ranking, and survival'], tone: 'orange' } },
+]} caption="Each stage relies on a decision or measurement introduced earlier in the path." />
+
+
+<Worksheet title="Track the six learning stages" ariaLabel="Six ordered stages in the machine learning roadmap" stages={[{ tag: "Order", color: "blue", note: "The roadmap introduces measurement before model choice, then moves from simple to structured methods.", grid: { head: ['Stage', 'Focus'], rows: [{ label: '1', cells: ['Workflow'] }, { label: '2', cells: ['Linear models'] }, { label: '3', cells: ['Trees and ensembles'] }, { label: '4', cells: ['Other supervised methods'] }, { label: '5', cells: ['Unsupervised learning'] }, { label: '6', cells: ['Structured problems'] }] } }]} />
+
+## The chapters
+
+- [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals) establishes honest splits and validation.
+- [Linear Regression](/docs/machine-learning/linear-regression) derives the first fitted model.
+- [Decision Trees](/docs/machine-learning/decision-tree) introduces recursive partitions.
+- [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics) explains how to compare predictions.
+- [Unsupervised Learning](/docs/machine-learning/unsupervised-learning) starts the unlabeled-data path.
+
+## Start here
+
+Begin with [ML Workflow Fundamentals](/docs/machine-learning/ml-workflow-fundamentals), then follow the stages below in order.
+
 
 ## 1. Why the Order Matters
 
@@ -73,7 +103,29 @@ The [Unsupervised Learning](/docs/machine-learning/unsupervised-learning) hub, t
 
 Pick by need: [time series forecasting](/docs/machine-learning/time-series-forecasting) (ordered data, where random splits leak the future), [survival analysis](/docs/machine-learning/survival-analysis) (time until an event, with censored observations), [recommender systems](/docs/machine-learning/recommender-systems) and [learning to rank](/docs/machine-learning/learning-to-rank) (predicting preferences and orderings), [topic modeling](/docs/machine-learning/topic-modeling) and [association rules](/docs/machine-learning/association-rules). Each one changes the evaluation, not just the model, which is why they come last.
 
-## 3. A Checkpoint for Stage 2
+## 4. Choosing an Algorithm for a New Problem
+
+After the stages, the question in practice is which algorithm to try. There's no universally best one (see the [no-free-lunch discussion](/docs/machine-learning/overview)), but a few properties of the problem narrow it quickly:
+
+| What you know about the problem | Start with | Why |
+|---|---|---|
+| Tabular data, prediction accuracy matters most | Gradient boosting (LightGBM, XGBoost, CatBoost) | Handles nonlinearity, interactions, missing values and mixed feature types with little preprocessing |
+| You must explain each prediction or report effects | Logistic or linear regression, possibly with L1 | Each weight has a direct reading; odds ratios for classification |
+| Very few examples (tens to hundreds) | Regularized linear models, naive Bayes | Small hypothesis classes keep estimation error down |
+| Huge data, or data arriving continuously | SGD-trained linear models | One pass, constant memory, online updates |
+| High-dimensional sparse features (text as word counts) | Linear models (logistic regression, linear SVM), naive Bayes | Linear boundaries work well in very high dimensions |
+| Images, audio, raw text | Deep learning, or a pretrained model's embeddings plus a linear model | Classical models can't learn features from raw signals |
+| No labels, want groups | k-means for round, similar-sized clusters; HDBSCAN for arbitrary shapes and noise | Different assumptions about cluster shape |
+| No labels, want a 2-D picture | PCA first; UMAP or t-SNE for visual structure | PCA preserves global variance; UMAP and t-SNE preserve neighbourhoods |
+| Rare events to flag, few labelled examples | Isolation forest or other anomaly detectors | Model "normal" instead of the rare class |
+
+Whatever you choose, the procedure is the same: a trivial baseline first (the majority class, the mean), then the simplest reasonable model, then more complex ones, each scored by the same cross-validation. Keep the simplest model that's statistically as good as the best. The selector below walks the same reasoning as a short series of questions, with links to the relevant pages:
+
+<AlgorithmSelector />
+
+## Worked example
+
+### 3. A Checkpoint for Stage 2
 
 Here is the Stage 2 check, worked. Fit linear regression on the diabetes dataset (442 patients, 10 measurements) three ways: a library, the normal equation, and batch gradient descent written by hand. They should agree. If you can write the last two yourself and explain every line, Stage 2 has done its job.
 
@@ -127,9 +179,8 @@ baseline = np.sqrt(np.mean((y_train.mean() - y_test) ** 2))
 print(f"test RMSE {rmse:.1f}, against {baseline:.1f} for always predicting the training mean")
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
 normal equation vs scikit-learn: largest gap 2.4e-11
 curvature: largest 4.14, smallest 0.0094, ratio 443; learning rate must stay below 0.48
 gradient descent,   5000 steps vs scikit-learn: largest gap 4.9e+00
@@ -144,27 +195,20 @@ Every line of output is a Stage 2 idea:
 - The ratio of 443 between the steepest and flattest directions is why 5,000 steps aren't enough (coefficients still off by about 5, on coefficients in the hundreds) and 200,000 are. That ratio comes from correlated features, the problem [Ridge](/docs/machine-learning/ridge-regression) addresses.
 - The last line is the honest score: an error of 56 on held-out patients, against 70 for a model that ignores the features. Without that baseline, 56 means nothing.
 
-## 4. Choosing an Algorithm for a New Problem
+## Try it yourself
 
-After the stages, the question in practice is which algorithm to try. There's no universally best one (see the [no-free-lunch discussion](/docs/machine-learning/overview)), but a few properties of the problem narrow it quickly:
+<RunnableCode code={`largest_curvature = 4.14
+curvature_ratio = 443
+smallest_curvature = largest_curvature / curvature_ratio
+learning_rate = 0.1
+steps = 5000
+remaining_error = (1 - learning_rate * smallest_curvature) ** steps
+print("curvature ratio:", round(largest_curvature / smallest_curvature))
+print("error left in the slow direction:", round(remaining_error, 3))
 
-| What you know about the problem | Start with | Why |
-|---|---|---|
-| Tabular data, prediction accuracy matters most | Gradient boosting (LightGBM, XGBoost, CatBoost) | Handles nonlinearity, interactions, missing values and mixed feature types with little preprocessing |
-| You must explain each prediction or report effects | Logistic or linear regression, possibly with L1 | Each weight has a direct reading; odds ratios for classification |
-| Very few examples (tens to hundreds) | Regularized linear models, naive Bayes | Small hypothesis classes keep estimation error down |
-| Huge data, or data arriving continuously | SGD-trained linear models | One pass, constant memory, online updates |
-| High-dimensional sparse features (text as word counts) | Linear models (logistic regression, linear SVM), naive Bayes | Linear boundaries work well in very high dimensions |
-| Images, audio, raw text | Deep learning, or a pretrained model's embeddings plus a linear model | Classical models can't learn features from raw signals |
-| No labels, want groups | k-means for round, similar-sized clusters; HDBSCAN for arbitrary shapes and noise | Different assumptions about cluster shape |
-| No labels, want a 2-D picture | PCA first; UMAP or t-SNE for visual structure | PCA preserves global variance; UMAP and t-SNE preserve neighbourhoods |
-| Rare events to flag, few labelled examples | Isolation forest or other anomaly detectors | Model "normal" instead of the rare class |
+# Try it: compare the remaining error after 20000 steps.`} />
 
-Whatever you choose, the procedure is the same: a trivial baseline first (the majority class, the mean), then the simplest reasonable model, then more complex ones, each scored by the same cross-validation. Keep the simplest model that's statistically as good as the best. The selector below walks the same reasoning as a short series of questions, with links to the relevant pages:
-
-<AlgorithmSelector />
-
-## 5. Common Problems and Their Standard Fixes
+## Common mistakes
 
 Some problems come up on almost every project, whatever the algorithm. Each has a standard first response, covered in depth on the linked page:
 
@@ -193,7 +237,9 @@ Then take one public tabular dataset you care about and run the whole workflow o
 
 </GoDeeper>
 
-## 6. When *Not* to Follow This Order
+## When not to use it
+
+### 6. When *Not* to Follow This Order
 
 The stages are a default for someone learning the field. Some situations call for a different route:
 

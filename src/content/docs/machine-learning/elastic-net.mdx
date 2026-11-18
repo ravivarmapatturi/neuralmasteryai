@@ -7,11 +7,11 @@ description: "Elastic net derived: why lasso picks arbitrarily among correlated 
 import ElasticNetStudio from '../../../viz/ElasticNetStudio';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Elastic Net
-
-[Ridge Regression](/docs/machine-learning/ridge-regression) adds an L2 penalty and handles correlated features gracefully, but it never sets a weight to exactly zero. [Lasso Regression](/docs/machine-learning/lasso-regression) adds an L1 penalty and selects features automatically, but when features are correlated it picks among them almost at random. This page derives the model that adds both penalties: why lasso's choice is unstable, why a little L2 fixes it (with a short proof), the coordinate-descent update that solves it, how to choose its two hyperparameters, and when it's the wrong tool.
-
 <ELI5>
 
 Imagine a manager splitting a bonus between team members, and two of them always work as a pair, doing exactly the same work. A manager following Lasso's rule wants to reward as few people as possible, so they give the whole bonus to one of the pair and nothing to the other, and which one wins depends on trivia like who spoke first in a meeting. Ask again next month and the other one might get it all.
@@ -19,6 +19,23 @@ Imagine a manager splitting a bonus between team members, and two of them always
 A manager following Ridge's rule never gives anyone zero, even people who did nothing. Elastic net is a manager who still gives nothing to people who did nothing, but who splits the pair's bonus evenly because they did the same work. Everything below is that rule made exact: the penalty that produces it, why it works, and how to compute it.
 
 </ELI5>
+
+## Why it exists
+
+[Ridge Regression](/docs/machine-learning/ridge-regression) adds an L2 penalty and handles correlated features gracefully, but it never sets a weight to exactly zero. [Lasso Regression](/docs/machine-learning/lasso-regression) adds an L1 penalty and selects features automatically, but when features are correlated it picks among them almost at random. This page derives the model that adds both penalties: why lasso's choice is unstable, why a little L2 fixes it (with a short proof), the coordinate-descent update that solves it, how to choose its two hyperparameters, and when it's the wrong tool.
+
+## The big picture
+
+<PenFlow title="Combine sparse selection with grouped shrinkage" ariaLabel="Combine sparse selection with grouped shrinkage" rows={[
+  { steps: { title: 'Scale inputs', lines: ['Make both penalties comparable'], tone: 'blue' } },
+  { steps: { title: 'Set alpha', lines: ['Choose the L1 and L2 mix'], tone: 'purple' } },
+  { steps: { title: 'Set lambda', lines: ['Choose the total penalty strength'], tone: 'green' } },
+  { steps: { title: 'Fit and validate', lines: ['Check selection and prediction stability'], tone: 'orange' } }
+]} caption="The L1 part can remove features, while the L2 part encourages correlated features to share weight." />
+
+<Worksheet title="Split weight across duplicate features" ariaLabel="Split weight across duplicate features" stages={[{ tag: "Worked numbers", color: "yellow", note: "For two identical inputs, target weight 3, λ = 1, and α = 0.5, the symmetric elastic-net solution gives each feature weight 1.", grid: { head: ['Input', 'Value'], rows: [{ label: 'Target total weight', cells: ['3'] }, { label: 'L1 mix α', cells: ['0.5'] }, { label: 'Penalty λ', cells: ['1'] }, { label: 'Weight per duplicate feature', cells: ['1'] }] } }]} />
+
+
 
 ## 1. The Objective
 
@@ -193,8 +210,7 @@ A rough guide to what the chosen $\alpha$ tells you: close to 1 means the data l
 
 Elastic net is the safest default of the three when you want a sparse model and don't know how correlated the features are, because it degrades gracefully into either neighbour: if the data wants lasso, cross-validation picks $\alpha$ near 1. The price is one more hyperparameter to search and, for the same sparsity, slightly more shrinkage of the surviving weights.
 
-## 7. Minimal Implementation
-
+## Worked example
 The coordinate-descent update from Section 4, in NumPy. The residual is updated incrementally, the way glmnet does it, so each update costs $O(n)$ instead of $O(nd)$:
 
 ```python
@@ -247,9 +263,8 @@ for name, s in [("lasso", lasso_split), ("elastic net", enet_split)]:
           f"resamples where one of the pair is exactly 0: {np.mean((s == 0) | (s == 1)):.0%}")
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
 from scratch: [ 1.352  1.465  0.101  0.     0.1   -0.   ]
 scikit-learn: [ 1.352  1.465  0.101  0.     0.1   -0.   ]
 lasso       share of weight on x0: mean 0.17, std 0.19, resamples where one of the pair is exactly 0: 32%
@@ -260,7 +275,26 @@ The twenty-line implementation matches scikit-learn to three decimals. The two n
 
 The bootstrap experiment is the point of the page in numbers. Across 200 resamples of the same data, lasso put on average only 17% of the pair's weight on $x_0$, with a standard deviation of 0.19, and in 32% of resamples dropped one of the two features entirely. Elastic net split the weight almost exactly in half every time (0.48, standard deviation 0.01) and never dropped either. If you were reading the coefficients to decide which measurement matters, lasso's answer would change from one resample to the next; elastic net's wouldn't.
 
-## 8. When *Not* to Use Elastic Net
+## Try it yourself
+
+<RunnableCode code={`target = 3.0
+lam = 1.0
+alpha = 0.5
+weight_each = (target - lam * alpha) / (2 + lam * (1 - alpha))
+print("weight per duplicate feature:", weight_each)
+print("combined prediction weight:", 2 * weight_each)
+
+# Try it: set alpha to 1 and observe the lasso endpoint.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Confusing alpha with total strength | Alpha sets the L1/L2 mix; lambda scales both. | Tune the two parameters for their separate roles. |
+| Reading alpha endpoints incorrectly | Alpha 1 is lasso; alpha 0 is ridge. | Check the objective before configuring a library. |
+| Skipping scaling | Feature units distort both penalties. | Scale within each training fold. |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

@@ -1,73 +1,81 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer } from '../primitives';
-import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { getConceptColor } from './diagramSystem';
 
 const STEPS = [
-  { label: 'Compute ŷ', desc: 'ŷ = wx + b for every example' },
-  { label: 'Compute J(w,b)', desc: 'the current mean squared error' },
-  { label: 'Compute ∂J/∂w, ∂J/∂b', desc: 'the gradient -- which way makes J worse' },
-  { label: 'Update w, b', desc: 'w ← w − α·∂J/∂w, and the same for b -- step the OPPOSITE way' },
+  { label: 'Compute predictions', desc: 'Use the current weights and intercept to predict each example.' },
+  { label: 'Measure the cost', desc: 'Calculate the mean squared error for the current predictions.' },
+  { label: 'Find the gradient', desc: 'Measure how each parameter changes the cost.' },
+  { label: 'Update w and b', desc: 'Move both parameters opposite the gradient, then repeat.' },
 ];
 
-/** The loop the update rule actually runs, made explicit: predict, score,
- * differentiate, step -- repeat until the cost stops meaningfully
- * decreasing. Click a stage for what happens there. */
+/** The training loop as a readable, keyboard-selectable sequence. */
 export default function GradientDescentLoopDiagram() {
   const t = useVizTokens();
   const [active, setActive] = useState<number | null>(null);
   const color = getConceptColor(t, 'attention');
   const initColor = t.textSecondary;
-
-  const width = 600;
-  const height = 170;
-  const boxY = 70;
-  const boxW = 118;
-  const boxH = 44;
-  const gap = 22;
-  const startX = 100;
-  const stepX = (i: number) => startX + i * (boxW + gap);
+  const stepY = (i: number) => 98 + i * 82;
 
   return (
-    <VisualizationContainer footer="Click a stage. This loop is exactly what the Studio's Gradient Descent Lab mode runs live, one visible step at a time.">
-      <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
+    <VisualizationContainer footer="Choose a step to see what changes. This is the loop used by the Studio's Gradient Descent Lab.">
+      <svg
+        role="img"
+        aria-label="Gradient descent starts with weights and an intercept, computes predictions and cost, finds the gradient, updates both parameters, then repeats."
+        width="100%"
+        viewBox="0 0 360 450"
+        style={{ display: 'block', maxWidth: 360, marginInline: 'auto' }}
+      >
         <defs>
           <marker id="gdloop-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
             <path d="M0,0 L7,3.5 L0,7 Z" fill={t.textMuted} />
           </marker>
         </defs>
 
-        <rect x={10} y={boxY - 20} width={70} height={40} rx={6} fill={t.surfaceAlt} stroke={initColor} strokeWidth={1.5} />
-        <text x={45} y={boxY - 2} textAnchor="middle" fontSize={9} fontWeight={700} fill={initColor}>init</text>
-        <text x={45} y={boxY + 12} textAnchor="middle" fontSize={8} fontFamily="monospace" fill={initColor}>w,b</text>
-        <line x1={80} y1={boxY} x2={stepX(0) - 6} y2={boxY} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#gdloop-arrow)" />
+        <rect x="40" y="12" width="280" height="48" rx="8" fill={t.surfaceAlt} stroke={initColor} strokeWidth="1.5" />
+        <text x="180" y="33" textAnchor="middle" fontSize="16" fontWeight="700" fill={initColor}>Start with w and b</text>
+        <text x="180" y="52" textAnchor="middle" fontSize="14" fill={initColor}>initial model parameters</text>
+        <line x1="180" y1="60" x2="180" y2="88" stroke={t.textMuted} strokeWidth="1.5" markerEnd="url(#gdloop-arrow)" />
 
-        {STEPS.map((s, i) => {
-          const x = stepX(i);
+        {STEPS.map((step, i) => {
+          const y = stepY(i);
           const isActive = active === i;
           return (
-            <g key={i} onClick={() => setActive(isActive ? null : i)} onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(null)} style={{ cursor: 'pointer' }}>
-              {i > 0 && <line x1={x - gap} y1={boxY} x2={x - 6} y2={boxY} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} markerEnd="url(#gdloop-arrow)" />}
-              <rect x={x} y={boxY - 22} width={boxW} height={boxH} rx={6} fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
-              <text x={x + boxW / 2} y={boxY + 4} textAnchor="middle" fontSize={10} fontWeight={700} fill={color}>{s.label}</text>
+            <g
+              key={step.label}
+              role="button"
+              tabIndex={0}
+              aria-label={step.desc}
+              aria-pressed={isActive}
+              onClick={() => setActive(isActive ? null : i)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setActive(isActive ? null : i);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
+              <rect x="40" y={y} width="280" height="46" rx="8" fill={isActive ? `${color}30` : t.surfaceAlt} stroke={color} strokeWidth={isActive ? 2.5 : 1.5} />
+              <text x="180" y={y + 29} textAnchor="middle" fontSize="16" fontWeight="700" fill={color}>{step.label}</text>
+              {i < STEPS.length - 1 && <line x1="180" y1={y + 46} x2="180" y2={y + 74} stroke={t.textMuted} strokeWidth="1.5" markerEnd="url(#gdloop-arrow)" />}
             </g>
           );
         })}
 
-        {/* loop-back arrow from Update back to Compute y-hat */}
         <path
-          d={`M ${stepX(3) + boxW / 2},${boxY + 22} C ${stepX(3) + boxW / 2},${boxY + 60} ${stepX(0) + boxW / 2},${boxY + 60} ${stepX(0) + boxW / 2},${boxY + 22}`}
+          d={`M 320 ${stepY(3) + 22} C 350 ${stepY(3) + 22}, 350 ${stepY(0) + 22}, 320 ${stepY(0) + 22}`}
           fill="none"
           stroke={t.textMuted}
-          strokeWidth={1.5}
+          strokeWidth="1.5"
           strokeDasharray="4 3"
           markerEnd="url(#gdloop-arrow)"
         />
-        <text x={(stepX(0) + stepX(3) + boxW) / 2} y={boxY + 74} textAnchor="middle" fontSize={9} fill={t.textMuted}>repeat until J stops decreasing</text>
+        <text x="180" y="444" textAnchor="middle" fontSize="14" fill={active !== null ? color : t.textMuted}>
+          {active !== null ? STEPS[active].desc : 'Repeat until the cost stops meaningfully decreasing.'}
+        </text>
       </svg>
-      <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: active !== null ? color : t.textMuted, marginTop: 4, fontWeight: active !== null ? 700 : 400 }}>
-        {active !== null ? STEPS[active].desc : 'w, b start at some initial value (often zero or small random values), then the loop runs.'}
-      </div>
     </VisualizationContainer>
   );
 }
