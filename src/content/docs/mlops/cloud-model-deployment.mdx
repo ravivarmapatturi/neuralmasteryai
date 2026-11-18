@@ -7,15 +7,28 @@ description: "Real, concrete methods for deploying a trained model on AWS and Az
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import CloudDeploymentChoiceDiagram from '../../../viz/diagrams/CloudDeploymentChoiceDiagram';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Deploying Models on AWS & Azure
-
-[Cloud Computing for ML](/docs/mlops/cloud-computing) covered the vocabulary; [APIs & Model Serving](/docs/mlops/model-serving) covered cloud-agnostic serving concepts. This page is the part in between: the actual, concrete methods for getting a trained model deployed and answering real traffic on AWS and Azure specifically, with real commands for each — not just names.
-
 <ELI5>
 
 A trained model sitting on a laptop is like a chef who can cook but has no restaurant — great food, nobody can order it. Deploying a model is opening the restaurant: standing up something that can receive a real request over the network, run the model, and hand back an answer, reliably, whether one customer shows up or a thousand. AWS and Azure each give you several different "restaurant" shapes for this — always-open (real-time endpoints), open-on-demand-only (serverless), and a kitchen that takes orders for later instead of making people wait at the counter (async/batch) — and which shape fits depends entirely on how requests actually arrive: steady and fast, spiky and occasional, or huge and slow.
 
 </ELI5>
+
+## Why it exists
+
+[Cloud Computing for ML](/docs/mlops/cloud-computing) covered the vocabulary; [APIs & Model Serving](/docs/mlops/model-serving) covered cloud-agnostic serving concepts. This page is the part in between: the actual, concrete methods for getting a trained model deployed and answering real traffic on AWS and Azure specifically, with real commands for each — not just names.
+
+
+
+
+## The big picture
+
+The steps connect a request or change to a running service. Each handoff leaves evidence that the next step can check.
+
+<PenFlow ariaLabel="Deployment path" rows={[{ steps: { title: 'Choose mode', lines: ['Choose mode'], tone: 'blue' } }, { steps: { title: 'Match latency and volume', lines: ['Match latency and volume'], tone: 'purple' } }, { steps: { title: 'Deploy model and artifact', lines: ['Deploy model and artifact'], tone: 'green' } }, { steps: { title: 'Route traffic and observe', lines: ['Route traffic and observe'], tone: 'orange' } }]} caption="Follow the handoffs; each step has an owner and an observable result." />
+
 
 ## AWS: Amazon SageMaker
 

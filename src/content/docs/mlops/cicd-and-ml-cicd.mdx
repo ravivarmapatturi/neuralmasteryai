@@ -11,10 +11,9 @@ import AutomatedRetrainLoopDiagram from '../../../viz/diagrams/AutomatedRetrainL
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # CI/CD & ML CI/CD
-
-[Infrastructure as Code](/docs/mlops/infrastructure-as-code) put the platform behind pull requests and reviewed plans. This page does the same for the things that run on it: application code, training code and the models themselves. It covers what continuous integration and delivery mean precisely, why a machine learning system needs more checks than ordinary software, the four kinds of test an ML repository should have (all of them run here), a model gate that accounts for evaluation noise, a complete workflow that passes `actionlint`, delivery with GitOps, and how retraining itself becomes a pipeline.
-
 <ELI5>
 
 A bakery tests every new batch of flour before it goes into bread, and tastes a loaf from every batch before it goes on the shelf. It doesn't wait for customers to complain. If the flour fails, the bread is never made; if the loaf tastes wrong, it never reaches the shelf.
@@ -24,6 +23,20 @@ CI/CD is that routine for software, done by machines on every change. For ML the
 Everything below is what those checks are and how they are wired together.
 
 </ELI5>
+
+## Why it exists
+
+[Infrastructure as Code](/docs/mlops/infrastructure-as-code) put the platform behind pull requests and reviewed plans. This page does the same for the things that run on it: application code, training code and the models themselves. It covers what continuous integration and delivery mean precisely, why a machine learning system needs more checks than ordinary software, the four kinds of test an ML repository should have (all of them run here), a model gate that accounts for evaluation noise, a complete workflow that passes `actionlint`, delivery with GitOps, and how retraining itself becomes a pipeline.
+
+
+
+
+## The big picture
+
+The steps connect a request or change to a running service. Each handoff leaves evidence that the next step can check.
+
+<PenFlow ariaLabel="Delivery path" rows={[{ steps: { title: 'Change code or data', lines: ['Change code or data'], tone: 'blue' } }, { steps: { title: 'Run checks', lines: ['Run checks'], tone: 'purple' } }, { steps: { title: 'Build versioned artifact', lines: ['Build versioned artifact'], tone: 'green' } }, { steps: { title: 'Promote behind a gate', lines: ['Promote behind a gate'], tone: 'orange' } }]} caption="Follow the handoffs; each step has an owner and an observable result." />
+
 
 ## 1. What Is CI/CD?
 
@@ -159,13 +172,11 @@ def test_directional_larger_tumour_raises_risk(fitted):
 
 All three test files pass, along with the linter:
 
-```text
-$ ruff check .
-All checks passed!
-$ pytest -q
-......                                                                   [100%]
-6 passed in 5.67s
-```
+- $ ruff check .
+- All checks passed!
+- $ pytest -q
+- ......                                                                   [100%]
+- 6 passed in 5.67s
 
 These use a small model trained inside the test, so they run on every pull request in seconds. **The fourth kind**, comparing a freshly trained candidate against the production champion, needs a real training run and real evaluation data, and it's subtle enough to need its own section.
 
@@ -221,17 +232,15 @@ print("PASS")
 
 With a champion trained at regularization strength `C=1.0`, two candidates (`C=0.3` and `C=0.001`) give:
 
-```text
-$ python gate.py candidate_a.joblib champion.joblib     # C=0.3
-candidate AUC 0.9942  champion AUC 0.9956
-difference 95% CI: [-0.0045, +0.0006]
-PASS
+- $ python gate.py candidate_a.joblib champion.joblib     # C=0.3
+- candidate AUC 0.9942  champion AUC 0.9956
+- difference 95% CI: [-0.0045, +0.0006]
+- PASS
 
-$ python gate.py candidate_b.joblib champion.joblib     # C=0.001
-candidate AUC 0.9737  champion AUC 0.9956
-difference 95% CI: [-0.0406, -0.0073]
-FAIL: the candidate may be more than 0.005 AUC worse
-```
+- $ python gate.py candidate_b.joblib champion.joblib     # C=0.001
+- candidate AUC 0.9737  champion AUC 0.9956
+- difference 95% CI: [-0.0406, -0.0073]
+- FAIL: the candidate may be more than 0.005 AUC worse
 
 Candidate A measured slightly lower than the champion, but the interval shows the difference is within noise and can't be worse than the tolerance, so it passes. A strict "must beat" gate would have blocked it. Candidate B is clearly worse, and the gate exits with code 1, which is exactly what stops a CI job.
 

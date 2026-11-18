@@ -12,10 +12,31 @@ import ContainerSecurityChecklistDiagram from '../../../viz/diagrams/ContainerSe
 import RegistryComparisonDiagram from '../../../viz/diagrams/RegistryComparisonDiagram';
 import DockerArchitectureDiagram from '../../../viz/diagrams/DockerArchitectureDiagram';
 import { Remember } from '../../../components/content/Remember';
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
 
 # Containers
 
+<ELI5>
+
+A container is a packed lunch for software. The code, libraries, and instructions travel together, so the app can run in a laptop, test machine, or production cluster with the same ingredients. The host supplies the kitchen—the operating system kernel—while the container keeps the app's files and process separate.
+
+</ELI5>
+
+## Why it exists
+
 "Works on my machine" is a dependency problem, and containers are the standard fix: package the code *and* everything it needs to run (system libraries, Python version, packages, CUDA drivers) into one portable unit that runs identically on a laptop, a CI runner, or a production cluster.
+
+## The big picture
+
+A Dockerfile describes the image layers. A registry stores the built image, and a runtime starts one or more isolated containers from it. Volumes keep data that should outlive a container. The same image digest can move from a test environment into production, making the deployed artifact identifiable.
+
+<PenFlow ariaLabel="Container lifecycle from Dockerfile through image registry to running container and persistent volume" rows={[
+  { steps: { title: 'Describe', lines: ['Dockerfile and pinned dependencies'], tone: 'blue' } },
+  { steps: { title: 'Build', lines: ['Create a layered image'], tone: 'purple' } },
+  { steps: { title: 'Store and pull', lines: ['Use a trusted image registry'], tone: 'green' } },
+  { steps: { title: 'Run', lines: ['Container process plus mounted data'], tone: 'orange' } },
+]} caption="The image is the portable template; a container is one running instance." />
 
 ## Docker Fundamentals
 
@@ -200,4 +221,53 @@ Where built images are stored and pulled from in production:
 
 An ML-specific wrinkle worth knowing: images that bundle CUDA/cuDNN and a deep learning framework (PyTorch, TensorFlow) are often several GB — layer caching and multi-stage builds matter even more here than in typical web-app images.
 
+## Worked example
+
+The Python Dockerfile above uses `python:3.12-slim`, installs the pinned requirements before copying the frequently changing app files, and starts Uvicorn on port 8000. That ordering lets dependency layers stay cached when only application code changes.
+
+## Try it yourself
+
+Build the image, inspect its layers, and change one application file. Rebuild it and compare which layers Docker reuses.
+
+```bash
+docker build -t my-model-api:1.0 .
+docker history my-model-api:1.0
+```
+
+## Common mistakes
+
+| Mistake | Why it fails | Better practice |
+| --- | --- | --- |
+| Copy all source files before installing requirements | Any code edit invalidates the dependency layer | Copy requirements first, install, then copy app code |
+| Store durable data only in the container filesystem | Removing the container removes that data | Mount a volume or external storage |
+| Run the service as root | A service compromise gains broad container privileges | Use a non-root `USER` |
+| Put credentials in a Dockerfile | Image layers retain data even after later deletion | Inject secrets at runtime |
+| Use `latest` for production base images | Rebuilds can silently resolve a different system | Pin image versions and update deliberately |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| A one-off script with no external dependencies | Run it directly in a managed job environment |
+| A managed service already supplies the runtime and libraries | Use its supported package format |
+| A function needs only a small handler and a few packages | A function-as-a-service deployment |
+
+## Remember
+
+| Idea | In one line |
+| --- | --- |
+| Image | Read-only filesystem and metadata template |
+| Container | Isolated running process that shares the host kernel |
+| Layers | Cacheable build steps; order stable dependencies before app code |
+| Data | Use a volume or external store for anything that must persist |
+| Security | Minimal base, non-root user, scanned image, runtime secrets |
+
 Next: [APIs & Model Serving](/docs/mlops/model-serving) — a containerized model is only useful once something exposes it to the outside world as an API.
+
+
+## Sources
+
+- Docker, [Dockerfile reference](https://docs.docker.com/reference/dockerfile/)
+- Docker, [Build cache optimization](https://docs.docker.com/build/cache/optimize/)
+- Docker, [Container security](https://docs.docker.com/engine/security/)
+- Docker, [Volumes](https://docs.docker.com/engine/storage/volumes/)

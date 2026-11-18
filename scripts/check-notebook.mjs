@@ -42,7 +42,8 @@ function isProgramCode(code) {
   const codeTokens = /[{}();]|\b(?:const|let|var|function|return|import|from|def|class|print|if|else|for|while|SELECT|echo|npm|pip|await|=>)\b|^\s{2,}\S/;
   const data = lines.filter((line) => dataLine.test(line)).length;
   const prose = lines.filter((line) => proseLine.test(line)).length;
-  return !(data >= Math.max(1, Math.ceil(lines.length * 0.6)) || (prose >= Math.ceil(lines.length * 0.65) && !lines.some((line) => codeTokens.test(line))));
+  const hasExecutableSyntax = lines.some((line) => codeTokens.test(line));
+  return !((data >= Math.max(1, Math.ceil(lines.length * 0.6)) && !hasExecutableSyntax) || (prose >= Math.ceil(lines.length * 0.65) && !hasExecutableSyntax));
 }
 // Text containers are not pictures; they must not count toward rule 5.
 const TEXT_ONLY_COMPONENTS = new Set(['ELI5', 'GoDeeper', 'NotebookCallout', 'RunnableCode', 'Remember', 'Key', 'Mark', 'SketchBox', 'MDXLink', 'Link', 'Callout', 'Tabs', 'TabItem', 'Details']);
@@ -78,7 +79,8 @@ function scan(file) {
       fence = null; fenceContent = []; offset += line.length + 1; continue;
     }
     if (fence) { fenceContent.push(line); offset += line.length + 1; continue; }
-    if (!inRanges(start, ranges) && /[─│├└┌┐┘┬┴┼]|-->|<--|\+---|\|---/.test(line)) add(violations, file, source, start, 2, 'ASCII box or arrow diagram art detected.');
+    const markdownTableDivider = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+    if (!inRanges(start, ranges) && !markdownTableDivider && /[─│├└┌┐┘┬┴┼]|-->|<--|\+---|\|---/.test(line)) add(violations, file, source, start, 2, 'ASCII box or arrow diagram art detected.');
     if (/^\s*\$\$.*\S.*\$\$\s*$/.test(line)) add(violations, file, source, start, 3, 'Display math must use opening and closing $$ on separate lines.');
     if (/^\s*\|.*\\frac\b.*\|\s*$/.test(line)) add(violations, file, source, start, 3, 'Do not use stacked fractions in Markdown table cells.');
     if (/^\s*(?:\*\*[^*].*[^*]\*\*|__[^_].*[^_]__)\s*$/.test(line)) {

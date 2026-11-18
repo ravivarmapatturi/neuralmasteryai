@@ -32,6 +32,14 @@ const ROUTES = [
   'docs/mlops/data-engineering-and-versioning',
   'docs/mlops/pipeline-orchestration',
   'docs/mlops/message-queues-and-async-processing',
+  'docs/mlops/containers',
+  'docs/mlops/cloud-computing',
+  'docs/mlops/cloud-model-deployment',
+  'docs/mlops/kubernetes',
+  'docs/mlops/infrastructure-as-code',
+  'docs/mlops/cicd-and-ml-cicd',
+  'docs/mlops/feature-stores-and-model-registry',
+  'docs/mlops/model-serving',
   // Keep the already-approved pilot last so the Vite dev server has warmed its
   // route modules before this large lazy-loaded page is checked.
   'docs/search-ranking-recommendations/tf-idf',

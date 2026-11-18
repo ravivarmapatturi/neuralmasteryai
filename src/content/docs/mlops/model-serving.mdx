@@ -11,10 +11,9 @@ import BatchOnlineStreamingDiagram from '../../../viz/diagrams/BatchOnlineStream
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # APIs & Model Serving
-
-[Containers](/docs/mlops/containers) packaged a model and its dependencies into an image that runs the same everywhere. A model file in an image still does nothing until something loads it, accepts requests, runs inference and sends answers back, reliably and fast enough. This page covers that something. It builds on [APIs, HTTP & Communication Patterns](/docs/cs-fundamentals/apis-http-and-protocols): a model service is an HTTP API like any other, with an expensive function behind it. It covers the three ways to serve predictions, a complete FastAPI service you can run, the concurrency mistake that most often makes Python model servers slow, the queueing maths behind latency, dynamic batching measured, and how the dedicated serving frameworks fit in.
-
 <ELI5>
 
 A trained model is like a recipe written down by a great chef. A recipe doesn't feed anyone. You need a kitchen: someone to take orders, check they make sense, cook, and hand the food out, without the queue at the counter growing forever when the lunch rush arrives.
@@ -24,6 +23,20 @@ Model serving is building that kitchen. Some kitchens cook everything overnight 
 Everything below is how that kitchen is built and why it slows down.
 
 </ELI5>
+
+## Why it exists
+
+[Containers](/docs/mlops/containers) packaged a model and its dependencies into an image that runs the same everywhere. A model file in an image still does nothing until something loads it, accepts requests, runs inference and sends answers back, reliably and fast enough. This page covers that something. It builds on [APIs, HTTP & Communication Patterns](/docs/cs-fundamentals/apis-http-and-protocols): a model service is an HTTP API like any other, with an expensive function behind it. It covers the three ways to serve predictions, a complete FastAPI service you can run, the concurrency mistake that most often makes Python model servers slow, the queueing maths behind latency, dynamic batching measured, and how the dedicated serving frameworks fit in.
+
+
+
+
+## The big picture
+
+The steps connect a request or change to a running service. Each handoff leaves evidence that the next step can check.
+
+<PenFlow ariaLabel="Prediction request path" rows={[{ steps: { title: 'Validate request', lines: ['Validate request'], tone: 'blue' } }, { steps: { title: 'Load model', lines: ['Load model'], tone: 'purple' } }, { steps: { title: 'Predict within budget', lines: ['Predict within budget'], tone: 'green' } }, { steps: { title: 'Return and measure', lines: ['Return and measure'], tone: 'orange' } }]} caption="Follow the handoffs; each step has an owner and an observable result." />
+
 
 ## 1. What Model Serving Is
 
@@ -146,12 +159,10 @@ with TestClient(app) as client:                         # runs the lifespan, so 
     print(nokey.status_code, nokey.json())
 ```
 
-```text
-{'status': 'ready', 'model_version': '3'}
-200 {'probability': 0.6588, 'model_version': '3'}
-422 List should have at least 30 items after validation, not 5
-401 {'detail': 'invalid API key'}
-```
+- &#123;'status': 'ready', 'model_version': '3'&#125;
+- 200 &#123;'probability': 0.6588, 'model_version': '3'&#125;
+- 422 List should have at least 30 items after validation, not 5
+- 401 &#123;'detail': 'invalid API key'&#125;
 
 Each piece answers a production need:
 
@@ -213,11 +224,9 @@ for path in ["/async-blocking", "/sync", "/async-offloaded"]:
 server.should_exit = True
 ```
 
-```text
-/async-blocking   20 concurrent requests took 2.06 s
-/sync             20 concurrent requests took 0.12 s
-/async-offloaded  20 concurrent requests took 0.22 s
-```
+- /async-blocking   20 concurrent requests took 2.06 s
+- /sync             20 concurrent requests took 0.12 s
+- /async-offloaded  20 concurrent requests took 0.22 s
 
 The blocking `async def` handled the 20 requests one at a time: 20 × 100 ms ≈ 2 seconds. The plain `def` and the offloaded version overlapped them. The rule: **use `async def` only when everything slow inside it is awaited**; otherwise use `def`, or move the blocking call to a thread with `asyncio.to_thread` or `run_in_threadpool`.
 
@@ -313,11 +322,9 @@ for max_batch, max_wait in [(1, 0.0), (16, 0.005), (64, 0.005)]:
     asyncio.run(run(max_batch, max_wait))
 ```
 
-```text
-max_batch= 1 max_wait= 0 ms: p50   5211 ms  p99  10285 ms  throughput    47 req/s
-max_batch=16 max_wait= 5 ms: p50     48 ms  p99     68 ms  throughput   239 req/s
-max_batch=64 max_wait= 5 ms: p50     48 ms  p99     69 ms  throughput   242 req/s
-```
+- max_batch= 1 max_wait= 0 ms: p50   5211 ms  p99  10285 ms  throughput    47 req/s
+- max_batch=16 max_wait= 5 ms: p50     48 ms  p99     68 ms  throughput   239 req/s
+- max_batch=64 max_wait= 5 ms: p50     48 ms  p99     69 ms  throughput   242 req/s
 
 (The script asks for 300 requests a second; asyncio's timer granularity makes the real arrival rate about 240, which is why the batched runs report that throughput: they kept up with everything that arrived.)
 

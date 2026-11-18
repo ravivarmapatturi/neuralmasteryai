@@ -12,10 +12,9 @@ import PromotionWorkflowDiagram from '../../../viz/diagrams/PromotionWorkflowDia
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Feature Stores & Model Registry
-
-[Experiment Tracking](/docs/mlops/experiment-tracking) ended with a trained model registered under a name. Two problems are still open between that model and production. The model was trained on features computed by one piece of code, and in production the features will be computed by another, so they can quietly disagree. And of the many registered versions, something has to decide which one serves traffic, check it before it does, and record why. This page covers both: the skew and leakage bugs that feature stores exist to prevent, how a feature store works, a running Feast example, and the model registry that controls which version is live.
-
 <ELI5>
 
 Imagine a restaurant where the head chef writes a recipe while testing it at home, and the line cooks make it at work from memory. At home, "a pinch of salt" meant one thing; at work it means another. The dish the customers get is not the dish that was tested, and nobody notices until the reviews come in.
@@ -25,6 +24,20 @@ A feature store is the shared recipe card. The same written definition is used w
 Everything below is those two ideas made exact.
 
 </ELI5>
+
+## Why it exists
+
+[Experiment Tracking](/docs/mlops/experiment-tracking) ended with a trained model registered under a name. Two problems are still open between that model and production. The model was trained on features computed by one piece of code, and in production the features will be computed by another, so they can quietly disagree. And of the many registered versions, something has to decide which one serves traffic, check it before it does, and record why. This page covers both: the skew and leakage bugs that feature stores exist to prevent, how a feature store works, a running Feast example, and the model registry that controls which version is live.
+
+
+
+
+## The big picture
+
+The steps connect a request or change to a running service. Each handoff leaves evidence that the next step can check.
+
+<PenFlow ariaLabel="Feature to model path" rows={[{ steps: { title: 'Define timestamped features', lines: ['Define timestamped features'], tone: 'blue' } }, { steps: { title: 'Join at prediction time', lines: ['Join at prediction time'], tone: 'purple' } }, { steps: { title: 'Register model version', lines: ['Register model version'], tone: 'green' } }, { steps: { title: 'Promote with evidence', lines: ['Promote with evidence'], tone: 'orange' } }]} caption="Follow the handoffs; each step has an owner and an observable result." />
+
 
 ## 1. Two Systems That Must Agree
 
@@ -79,18 +92,16 @@ print("naive:\n", naive.sort_values("label_time").to_string(index=False))
 print("point-in-time:\n", pit[["user_id", "label_time", "is_fraud", "avg_txn_amount_7d"]].to_string(index=False))
 ```
 
-```text
-naive:
-  user_id label_time  is_fraud  avg_txn_amount_7d
-       7 2026-10-03         0               15.5
-      42 2026-10-06         0              220.0
-      42 2026-10-10         1              220.0
-point-in-time:
-  user_id label_time  is_fraud  avg_txn_amount_7d
-       7 2026-10-03         0               12.0
-      42 2026-10-06         0              48.5
-      42 2026-10-10         1              220.0
-```
+- naive:
+-   user_id label_time  is_fraud  avg_txn_amount_7d
+-        7 2026-10-03         0               15.5
+-       42 2026-10-06         0              220.0
+-       42 2026-10-10         1              220.0
+- point-in-time:
+-   user_id label_time  is_fraud  avg_txn_amount_7d
+-        7 2026-10-03         0               12.0
+-       42 2026-10-06         0              48.5
+-       42 2026-10-10         1              220.0
 
 Look at user 42's row on October 6. The naive join gave it 220.0, a value computed on October 9, after the fraud spree that the 220.0 reflects. In training, the model learns that a high 7-day average goes with this user, using a number from the future. In production, it will never have that number in time. This is **label leakage through time**, and models trained with it show excellent offline metrics that collapse on deployment.
 
@@ -174,10 +185,8 @@ user_features = FeatureView(
 
 `data/user_stats.parquet` holds the same five snapshots as section 2. Running `feast apply` registers the definitions and creates the online table:
 
-```text
-Created feature view user_features
-Created sqlite table fraud_user_features
-```
+- Created feature view user_features
+- Created sqlite table fraud_user_features
 
 Now use the store from both sides:
 
@@ -202,13 +211,11 @@ online = store.get_online_features(features=["user_features:avg_txn_amount_7d"],
 print(online)
 ```
 
-```text
- user_id           event_timestamp  is_fraud  avg_txn_amount_7d
-       7 2026-10-03 00:00:00+00:00         0               12.0
-      42 2026-10-06 00:00:00+00:00         0               48.5
-      42 2026-10-10 00:00:00+00:00         1              220.0
-{'user_id': [42], 'avg_txn_amount_7d': [220.0]}
-```
+-  user_id           event_timestamp  is_fraud  avg_txn_amount_7d
+-        7 2026-10-03 00:00:00+00:00         0               12.0
+-       42 2026-10-06 00:00:00+00:00         0               48.5
+-       42 2026-10-10 00:00:00+00:00         1              220.0
+- &#123;'user_id': [42], 'avg_txn_amount_7d': [220.0]&#125;
 
 The training frame matches the hand-written as-of join exactly: user 42's October 6 row gets 48.5, not the future 220.0. The online lookup returns 220.0, the latest value, because that's what the model should see if user 42 transacts today. One definition produced both.
 

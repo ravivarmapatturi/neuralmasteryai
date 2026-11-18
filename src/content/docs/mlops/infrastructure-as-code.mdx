@@ -11,10 +11,9 @@ import ImmutableVsConfigMgmtDiagram from '../../../viz/diagrams/ImmutableVsConfi
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Infrastructure as Code
-
-[Kubernetes](/docs/mlops/kubernetes) showed how to describe the *workloads* you want running, declaratively, and let a controller make it so. The cluster itself, and everything around it (networks, storage buckets, GPU node pools, databases, permissions), also has to come from somewhere. This page covers defining that infrastructure in version-controlled files: the declarative model, how Terraform computes and applies changes, what its state file is and why it causes most of the trouble, a real run showing drift and forced replacement, modules and environments, the immutable-infrastructure approach, and how Terraform, OpenTofu and Pulumi compare.
-
 <ELI5>
 
 An architect doesn't build a house by telling builders "put a wall here, now a window there" one instruction at a time. They draw a blueprint. The builders compare the blueprint with what's already standing and do whatever is missing. If the owner wants a bigger kitchen, the architect changes the blueprint, and the builders work out what to knock down and what to add.
@@ -24,6 +23,20 @@ Infrastructure as code is the blueprint for cloud resources. You write down what
 Everything below is how that comparison works and where it goes wrong.
 
 </ELI5>
+
+## Why it exists
+
+[Kubernetes](/docs/mlops/kubernetes) showed how to describe the *workloads* you want running, declaratively, and let a controller make it so. The cluster itself, and everything around it (networks, storage buckets, GPU node pools, databases, permissions), also has to come from somewhere. This page covers defining that infrastructure in version-controlled files: the declarative model, how Terraform computes and applies changes, what its state file is and why it causes most of the trouble, a real run showing drift and forced replacement, modules and environments, the immutable-infrastructure approach, and how Terraform, OpenTofu and Pulumi compare.
+
+
+
+
+## The big picture
+
+The steps connect a request or change to a running service. Each handoff leaves evidence that the next step can check.
+
+<PenFlow ariaLabel="Infrastructure change path" rows={[{ steps: { title: 'Write configuration', lines: ['Write configuration'], tone: 'blue' } }, { steps: { title: 'Review plan', lines: ['Review plan'], tone: 'purple' } }, { steps: { title: 'Apply changes', lines: ['Apply changes'], tone: 'green' } }, { steps: { title: 'Watch for drift', lines: ['Watch for drift'], tone: 'orange' } }]} caption="Follow the handoffs; each step has an owner and an observable result." />
+
 
 ## 1. What Is Infrastructure as Code?
 
@@ -55,7 +68,7 @@ Declaring an end state only works if the tool can tell what currently exists. Ho
 [Terraform](https://developer.hashicorp.com/terraform) is the most widely used IaC tool, and its model is shared by its open-source fork OpenTofu. A configuration is a directory of `.tf` files written in HCL (HashiCorp Configuration Language), made of a few kinds of block:
 
 - **Providers** are plugins that know how to talk to one platform's API: `hashicorp/aws`, `hashicorp/google`, `hashicorp/kubernetes`, and thousands more, including SaaS tools. `terraform init` downloads the ones you declare.
-- **Resources** are the things to manage: `resource "aws_s3_bucket" "artifacts" { ... }`. Each has a type (from a provider), a local name, and arguments.
+- **Resources** are the things to manage: `resource "aws_s3_bucket" "artifacts" &#123; ... &#125;`. Each has a type (from a provider), a local name, and arguments.
 - **Variables** are inputs, such as the environment name or the GPU count, so one configuration serves several environments.
 - **Outputs** expose values after apply, such as a bucket ARN or a cluster endpoint, for people, CI jobs or other configurations.
 - **Modules** are reusable bundles of resources with their own variables and outputs (section 6).
@@ -110,40 +123,34 @@ output "cluster_file" {
 
 **First plan.** After `terraform init`, `terraform plan -out=tfplan` (Terraform 1.16) shows one resource to create, with its computed content:
 
-```text
-  # local_file.training_cluster will be created
-  + resource "local_file" "training_cluster" {
-      + content              = jsonencode(
-            {
-              + environment = "dev"
-              + gpus        = 1
-              + instance    = "g6e.xlarge"
-            }
-        )
-      + filename             = "./out/dev-cluster.json"
-      + id                   = (known after apply)
-      ...
-    }
+-   # local_file.training_cluster will be created
+-   + resource "local_file" "training_cluster" &#123;
+-       + content              = jsonencode(
+-             &#123;
+-               + environment = "dev"
+-               + gpus        = 1
+-               + instance    = "g6e.xlarge"
+-             &#125;
+-         )
+-       + filename             = "./out/dev-cluster.json"
+-       + id                   = (known after apply)
+-       ...
+-     &#125;
 
-Plan: 1 to add, 0 to change, 0 to destroy.
-```
+- Plan: 1 to add, 0 to change, 0 to destroy.
 
 **Apply, then plan again.** `terraform apply tfplan` creates the file. Running `terraform plan` a second time does nothing, which is the declarative guarantee:
 
-```text
-No changes. Your infrastructure matches the configuration.
+- No changes. Your infrastructure matches the configuration.
 
-Terraform has compared your real infrastructure against your configuration
-and found no differences, so no changes are needed.
-```
+- Terraform has compared your real infrastructure against your configuration
+- and found no differences, so no changes are needed.
 
 **Drift.** Now someone changes the resource outside Terraform, the equivalent of a console click during an incident, by overwriting the file with `{"gpus":8}`. The next plan refreshes, notices the real object no longer matches what state recorded, and plans to put it back:
 
-```text
-local_file.training_cluster: Refreshing state... [id=21b5908698071c60bcfff9894e3fcfc207fcb40f]
-  # local_file.training_cluster will be created
-Plan: 1 to add, 0 to change, 0 to destroy.
-```
+- local_file.training_cluster: Refreshing state... [id=21b5908698071c60bcfff9894e3fcfc207fcb40f]
+-   # local_file.training_cluster will be created
+- Plan: 1 to add, 0 to change, 0 to destroy.
 
 <StateDriftDiagram />
 
@@ -151,13 +158,11 @@ Plan: 1 to add, 0 to change, 0 to destroy.
 
 **Forced replacement.** Finally, a legitimate change: `terraform plan -var gpu_count=8`. Changing a resource's content in this provider can't be done in place, so Terraform plans to destroy and recreate it, and says which attribute forces that:
 
-```text
-  # local_file.training_cluster must be replaced
-              ~ gpus        = 1 -> 8
-              ~ instance    = "g6e.xlarge" -> "p5.48xlarge"
-            } # forces replacement
-Plan: 1 to add, 0 to change, 1 to destroy.
-```
+-   # local_file.training_cluster must be replaced
+-               ~ gpus        = 1 -> 8
+-               ~ instance    = "g6e.xlarge" -> "p5.48xlarge"
+-             &#125; # forces replacement
+- Plan: 1 to add, 0 to change, 1 to destroy.
 
 Cloud resources behave the same way. Some arguments can be updated in place (tags, an autoscaling group's size); others force replacement (a database's engine, many resources' names, a subnet's address range). **Reading the plan for `must be replaced` is the most important review step in IaC**, because replacing a database or a bucket destroys its contents.
 
@@ -262,9 +267,7 @@ output "artifact_bucket_arn" {
 
 With the AWS provider v6.70 installed, `terraform fmt -check` passes and `terraform validate` reports:
 
-```text
-Success! The configuration is valid.
-```
+- Success! The configuration is valid.
 
 and a plan with `-var environment=qa` stops with `Error: Invalid value for variable` before touching anything. Validation catches typos, but not mistakes that only the cloud API can detect, such as a bucket name already taken; those appear at plan or apply time.
 
