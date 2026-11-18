@@ -1,6 +1,7 @@
 import { useVizTokens } from '../../theme/vizTokens';
 import { SketchEllipse } from '../../components/notebook/RoughShape';
 import Watermark from '../../components/notebook/Watermark';
+import { FlowDots } from '../primitives';
 
 /**
  * The 4-node PageRank example graph, drawn by pen.
@@ -17,6 +18,13 @@ export default function PageRankToyGraph() {
     D: { x: 330, y: 230 },
   } as const;
   const r = 30;
+  const paths = {
+    ab: `M ${nodes.A.x + r} ${nodes.A.y} L ${nodes.B.x - r - 2} ${nodes.B.y}`,
+    ac: `M ${nodes.A.x - 12} ${nodes.A.y + r - 2} L ${nodes.C.x - 12} ${nodes.C.y - r - 2}`,
+    ca: `M ${nodes.C.x + 12} ${nodes.C.y - r + 2} L ${nodes.A.x + 12} ${nodes.A.y + r + 2}`,
+    bc: `M ${nodes.B.x - 22} ${nodes.B.y + 22} L ${nodes.C.x + 24} ${nodes.C.y - 20}`,
+    dc: `M ${nodes.D.x - r} ${nodes.D.y} L ${nodes.C.x + r + 2} ${nodes.C.y}`,
+  };
 
   const arrow = (d: string, color: string) => (
     <path d={d} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" markerEnd="url(#pr-head)" />
@@ -43,24 +51,28 @@ export default function PageRankToyGraph() {
         </defs>
 
         {/* A → B */}
-        {arrow(`M ${nodes.A.x + r} ${nodes.A.y} L ${nodes.B.x - r - 2} ${nodes.B.y}`, t.accentSecondary)}
+        {arrow(paths.ab, t.accentSecondary)}
         {label(220, 58, '½', t.accentSecondary)}
 
         {/* A → C (left line, down) */}
-        {arrow(`M ${nodes.A.x - 12} ${nodes.A.y + r - 2} L ${nodes.C.x - 12} ${nodes.C.y - r - 2}`, t.accentSecondary)}
+        {arrow(paths.ac, t.accentSecondary)}
         {label(nodes.A.x - 26, 156, '½', t.accentSecondary, 'end')}
 
         {/* C → A (right line, up) */}
-        {arrow(`M ${nodes.C.x + 12} ${nodes.C.y - r + 2} L ${nodes.A.x + 12} ${nodes.A.y + r + 2}`, t.accentPurple)}
+        {arrow(paths.ca, t.accentPurple)}
         {label(nodes.A.x + 26, 156, '1', t.accentPurple, 'start')}
 
         {/* B → C (diagonal) */}
-        {arrow(`M ${nodes.B.x - 22} ${nodes.B.y + 22} L ${nodes.C.x + 24} ${nodes.C.y - 20}`, t.accentPrimary)}
+        {arrow(paths.bc, t.accentPrimary)}
         {label(284, 142, '1', t.accentPrimary, 'start')}
 
         {/* D → C */}
-        {arrow(`M ${nodes.D.x - r} ${nodes.D.y} L ${nodes.C.x + r + 2} ${nodes.C.y}`, t.accentWarn)}
+        {arrow(paths.dc, t.accentWarn)}
         {label(220, 254, '1', t.accentWarn)}
+
+        {Object.entries(paths).map(([key, d]) => (
+          <FlowDots key={key} d={d} color={t.accentPrimary} count={1} dur={2.4} r={3} />
+        ))}
 
         {Object.entries(nodes).map(([name, p]) => (
           <g key={name}>

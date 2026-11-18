@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 import {
   calculateBudgetSummary,
   calculateCapacitySizing,
@@ -18,7 +18,8 @@ const TAB_OPTIONS: { value: ActiveTab; label: string }[] = [
 
 export default function SearchSystemDesignExplorer() {
   const t = useVizTokens();
-  const [activeTab, setActiveTab] = useState<ActiveTab>('latency');
+  const tabCycle = useAutoCycle(TAB_OPTIONS.length, 3200);
+  const activeTab = TAB_OPTIONS[tabCycle.value].value;
 
   // Latency tab state
   const [targetSla, setTargetSla] = useState<number>(100);
@@ -63,7 +64,7 @@ export default function SearchSystemDesignExplorer() {
           <PillSelect
             options={TAB_OPTIONS}
             value={activeTab}
-            onChange={(val) => setActiveTab(val as ActiveTab)}
+            onChange={(val) => tabCycle.pick(TAB_OPTIONS.findIndex((option) => option.value === val))}
           />
         </div>
 

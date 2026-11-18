@@ -132,3 +132,42 @@
 - `PcaProjectionDiagram`: Each point drops onto PC1 and appears on the one-dimensional strip because PCA replaces the original point with its coordinate along the maximum-variance direction.
 - `BaggingVarianceDiagram`: The cursor moves from one tree toward the full forest because averaging more correlated estimators reduces variance before approaching a correlation-imposed floor.
 - `MatrixFactorizationDiagram`: Training epochs advance automatically because gradient descent progressively adjusts the latent factors to reconstruct observed ratings and infer missing cells.
+
+## Batch 6
+
+- `RidgeRegressionStudio`: The lambda cursor travels along the coefficient paths because stronger L2 regularization continuously shrinks correlated weights toward a more stable shared solution.
+- `AlgorithmSelector`: Left static because it is a direct-manipulation decision tool, and choosing answers automatically would replace the learner's problem constraints rather than reveal a mechanism.
+- `SgdLossPenaltyDiagram`: The loss-and-penalty configuration advances because changing the objective changes the gradient that fits the decision boundary to the same dataset.
+- `KernelTrickDiagram`: The points rise from the original axis into their squared-feature coordinates because the explicit map turns a non-linearly separable 1D arrangement into a linearly separable 2D one.
+- `ArimaDifferencingDiagram`: The differencing order advances because successive differences remove the trend and then reveal when extra differencing only adds noise.
+- `TopicMixtureDiagram`: The document advances and its bars resize because different observed words produce different posterior mixtures over the same topics.
+- `ConformalPredictionDiagram`: The miscoverage level advances and the prediction band resizes because a higher target coverage requires a larger calibration-residual quantile.
+- `TreeGrowthStrategyDiagram`: Both split sequences reveal the same budget step in parallel because level-wise and leaf-wise growth spend each split on different available leaves.
+
+## Batch 7
+
+- `SpeculativeDecodingSimulator`: The workload advances through predictable, typical, and high-entropy drafts because acceptance rate determines how many proposed tokens the target model can verify and emit per pass.
+- `TreeAttentionDraftDiagram`: The topology alternates between a linear chain and a branched tree because tree attention verifies several candidate continuations in parallel instead of betting on one draft path.
+- `DisaggregatedServingArchDiagram`: The route alternates with prompt length because long prompts benefit from a separate prefill worker and KV transfer while short prompts avoid that network overhead on the decode worker.
+- `DisaggregationPrefixCachingVisualizer`: The view alternates between worker disaggregation and prefix reuse because production serving reduces latency through both phase isolation and cached shared context.
+- `RadixTreePrefixDiagram`: The cache topology alternates because radix prefixes can be reused across separate requests or extended across branches of one multi-turn conversation.
+- `TinyMLTensorArenaVisualizer`: The active layer advances because a statically planned tensor arena reuses the same SRAM offsets as intermediate activations die and later layers begin.
+- `KernelMemoryHierarchyVisualizer`: The view alternates from the memory hierarchy to FlashAttention tiling because the kernel avoids slow HBM traffic by moving bounded tiles through on-chip SRAM.
+- `PagedAttentionVisualizer`: Token generation advances while the allocation mode alternates because paged KV blocks grow on demand whereas contiguous allocation reserves each request's maximum span up front.
+- `QuantizationScaleVisualizer`: Precision advances from FP32 toward INT4 because each lower-bit representation coarsens the stored value while reducing model memory and bandwidth demand.
+- `RooflineModelVisualizer`: The hardware target advances because each accelerator's compute-to-bandwidth ratio moves the roofline knee and changes the attainable performance of the same arithmetic intensity.
+- `InferenceCurriculumDiagram`: The active stage advances because the curriculum builds inference engineering from hardware limits through batching, compression, edge execution, kernels, and distributed serving.
+- `DeepRecommendersArchitectureExplorer`: The selected architecture advances because two-tower, Wide & Deep, DLRM, and SASRec encode different interaction patterns and therefore serve different funnel stages.
+- `ExplorationFeedbackLoopExplorer`: The active experiment advances because contextual choice, counterfactual evaluation, and exposure dynamics are the three linked mechanisms needed to reason about exploration feedback loops.
+
+## Batch 8
+
+- `LearningToRankDiagram`: The objective advances because pointwise, pairwise, LambdaRank, and LambdaMART optimize the same candidate slate through different learning signals.
+- `MatrixFactorizationExplorer`: ALS iterations advance because alternating updates progressively refit the user and item factors that reconstruct the observed ratings.
+- `SearchRecommendationPipelineDiagram`: The active stage advances because candidates are generated, filtered, ranked, re-ranked, and served in that order.
+- `RankingMetricsExplorer`: The cutoff advances because every ranking metric must be recomputed over the top-k prefix the evaluator chooses.
+- `PageRankToyGraph`: Probability dots move along every directed link in parallel because each page distributes its current score across all outgoing links at once.
+- `PageRankVisualizer`: Power iterations advance because PageRank repeatedly redistributes link mass until the node scores converge.
+- `SearchSystemDesignExplorer`: The design view advances because latency budgets, resilience fallbacks, and capacity sizing expose three coupled operating constraints of the same serving system.
+- `SemanticHybridSearchDiagram`: The channel weighting advances because reciprocal-rank fusion changes the final order when lexical and dense retrieval contribute different strengths.
+- `InvertedIndexVisualizer`: The Boolean query advances because each operator scans, intersects, unions, or subtracts a different pair of posting lists.

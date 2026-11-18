@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 
 type HardwareKey = 'h100' | 'a100' | 'rtx4090' | 'm3max' | 'cortex_m4';
 
@@ -66,7 +66,9 @@ const HARDWARE_OPTIONS: { value: HardwareKey; label: string }[] = [
 
 export default function RooflineModelVisualizer() {
   const t = useVizTokens();
-  const [selectedHw, setSelectedHw] = useState<HardwareKey>('h100');
+  const hardwareKeys: HardwareKey[] = ['h100', 'a100', 'rtx4090', 'm3max', 'cortex_m4'];
+  const hardwareCycle = useAutoCycle(hardwareKeys.length, 3400, 0);
+  const selectedHw = hardwareKeys[hardwareCycle.value];
   const [intensity, setIntensity] = useState<number>(32); // FLOPs/byte
 
   const hw = HARDWARE_SPECS[selectedHw];
@@ -136,7 +138,7 @@ export default function RooflineModelVisualizer() {
         <PillSelect<HardwareKey>
           label="Target Hardware"
           value={selectedHw}
-          onChange={setSelectedHw}
+          onChange={(value) => hardwareCycle.pick(hardwareKeys.indexOf(value as HardwareKey))}
           options={HARDWARE_OPTIONS}
         />
       </div>

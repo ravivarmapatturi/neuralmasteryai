@@ -1,12 +1,13 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 
 type CacheMode = 'shared_system' | 'branch_conversation';
 
 export default function RadixTreePrefixDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<CacheMode>('shared_system');
+  const modes: CacheMode[] = ['shared_system', 'branch_conversation'];
+  const modeCycle = useAutoCycle(modes.length, 4200, 0);
+  const mode = modes[modeCycle.value];
 
   return (
     <VisualizationContainer
@@ -27,7 +28,7 @@ export default function RadixTreePrefixDiagram() {
         <PillSelect<CacheMode>
           label="Cache Topology"
           value={mode}
-          onChange={setMode}
+          onChange={(value) => modeCycle.pick(modes.indexOf(value as CacheMode))}
           options={[
             { value: 'shared_system', label: '1. Shared System Prompt (1,024 tok)' },
             { value: 'branch_conversation', label: '2. Multi-Turn Branching Conversation' },

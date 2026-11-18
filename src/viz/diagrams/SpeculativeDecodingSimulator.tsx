@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 
 type Scenario = 'high_predictable' | 'medium_code' | 'low_creative';
 
@@ -50,7 +50,9 @@ const SCENARIOS: Record<Scenario, { name: string; draftRatio: number; tokens: To
 
 export default function SpeculativeDecodingSimulator() {
   const t = useVizTokens();
-  const [scenarioKey, setScenarioKey] = useState<Scenario>('medium_code');
+  const scenarioKeys: Scenario[] = ['high_predictable', 'medium_code', 'low_creative'];
+  const scenarioCycle = useAutoCycle(scenarioKeys.length, 3600, 1);
+  const scenarioKey = scenarioKeys[scenarioCycle.value];
   const [draftLength, setDraftLength] = useState<number>(5);
 
   const scenario = SCENARIOS[scenarioKey];
@@ -88,7 +90,7 @@ export default function SpeculativeDecodingSimulator() {
         <PillSelect<Scenario>
           label="Workload Entropy"
           value={scenarioKey}
-          onChange={setScenarioKey}
+          onChange={(value) => scenarioCycle.pick(scenarioKeys.indexOf(value as Scenario))}
           options={[
             { value: 'high_predictable', label: '1. High Predictability (~90% Match)' },
             { value: 'medium_code', label: '2. Typical Python (~70% Match)' },

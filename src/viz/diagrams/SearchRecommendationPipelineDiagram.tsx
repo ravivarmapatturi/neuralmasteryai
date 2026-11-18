@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 
 type SystemMode = 'search' | 'recommendation';
 
@@ -65,7 +65,8 @@ const STAGES: StageInfo[] = [
 export default function SearchRecommendationPipelineDiagram() {
   const t = useVizTokens();
   const [mode, setMode] = useState<SystemMode>('search');
-  const [activeStageIndex, setActiveStageIndex] = useState<number>(0);
+  const stageCycle = useAutoCycle(STAGES.length, 2200);
+  const activeStageIndex = stageCycle.value;
 
   const activeStage = STAGES[activeStageIndex];
   const isSearch = mode === 'search';
@@ -155,7 +156,7 @@ export default function SearchRecommendationPipelineDiagram() {
               key={stage.id}
               role="tab"
               aria-selected={isSelected}
-              onClick={() => setActiveStageIndex(idx)}
+              onClick={() => stageCycle.pick(idx)}
               style={{
                 background: isSelected ? `${accentColor}18` : t.surfaceAlt,
                 border: `1.5px solid ${isSelected ? accentColor : t.border}`,

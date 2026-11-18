@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 
 type Precision = 'fp32' | 'fp16' | 'fp8' | 'int8' | 'int4';
 
@@ -58,7 +58,9 @@ const PRECISIONS: Record<Precision, PrecisionSpec> = {
 
 export default function QuantizationScaleVisualizer() {
   const t = useVizTokens();
-  const [precision, setPrecision] = useState<Precision>('int8');
+  const precisionValues: Precision[] = ['fp32', 'fp16', 'fp8', 'int8', 'int4'];
+  const precisionCycle = useAutoCycle(precisionValues.length, 3000, 3);
+  const precision = precisionValues[precisionCycle.value];
   const [inputValue, setInputValue] = useState<number>(3.85);
 
   const spec = PRECISIONS[precision];
@@ -106,7 +108,7 @@ export default function QuantizationScaleVisualizer() {
         <PillSelect<Precision>
           label="Target Precision"
           value={precision}
-          onChange={setPrecision}
+          onChange={(value) => precisionCycle.pick(precisionValues.indexOf(value as Precision))}
           options={[
             { value: 'fp32', label: '1. FP32 (Full)' },
             { value: 'fp16', label: '2. FP16 (Half)' },

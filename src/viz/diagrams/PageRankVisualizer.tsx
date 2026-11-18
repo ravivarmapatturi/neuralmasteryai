@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 import {
   WORKED_PAGERANK_GRAPH,
   getInNeighbors,
@@ -24,7 +24,8 @@ const NODE_COORDINATES: Record<string, { x: number; y: number }> = {
 export default function PageRankVisualizer() {
   const t = useVizTokens();
   const [damping, setDamping] = useState<number>(0.85);
-  const [stepIndex, setStepIndex] = useState<number>(0);
+  const stepCycle = useAutoCycle(6, 1800);
+  const stepIndex = stepCycle.value === 5 ? 99 : stepCycle.value;
 
   const { history, converged } = runPageRank(WORKED_PAGERANK_GRAPH, damping, 30);
   const maxStep = Math.min(history.length - 1, 5);
@@ -72,7 +73,7 @@ export default function PageRankVisualizer() {
               <button
                 key={step}
                 type="button"
-                onClick={() => setStepIndex(step)}
+                onClick={() => stepCycle.pick(step)}
                 style={{
                   padding: '4px 10px',
                   borderRadius: RADIUS.sm,
@@ -90,7 +91,7 @@ export default function PageRankVisualizer() {
             ))}
             <button
               type="button"
-              onClick={() => setStepIndex(99)}
+              onClick={() => stepCycle.pick(5)}
               style={{
                 padding: '4px 10px',
                 borderRadius: RADIUS.sm,

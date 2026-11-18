@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, useAutoCycle } from '../primitives';
 
 interface PostingItem {
   docId: string;
@@ -54,7 +53,8 @@ const PRESET_QUERIES = [
 
 export default function InvertedIndexVisualizer() {
   const t = useVizTokens();
-  const [selectedQueryIdx, setSelectedQueryIdx] = useState<number>(0);
+  const queryCycle = useAutoCycle(PRESET_QUERIES.length, 2600);
+  const selectedQueryIdx = queryCycle.value;
 
   const activeQuery = PRESET_QUERIES[selectedQueryIdx];
 
@@ -94,7 +94,7 @@ export default function InvertedIndexVisualizer() {
               <button
                 key={q.label}
                 type="button"
-                onClick={() => setSelectedQueryIdx(idx)}
+                onClick={() => queryCycle.pick(idx)}
                 aria-pressed={isSelected}
                 style={{
                   padding: `${SPACING.xs}px ${SPACING.md}px`,

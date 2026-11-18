@@ -1,12 +1,13 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 
 type RouteMode = 'long_prompt' | 'short_prompt';
 
 export default function DisaggregatedServingArchDiagram() {
   const t = useVizTokens();
-  const [route, setRoute] = useState<RouteMode>('long_prompt');
+  const routes: RouteMode[] = ['long_prompt', 'short_prompt'];
+  const routeCycle = useAutoCycle(routes.length, 4400, 0);
+  const route = routes[routeCycle.value];
 
   return (
     <VisualizationContainer
@@ -27,7 +28,7 @@ export default function DisaggregatedServingArchDiagram() {
         <PillSelect<RouteMode>
           label="Request Dispatch Mode"
           value={route}
-          onChange={setRoute}
+          onChange={(value) => routeCycle.pick(routes.indexOf(value as RouteMode))}
           options={[
             { value: 'long_prompt', label: '1. Long Prompt (≥ 256 tokens, Disaggregated)' },
             { value: 'short_prompt', label: '2. Short Prompt (< 256 tokens, Colocated)' },

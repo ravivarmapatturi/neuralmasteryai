@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 import {
   computeContextualDecision,
   evaluateIps,
@@ -19,7 +19,9 @@ const TAB_OPTIONS: { value: ActiveTab; label: string }[] = [
 
 export default function ExplorationFeedbackLoopExplorer() {
   const t = useVizTokens();
-  const [activeTab, setActiveTab] = useState<ActiveTab>('linucb');
+  const tabs: ActiveTab[] = ['linucb', 'ips', 'feedback'];
+  const tabCycle = useAutoCycle(tabs.length, 4800, 0);
+  const activeTab = tabs[tabCycle.value];
 
   // Tab 1 state: LinUCB
   const [techAffinity, setTechAffinity] = useState<number>(0.8);
@@ -72,7 +74,7 @@ export default function ExplorationFeedbackLoopExplorer() {
           <PillSelect
             options={TAB_OPTIONS}
             value={activeTab}
-            onChange={(val) => setActiveTab(val as ActiveTab)}
+            onChange={(val) => tabCycle.pick(tabs.indexOf(val as ActiveTab))}
           />
         </div>
 

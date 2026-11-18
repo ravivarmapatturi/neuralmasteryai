@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 import {
   computeLambdaRank,
   computePointwiseMse,
@@ -45,7 +45,8 @@ const INITIAL_DOCS: LtrDoc[] = [
 
 export default function LearningToRankDiagram() {
   const t = useVizTokens();
-  const [selectedObjective, setSelectedObjective] = useState<string>(OBJECTIVES[0]);
+  const objectiveCycle = useAutoCycle(OBJECTIVES.length, 2600);
+  const selectedObjective = OBJECTIVES[objectiveCycle.value];
   const [isResolved, setIsResolved] = useState<boolean>(false);
 
   // Dynamic scores based on resolution toggle
@@ -97,7 +98,7 @@ export default function LearningToRankDiagram() {
             <PillSelect
               options={OBJECTIVES.map((obj) => ({ value: obj, label: obj }))}
               value={selectedObjective}
-              onChange={(val) => setSelectedObjective(val as string)}
+              onChange={(val) => objectiveCycle.pick(OBJECTIVES.indexOf(val as string))}
             />
           </div>
 

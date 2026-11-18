@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, Slider } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, Slider, useAutoCycle } from '../primitives';
 import {
   TOY_MF_RATINGS,
   MF_USER_NAMES,
@@ -11,7 +11,8 @@ import {
 
 export default function MatrixFactorizationExplorer() {
   const t = useVizTokens();
-  const [iterations, setIterations] = useState<number>(10);
+  const iterationCycle = useAutoCycle(20, 1400, 9);
+  const iterations = iterationCycle.value + 1;
   const [rotationAngle, setRotationAngle] = useState<number>(0);
   const [viewTab, setViewTab] = useState<'reconstruction' | 'factors' | 'residuals'>('reconstruction');
 
@@ -57,7 +58,7 @@ export default function MatrixFactorizationExplorer() {
         <Slider
           label="ALS Iterations"
           value={iterations}
-          onChange={setIterations}
+          onChange={(value) => iterationCycle.pick(value - 1)}
           min={1}
           max={20}
           step={1}

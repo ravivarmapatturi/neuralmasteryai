@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { runConformalPrediction, trueFn } from '../lib/conformalPrediction';
 
@@ -20,7 +20,8 @@ const N_TEST = 150;
  * exchangeable. */
 export default function ConformalPredictionDiagram() {
   const t = useVizTokens();
-  const [alpha, setAlpha] = useState(0.1);
+  const alphaCycle = useAutoCycle(6, 1800, 1);
+  const alpha = 0.05 + alphaCycle.value * 0.05;
 
   const result = useMemo(() => runConformalPrediction(alpha, N_CAL, N_TEST, 11), [alpha]);
   const color = getConceptColor(t, 'attention');
@@ -62,7 +63,7 @@ export default function ConformalPredictionDiagram() {
     <VisualizationContainer
       footer={`Target coverage: ${((1 - alpha) * 100).toFixed(0)}%. Measured on ${N_TEST} fresh held-out test points (not the calibration set): ${(result.coverageCheck.rate * 100).toFixed(1)}% actually fell inside the interval -- q_hat = ${result.qHat.toFixed(3)}, computed as the real ceil((n+1)(1-alpha))/n quantile of ${N_CAL} calibration residuals.`}
     >
-      <Slider label="alpha (target miscoverage)" value={alpha} onChange={setAlpha} min={0.05} max={0.3} step={0.05} />
+      <Slider label="alpha (target miscoverage)" value={alpha} onChange={(value) => alphaCycle.pick(Math.round((value - 0.05) / 0.05))} min={0.05} max={0.3} step={0.05} />
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
         <polygon
           points={[

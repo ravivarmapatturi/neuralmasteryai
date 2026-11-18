@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 
 const STAGES = [
   { label: '1. Roofline & KV', href: '/docs/inference-engineering/roofline-and-kv-cache', desc: 'Arithmetic intensity, memory bandwidth bottlenecks, and PagedAttention.' },
@@ -13,7 +12,8 @@ const STAGES = [
 
 export default function InferenceCurriculumDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState(0);
+  const stageCycle = useAutoCycle(STAGES.length, 2600, 0);
+  const active = stageCycle.value;
   const color = t.accentPrimary;
   const width = 680;
   const stepX = (i: number) => 50 + i * ((width - 100) / (STAGES.length - 1));
@@ -33,7 +33,7 @@ export default function InferenceCurriculumDiagram() {
         {STAGES.map((p, i) => {
           const isActive = active === i;
           return (
-            <g key={p.label} onClick={() => setActive(i)} onMouseEnter={() => setActive(i)} style={{ cursor: 'pointer' }}>
+            <g key={p.label} onClick={() => stageCycle.pick(i)} onMouseEnter={() => stageCycle.pick(i)} style={{ cursor: 'pointer' }}>
               <circle cx={stepX(i)} cy={y} r={30} fill={isActive ? `${color}25` : t.surfaceAlt} stroke={isActive ? color : t.border} strokeWidth={isActive ? 2.5 : 1.5} />
               <text x={stepX(i)} y={y + 4} textAnchor="middle" fontSize={7.5} fontWeight={700} fill={isActive ? color : t.textPrimary}>{p.label}</text>
               <text x={stepX(i)} y={y + 44} textAnchor="middle" fontSize={9} fill={t.textSecondary}>Stage {i + 1}</text>

@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generateClasses, trainSgd, type LossType, type PenaltyType } from '../lib/classifiers';
 
@@ -16,7 +16,8 @@ const CONFIGS: { key: string; loss: LossType; penalty: PenaltyType; label: strin
 
 export default function SgdLossPenaltyDiagram() {
   const t = useVizTokens();
-  const [configKey, setConfigKey] = useState('svm');
+  const configCycle = useAutoCycle(CONFIGS.length, 2800, 2);
+  const configKey = CONFIGS[configCycle.value].key;
   const config = CONFIGS.find((c) => c.key === configKey)!;
 
   const points = useMemo(() => generateClasses(3, false), []);
@@ -30,7 +31,7 @@ export default function SgdLossPenaltyDiagram() {
 
   return (
     <VisualizationContainer footer={`Same generic SGD loop (${'`'}for each point: score = w·x+b, grad = loss'(y, score), w -= lr*(grad*x + penalty), b -= lr*grad${'`'}), same real 120-point dataset -- only the loss/penalty plugged in differs. Real fitted boundary for ${config.label}: w=(${w[0].toFixed(2)}, ${w[1].toFixed(2)}), b=${b.toFixed(2)}.`}>
-      <PillSelect label="Loss + penalty combination" value={configKey} onChange={(v) => setConfigKey(v as string)} options={CONFIGS.map((c) => ({ value: c.key, label: c.label }))} />
+      <PillSelect label="Loss + penalty combination" value={configKey} onChange={(v) => configCycle.pick(CONFIGS.findIndex((c) => c.key === v))} options={CONFIGS.map((c) => ({ value: c.key, label: c.label }))} />
 
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8, maxWidth: 300, margin: '8px auto 0' }}>
         {points.map((p, i) => (

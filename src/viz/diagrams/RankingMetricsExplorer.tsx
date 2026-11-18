@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 import {
   averagePrecisionAtK,
   catalogCoverage,
@@ -34,7 +34,8 @@ const TOTAL_RELEVANT_IN_CORPUS = 3; // docs A, B, C
 export default function RankingMetricsExplorer() {
   const t = useVizTokens();
   const [docs, setDocs] = useState<RankedDoc[]>(INITIAL_DOCS);
-  const [cutoffK, setCutoffK] = useState<number>(3);
+  const cutoffCycle = useAutoCycle(5, 2200, 2);
+  const cutoffK = cutoffCycle.value + 1;
   const [gainType, setGainType] = useState<'exponential' | 'linear'>('exponential');
 
   // Binary relevance: grade >= 1 is relevant
@@ -164,7 +165,7 @@ export default function RankingMetricsExplorer() {
           <PillSelect<number>
             label="Cutoff k"
             value={cutoffK}
-            onChange={(v) => setCutoffK(Number(v))}
+            onChange={(v) => cutoffCycle.pick(Number(v) - 1)}
             options={[
               { value: 1, label: 'k=1' },
               { value: 2, label: 'k=2' },

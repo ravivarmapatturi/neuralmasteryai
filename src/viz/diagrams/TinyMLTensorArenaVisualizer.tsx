@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 
 type AllocatorMode = 'static_arena' | 'dynamic_heap';
 
@@ -25,7 +25,8 @@ const TINYML_LAYERS: LayerMemory[] = [
 export default function TinyMLTensorArenaVisualizer() {
   const t = useVizTokens();
   const [mode, setMode] = useState<AllocatorMode>('static_arena');
-  const [activeLayerIdx, setActiveLayerIdx] = useState<number>(1);
+  const layerCycle = useAutoCycle(TINYML_LAYERS.length, 2200, 1);
+  const activeLayerIdx = layerCycle.value;
 
   // Microcontroller Constraints (e.g. STM32 / ESP32)
   const TOTAL_SRAM_KB = 128; // Total RAM
@@ -69,7 +70,7 @@ export default function TinyMLTensorArenaVisualizer() {
         {TINYML_LAYERS.map((layer, idx) => (
           <button
             key={idx}
-            onClick={() => setActiveLayerIdx(idx)}
+            onClick={() => layerCycle.pick(idx)}
             style={{
               background: activeLayerIdx === idx ? t.accentPrimary : t.surfaceAlt,
               color: activeLayerIdx === idx ? t.background : t.textPrimary,

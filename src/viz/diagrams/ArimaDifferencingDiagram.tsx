@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { generateTrendedSeries, difference, variance } from '../lib/specializedSupervised';
 
 export default function ArimaDifferencingDiagram() {
   const t = useVizTokens();
-  const [d, setD] = useState<0 | 1 | 2>(1);
+  const orderCycle = useAutoCycle(3, 2800, 1);
+  const d = orderCycle.value as 0 | 1 | 2;
 
   const raw = useMemo(() => generateTrendedSeries(30, 4), []);
   const diffed = useMemo(() => difference(raw, d), [d, raw]);
@@ -20,7 +21,7 @@ export default function ArimaDifferencingDiagram() {
 
   return (
     <VisualizationContainer footer={`Real series, real d=${d} differencing applied (${'`'}y' = y[t] - y[t-1]${'`'}, repeated d times). Variance of the raw series = ${varRaw.toFixed(2)}; variance after d=${d} differencing = ${varDiffed.toFixed(2)}. At d=0 the upward trend dominates the variance; at d=1 the trend is gone and what's left is close to noise -- exactly what "stationary" means here, made visible instead of asserted. Push to d=2 and watch it start to look like OVER-differencing: no further real improvement, just added noise.`}>
-      <PillSelect label="differencing order (d)" value={d} onChange={(v) => setD(v as 0 | 1 | 2)} options={[
+      <PillSelect label="differencing order (d)" value={d} onChange={(v) => orderCycle.pick(v as number)} options={[
         { value: 0, label: 'd=0 (raw)' },
         { value: 1, label: 'd=1' },
         { value: 2, label: 'd=2' },

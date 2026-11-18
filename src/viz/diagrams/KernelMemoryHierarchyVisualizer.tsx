@@ -1,12 +1,13 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 
 type Mode = 'hierarchy' | 'flash_tiling';
 
 export default function KernelMemoryHierarchyVisualizer() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('hierarchy');
+  const modes: Mode[] = ['hierarchy', 'flash_tiling'];
+  const modeCycle = useAutoCycle(modes.length, 4400, 0);
+  const mode = modes[modeCycle.value];
 
   return (
     <VisualizationContainer
@@ -27,7 +28,7 @@ export default function KernelMemoryHierarchyVisualizer() {
         <PillSelect<Mode>
           label="Architecture View"
           value={mode}
-          onChange={setMode}
+          onChange={(value) => modeCycle.pick(modes.indexOf(value as Mode))}
           options={[
             { value: 'hierarchy', label: '1. Memory Hierarchy & Bandwidths' },
             { value: 'flash_tiling', label: '2. FlashAttention SRAM Tiling' },

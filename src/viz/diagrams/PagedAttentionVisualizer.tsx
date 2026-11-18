@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect, VizButton } from '../primitives';
+import { VisualizationContainer, PillSelect, VizButton, useAutoCycle } from '../primitives';
 
 type Mode = 'contiguous' | 'paged';
 
@@ -18,8 +17,11 @@ interface Request {
 
 export default function PagedAttentionVisualizer() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('paged');
-  const [tokenStep, setTokenStep] = useState<number>(0);
+  const modeValues: Mode[] = ['paged', 'contiguous'];
+  const modeCycle = useAutoCycle(modeValues.length, 5200, 0);
+  const tokenCycle = useAutoCycle(5, 1800, 0);
+  const mode = modeValues[modeCycle.value];
+  const tokenStep = tokenCycle.value;
 
   // Total GPU KV Cache Pool = 32 blocks (16 tokens per block = 512 tokens capacity)
   const TOTAL_BLOCKS = 32;
@@ -58,11 +60,11 @@ export default function PagedAttentionVisualizer() {
   ];
 
   const handleStep = () => {
-    setTokenStep((s) => (s + 1) % 5);
+    tokenCycle.pick((tokenStep + 1) % 5);
   };
 
   const handleReset = () => {
-    setTokenStep(0);
+    tokenCycle.pick(0);
   };
 
   // Contiguous Mode Math:
@@ -101,7 +103,7 @@ export default function PagedAttentionVisualizer() {
         <PillSelect<Mode>
           label="Memory Allocation Strategy"
           value={mode}
-          onChange={setMode}
+          onChange={(value) => modeCycle.pick(modeValues.indexOf(value as Mode))}
           options={[
             { value: 'paged', label: '1. PagedAttention (vLLM Virtual Memory)' },
             { value: 'contiguous', label: '2. Naive Contiguous Allocation (Pre-allocated max_seq_len)' },

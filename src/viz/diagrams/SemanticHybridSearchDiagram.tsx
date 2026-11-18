@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 import { rankByRRF } from '../lib/hybridSearch';
 
 interface PresetOption {
@@ -54,7 +54,8 @@ const FIXED_DOCS = [
 
 export default function SemanticHybridSearchDiagram() {
   const t = useVizTokens();
-  const [activePresetIndex, setActivePresetIndex] = useState<number>(0);
+  const presetCycle = useAutoCycle(WEIGHT_PRESETS.length, 2600);
+  const activePresetIndex = presetCycle.value;
   const [activeK, setActiveK] = useState<number>(60);
   const [hoveredDocId, setHoveredDocId] = useState<string | null>(null);
 
@@ -100,7 +101,7 @@ export default function SemanticHybridSearchDiagram() {
               value={currentPreset.label}
               onChange={(val) => {
                 const idx = WEIGHT_PRESETS.findIndex((p) => p.label === val);
-                if (idx !== -1) setActivePresetIndex(idx);
+                if (idx !== -1) presetCycle.pick(idx);
               }}
             />
           </div>

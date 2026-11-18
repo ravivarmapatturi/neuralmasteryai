@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, useAutoCycle } from '../primitives';
 import {
   ARCHITECTURE_PROFILES,
   TOY_CANDIDATE_DATA,
@@ -11,7 +10,9 @@ import {
 
 export default function DeepRecommendersArchitectureExplorer() {
   const t = useVizTokens();
-  const [selectedArch, setSelectedArch] = useState<'twoTower' | 'wideAndDeep' | 'dlrm' | 'sasrec'>('twoTower');
+  const architectures = ['twoTower', 'wideAndDeep', 'dlrm', 'sasrec'] as const;
+  const architectureCycle = useAutoCycle(architectures.length, 3600, 0);
+  const selectedArch = architectures[architectureCycle.value];
 
   const profile = ARCHITECTURE_PROFILES[selectedArch];
 
@@ -72,7 +73,7 @@ export default function DeepRecommendersArchitectureExplorer() {
             <button
               key={arch.id}
               type="button"
-              onClick={() => setSelectedArch(arch.id as typeof selectedArch)}
+              onClick={() => architectureCycle.pick(architectures.indexOf(arch.id as typeof selectedArch))}
               style={{
                 padding: '6px 14px',
                 borderRadius: 9999,

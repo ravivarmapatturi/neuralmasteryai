@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { estimateTopicMixture } from '../lib/unsupervisedMisc';
 
@@ -13,14 +13,15 @@ const TOPIC_COLORS: Record<string, 'accentPrimary' | 'accentSecondary' | 'accent
 
 export default function TopicMixtureDiagram() {
   const t = useVizTokens();
-  const [docKey, setDocKey] = useState('doc3');
+  const docCycle = useAutoCycle(DOCS.length, 3000, 2);
+  const docKey = DOCS[docCycle.value].key;
   const doc = DOCS.find((d) => d.key === docKey)!;
 
   const mixture = useMemo(() => estimateTopicMixture(doc.words), [doc]);
 
   return (
     <VisualizationContainer footer={`Real per-topic word likelihoods (fixed toy topic-word distributions), combined via real Bayes-style posterior estimation given this document's actual words. This is a simplified stand-in for LDA's real inference (Gibbs sampling/variational inference is more sophisticated), but the core idea is identical: a document's estimated topic mixture comes directly from which topic's word distribution its actual words fit best.`}>
-      <PillSelect label="Document" value={docKey} onChange={(v) => setDocKey(v as string)} options={DOCS.map((d) => ({ value: d.key, label: d.label }))} />
+      <PillSelect label="Document" value={docKey} onChange={(v) => docCycle.pick(DOCS.findIndex((d) => d.key === v))} options={DOCS.map((d) => ({ value: d.key, label: d.label }))} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
         {Object.entries(mixture).map(([topic, prob]) => (
@@ -30,7 +31,7 @@ export default function TopicMixtureDiagram() {
               <span style={{ color: t.textMuted }}>{(prob * 100).toFixed(1)}%</span>
             </div>
             <div style={{ background: t.surfaceAlt, borderRadius: 4, height: 16 }}>
-              <div style={{ width: `${prob * 100}%`, height: '100%', background: t[TOPIC_COLORS[topic]], borderRadius: 4 }} />
+              <div style={{ width: `${prob * 100}%`, height: '100%', background: t[TOPIC_COLORS[topic]], borderRadius: 4, transition: docCycle.auto ? 'width 700ms ease' : undefined }} />
             </div>
           </div>
         ))}

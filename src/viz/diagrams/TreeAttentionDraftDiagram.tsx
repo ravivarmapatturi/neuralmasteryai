@@ -1,12 +1,13 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 
 type Mode = 'linear' | 'tree';
 
 export default function TreeAttentionDraftDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('tree');
+  const modes: Mode[] = ['linear', 'tree'];
+  const modeCycle = useAutoCycle(modes.length, 4200, 1);
+  const mode = modes[modeCycle.value];
 
   return (
     <VisualizationContainer
@@ -27,7 +28,7 @@ export default function TreeAttentionDraftDiagram() {
         <PillSelect<Mode>
           label="Draft Topology"
           value={mode}
-          onChange={setMode}
+          onChange={(value) => modeCycle.pick(modes.indexOf(value as Mode))}
           options={[
             { value: 'linear', label: '1. Standard Linear Draft (K=4)' },
             { value: 'tree', label: '2. Medusa / EAGLE Tree Attention' },

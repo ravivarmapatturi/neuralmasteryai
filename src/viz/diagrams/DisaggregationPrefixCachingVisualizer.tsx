@@ -1,12 +1,13 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect } from '../primitives';
+import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
 
 type Mode = 'disaggregation' | 'radix_tree';
 
 export default function DisaggregationPrefixCachingVisualizer() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('disaggregation');
+  const modes: Mode[] = ['disaggregation', 'radix_tree'];
+  const modeCycle = useAutoCycle(modes.length, 4600, 0);
+  const mode = modes[modeCycle.value];
 
   return (
     <VisualizationContainer
@@ -27,7 +28,7 @@ export default function DisaggregationPrefixCachingVisualizer() {
         <PillSelect<Mode>
           label="Serving Paradigm"
           value={mode}
-          onChange={setMode}
+          onChange={(value) => modeCycle.pick(modes.indexOf(value as Mode))}
           options={[
             { value: 'disaggregation', label: '1. Prefill-Decode Disaggregation' },
             { value: 'radix_tree', label: '2. Radix Tree Prefix Cache' },
