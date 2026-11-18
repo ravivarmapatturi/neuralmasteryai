@@ -180,3 +180,27 @@ Use the example and the printed or calculated values above as a starting point.
 Pure attention remains the safest default when exact long-range retrieval matters and context lengths are moderate — it's still what [GPT, LLaMA, and Claude-style decoder-only models](/docs/deep-learning/attention-transformers#gpt-llama-mistral-and-claude-style-models-decoder-only-generation) are built on. Pure linear attention and pure SSMs are the right reach when context is extremely long and cheap, constant-memory inference matters more than exact recall of any single past token — streaming applications, very-long-document processing. Hybrid designs (Jamba, Griffin) are the pragmatic middle: most of a Transformer's retrieval quality, most of an SSM's memory and throughput advantage, at the cost of one more architecture-search decision.
 
 Next: [Vision Architectures](/docs/deep-learning/vision-architectures) — the ViT variants and detection/segmentation models built on the same attention foundations; or back to [Attention & Transformers](/docs/deep-learning/attention-transformers) for the full model-family comparison this page grew out of.
+
+## Remember
+
+| Idea | In one line |
+| :--- | :--- |
+| Linear attention | Reorder the multiplication so cost grows linearly with length |
+| As a recurrence | The same model keeps a fixed-size state updated token by token |
+| State-space models | A learned linear system that carries a state along the sequence |
+| Mamba (S6) | Makes the state update depend on the input, so it can choose what to keep |
+| The trade-off | A fixed-size state compresses the past, so exact recall of long context suffers |
+| Delta rule | Overwrite the old memory for a key instead of piling new values on top |
+| Hybrids | Mix a few attention layers with many linear or SSM layers to get both |
+
+## Sources
+
+- Katharopoulos et al. (2020). [Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention](https://arxiv.org/abs/2006.16236).
+- Schlag, Irie & Schmidhuber (2021). [Linear Transformers Are Secretly Fast Weight Programmers](https://arxiv.org/abs/2102.11174).
+- Gu & Dao (2023). [Mamba: Linear-Time Sequence Modeling with Selective State Spaces](https://arxiv.org/abs/2312.00752).
+- Jelassi et al. (2024). [Repeat After Me: Transformers are Better than State Space Models at Copying](https://arxiv.org/abs/2402.01032).
+- De et al. (2024). [Griffin](https://arxiv.org/abs/2402.19427).
+- Lieber et al. (2024). [Jamba](https://arxiv.org/abs/2403.19887).
+- Yang et al. (2024). [Gated DeltaNet](https://arxiv.org/abs/2412.06464).
+- Kimi Team (2025). [Kimi Linear](https://arxiv.org/abs/2510.26692).
+
