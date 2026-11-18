@@ -6,11 +6,11 @@ description: "What can be learned without labels, made precise: unsupervised lea
 
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Unsupervised Learning
-
-[Supervised learning](/docs/machine-learning/supervised-learning) always has an answer to aim at: every training example comes with its label, and the loss measures how far off a prediction is. Unsupervised learning has only the inputs. There's no right answer to compare against, so the question changes from "predict this" to "describe what's here": which groups the data falls into, which few directions explain most of its variation, which points don't fit. This page frames all of those as ways of describing the distribution the data came from, lays out the families with links to each method's full page, and spends most of its time on the hardest part, judging whether an unsupervised result is any good, with an experiment in which the standard internal score prefers the wrong answer on both datasets tested.
-
 <ELI5>
 
 Someone hands you a box of a thousand old photos with no captions and asks you to sort them. Nobody tells you the categories. You might group them by who's in them, or by place, or by decade, and all three could be sensible. You might notice that most photos could be described by a few things (indoor or outdoor, colour or black-and-white, how many people), and that a handful don't fit anything else in the box.
@@ -18,6 +18,23 @@ Someone hands you a box of a thousand old photos with no captions and asks you t
 That's unsupervised learning: finding groups, finding a short description, and spotting the odd ones out, with no answer key. The difficulty is also clear from the photos: with no answer key, there can be several good sortings, and deciding which is "right" depends on what you wanted them for.
 
 </ELI5>
+
+## Why it exists
+
+[Supervised learning](/docs/machine-learning/supervised-learning) always has an answer to aim at: every training example comes with its label, and the loss measures how far off a prediction is. Unsupervised learning has only the inputs. There's no right answer to compare against, so the question changes from "predict this" to "describe what's here": which groups the data falls into, which few directions explain most of its variation, which points don't fit. This page frames all of those as ways of describing the distribution the data came from, lays out the families with links to each method's full page, and spends most of its time on the hardest part, judging whether an unsupervised result is any good, with an experiment in which the standard internal score prefers the wrong answer on both datasets tested.
+
+## The big picture
+
+<PenFlow title="Find useful structure without target labels" ariaLabel="Find useful structure without target labels" rows={[
+  { steps: { title: 'Collect inputs', lines: ['Keep feature meaning and scale visible'], tone: 'blue' } },
+  { steps: { title: 'Choose a notion of structure', lines: ['Groups, dimensions, density, or co-occurrence'], tone: 'purple' } },
+  { steps: { title: 'Fit and inspect', lines: ['Compare internal scores with domain evidence'], tone: 'green' } },
+  { steps: { title: 'Use cautiously', lines: ['Treat patterns as hypotheses'], tone: 'orange' } }
+]} caption="Unsupervised methods answer different questions; a cluster score alone does not establish a meaningful group." />
+
+<Worksheet title="Group four one-dimensional points" ariaLabel="Group four one-dimensional points" stages={[{ tag: "Worked values", color: "yellow", note: "For points 0, 1, 9, and 10, two-means places centers at 0.5 and 9.5.", grid: { head: ['Group', 'Points', 'Center'], rows: [{ label: 'Left', cells: ['0, 1', '0.5'] }, { label: 'Right', cells: ['9, 10', '9.5'] }] } }]} />
+
+
 
 ## 1. What There Is to Learn
 
@@ -136,7 +153,9 @@ The connection to this page is that self-supervised training is a way of learnin
 | Which items go together? | Pattern mining | FP-Growth for association rules |
 | What are these documents about? | Topic modeling | BERTopic on embeddings; LDA for interpretable word distributions |
 
-## 6. Minimal Implementation
+## Worked example
+
+### 6. Minimal Implementation
 
 Two experiments. First, four clustering methods on two synthetic datasets with known groups: three blobs of different spreads, and two interleaved half-moons. Each result is scored both internally (silhouette, which uses no labels) and externally (ARI against the true groups). Second, how many principal components the 64-pixel handwritten digits need:
 
@@ -177,9 +196,8 @@ for target in [0.5, 0.8, 0.9, 0.95]:
     print(f"components needed for {target:.0%} of the variance: {np.searchsorted(cum, target) + 1} of 64")
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
 blobs:   method                      ARI vs truth   silhouette
          k-means (k=2 or 3)            0.741         0.564
          GMM (k=2 or 3)                0.772         0.561
@@ -200,7 +218,25 @@ components needed for 95% of the variance: 29 of 64
 - **The internal score is backwards on both.** On the blobs, single linkage has the highest silhouette (0.667) but a much lower ARI than the mixture model; on the moons, k-means has a higher silhouette than the two perfect clusterings. Section 3's warning, measured.
 - **Dimensionality is often much lower than the feature count.** 21 of 64 components keep 90% of the digits' variance.
 
-## 7. When *Not* to Use Unsupervised Learning
+## Try it yourself
+
+<RunnableCode code={`points = [0, 1, 9, 10]
+centers = [sum(points[:2]) / 2, sum(points[2:]) / 2]
+within_sse = sum((x - c) ** 2 for group, c in [(points[:2], centers[0]), (points[2:], centers[1])] for x in group)
+print("centers:", centers)
+print("within-cluster squared distance:", within_sse)
+
+# Try it: move point 10 to 12 and recompute the second center.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Treating clusters as ground truth | An algorithm groups by its own distance or density rule. | Test groups against outcomes or domain knowledge. |
+| Choosing a method by one score | Internal scores can favor an unsuitable shape. | Inspect the grouping and compare several criteria. |
+| Ignoring feature scale | Large-unit features can dominate distance. | Scale where the chosen method depends on distance. |
+
+## When not to use it
 
 | Situation | Better approach |
 |---|---|

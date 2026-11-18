@@ -7,11 +7,11 @@ description: "Why averaging many decision trees works and when it doesn't: the v
 import BaggingVarianceDiagram from '../../../viz/diagrams/BaggingVarianceDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Random Forest & Extra Trees
-
-[Decision Trees](/docs/machine-learning/decision-tree) ended on their main weakness: a deep tree fits its training data closely, so a slightly different sample produces a very different tree. Low bias, high variance. Random forests fix that by training many trees on randomized versions of the data and averaging them. This page derives exactly how much averaging helps, which turns out to depend on one number, the correlation between the trees, and shows that the two sources of randomness in a random forest are both ways of lowering that number. It then covers Extra Trees, the free validation estimate that bagging provides, how to read a forest's feature importances, and which settings matter.
-
 <ELI5>
 
 Ask one person to guess the number of sweets in a jar and they may be way off. Ask a hundred people and average their guesses, and the average is usually remarkably close, because one person's overestimate cancels another's underestimate.
@@ -19,6 +19,23 @@ Ask one person to guess the number of sweets in a jar and they may be way off. A
 But that only works if people guess independently. If they all overhear the first person's guess and copy it, averaging a hundred copies is no better than one guess. A random forest is a crowd of decision trees, and most of its design is about stopping the trees from copying each other. Everything below is that idea made exact.
 
 </ELI5>
+
+## Why it exists
+
+[Decision Trees](/docs/machine-learning/decision-tree) ended on their main weakness: a deep tree fits its training data closely, so a slightly different sample produces a very different tree. Low bias, high variance. Random forests fix that by training many trees on randomized versions of the data and averaging them. This page derives exactly how much averaging helps, which turns out to depend on one number, the correlation between the trees, and shows that the two sources of randomness in a random forest are both ways of lowering that number. It then covers Extra Trees, the free validation estimate that bagging provides, how to read a forest's feature importances, and which settings matter.
+
+## The big picture
+
+<PenFlow title="Average trees while keeping their errors apart" ariaLabel="Average trees while keeping their errors apart" rows={[
+  { steps: { title: 'Resample rows', lines: ['Give each tree a bootstrap sample'], tone: 'blue' } },
+  { steps: { title: 'Randomize feature choices', lines: ['Reduce similarity between trees'], tone: 'purple' } },
+  { steps: { title: 'Grow many trees', lines: ['Keep each tree flexible'], tone: 'green' } },
+  { steps: { title: 'Average predictions', lines: ['Cancel some independent noise'], tone: 'orange' } }
+]} caption="A forest helps most when trees are accurate enough individually and their errors are not perfectly correlated." />
+
+<Worksheet title="Estimate variance after averaging" ariaLabel="Estimate variance after averaging" stages={[{ tag: "Worked values", color: "yellow", note: "For four trees with unit variance and pairwise error correlation 0.5, average variance is 0.625.", grid: { head: ['Trees M', 'Correlation ρ', 'Variance of mean'], rows: [{ label: '4', cells: ['0.5', '0.5 + 0.5/4 = 0.625'] }] } }]} />
+
+
 
 ## 1. How Much Averaging Helps
 
@@ -142,7 +159,9 @@ Random forests are known for working well with defaults, which is a large part o
 
 Forests also need very little preprocessing: no scaling, and mixed feature types are fine once categories are encoded. What they can't do is extrapolate. Like the trees they're made of, a forest's prediction for an input beyond the training range is a constant, the average of the edge leaves, so a forest trained on prices up to 2024 will predict a flat line into 2025.
 
-## 8. Minimal Implementation
+## Worked example
+
+### 8. Minimal Implementation
 
 A random forest from scratch, using scikit-learn's single decision tree as the building block (the tree itself is built from scratch on the [Decision Trees page](/docs/machine-learning/decision-tree)): bootstrap samples, per-split feature sampling via `max_features`, averaging, and out-of-bag predictions. It runs on Friedman's synthetic benchmark, where the target depends on 5 of 10 features through nonlinear terms and an interaction, so we know the truth:
 
@@ -196,9 +215,8 @@ print("impurity:     " + " ".join(f"{v:.3f} " for v in sk.feature_importances_))
 print("permutation:  " + " ".join(f"{v:.3f} " for v in perm / perm.sum()))
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
 single deep tree:            test MSE 9.41
 bagging (all 10 features)    test MSE 3.86   OOB MSE 3.75   one tree 10.45   tree-tree correlation 0.37
 random forest (3 features)   test MSE 3.79   OOB MSE 3.87   one tree 14.33   tree-tree correlation 0.27
@@ -217,7 +235,24 @@ What it shows, section by section:
 - **OOB error tracks test error (Section 5)** without any held-out data.
 - **Impurity importance credits noise (Section 6)**: features 6 to 10 are pure noise, yet together they get 12% of impurity importance and essentially 0% of permutation importance.
 
-## 9. When *Not* to Use a Random Forest
+## Try it yourself
+
+<RunnableCode code={`trees = 4
+rho = 0.5
+variance = rho + (1 - rho) / trees
+print("variance of average:", variance)
+
+# Try it: compare the variance for 10 trees at the same correlation.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Assuming more trees remove bias | Averaging mainly reduces variance. | Use boosting or a stronger base learner for bias. |
+| Ignoring tree correlation | Near-identical trees add little variance reduction. | Randomize samples and candidate features. |
+| Using impurity importance as causal evidence | Split gain favors some feature types and correlated inputs. | Use held-out permutation checks and domain reasoning. |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

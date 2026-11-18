@@ -9,11 +9,11 @@ import marginDark from './img/svm-margin.png';
 import KernelTrickDiagram from '../../../viz/diagrams/KernelTrickDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Support Vector Machines (SVM & SVR)
-
-[Logistic Regression](/docs/machine-learning/logistic-regression) finds a boundary by making the training labels as probable as possible, and every example has some influence on where it ends up. A support vector machine asks a different question: of all the boundaries that separate the classes, which one leaves the widest gap on either side? This page derives the answer. It turns the gap into a distance, then into an optimization problem, then into its dual form, which shows why only a handful of training points, the support vectors, determine the result. The dual is also what makes the kernel trick possible: curved boundaries from a linear method, without ever computing the curved features. It finishes with the two hyperparameters that control everything, the regression version, and when SVMs are and aren't the right tool.
-
 <ELI5>
 
 Picture two groups of people standing in a field, and you need to lay a straight road between them. Many roads would separate the groups. The safest is the one that runs as far as possible from the nearest person on each side, because if a few more people arrive and stand a little off from where the others stood, they're still likely to be on the right side.
@@ -21,6 +21,23 @@ Picture two groups of people standing in a field, and you need to lay a straight
 Notice that only the people closest to the road decide where it goes. Everyone standing further back could move around and the road wouldn't change. Those few closest people are the "support vectors". Everything below is that idea made exact.
 
 </ELI5>
+
+## Why it exists
+
+[Logistic Regression](/docs/machine-learning/logistic-regression) finds a boundary by making the training labels as probable as possible, and every example has some influence on where it ends up. A support vector machine asks a different question: of all the boundaries that separate the classes, which one leaves the widest gap on either side? This page derives the answer. It turns the gap into a distance, then into an optimization problem, then into its dual form, which shows why only a handful of training points, the support vectors, determine the result. The dual is also what makes the kernel trick possible: curved boundaries from a linear method, without ever computing the curved features. It finishes with the two hyperparameters that control everything, the regression version, and when SVMs are and aren't the right tool.
+
+## The big picture
+
+<PenFlow title="Separate classes by their widest safe margin" ariaLabel="Separate classes by their widest safe margin" rows={[
+  { steps: { title: 'Choose a boundary', lines: ['Use a linear score w·x + b'], tone: 'blue' } },
+  { steps: { title: 'Measure nearest points', lines: ['The closest examples are support vectors'], tone: 'purple' } },
+  { steps: { title: 'Maximize the margin', lines: ['Minimize weight size subject to constraints'], tone: 'green' } },
+  { steps: { title: 'Allow controlled errors', lines: ['Use C to trade margin against violations'], tone: 'orange' } }
+]} caption="Only examples at or inside the margin directly determine the fitted boundary." />
+
+<Worksheet title="Read the margin on four points" ariaLabel="Read the margin on four points" stages={[{ tag: "Worked values", color: "yellow", note: "For labels -1 at -2 and -1, and +1 at 1 and 2, the boundary is 0 and each nearest point is one unit away.", grid: { head: ['Point x', 'Label y', 'Margin y(wx+b)'], rows: [{ label: '-2', cells: ['-1', '2'] }, { label: '-1', cells: ['-1', '1'] }, { label: '1', cells: ['1', '1'] }, { label: '2', cells: ['1', '2'] }] } }]} />
+
+
 
 ## 1. The Margin as a Distance
 
@@ -158,7 +175,7 @@ $$
 L_\epsilon(y, f) = \max\big(0,\; \lvert y - f\rvert - \epsilon\big)
 $$
 
-The objective is $\tfrac12\lVert\mathbf{w}\rVert^2 + C\sum_i L_\epsilon(y_i, f(\mathbf{x}_i))$: a function as flat as possible, with every training point inside a tube of half-width $\epsilon$ around it, paying linearly for points outside. By the same complementary-slackness argument, points strictly inside the tube have zero multipliers, so only points on or outside the tube are support vectors. Compared with squared error, the loss ignores small errors entirely and grows only linearly for large ones, which makes SVR robust to outliers. $\epsilon$ is a third hyperparameter, in the units of the target.
+The objective is $\tfrac12\lVert\mathbf{w}\rVert^2 + C\sum_i L_\epsilon(y_i, f(\mathbf{x}_i))$: a function as flat as possible, with every training point inside a tube of half-width $\epsilon$ around it, paying linearly for points outside. By the same complementary-slackness argument, points strictly inside the tube have zero multipliers, so only points on or outside the tube are support vectors. Compared with squared error, the loss ignores small errors entirely and grows only linearly for large ones, so extreme residuals have less influence. $\epsilon$ is a third hyperparameter, in the units of the target.
 
 ## 7. Probabilities, Many Classes and Scale
 
@@ -180,13 +197,15 @@ Write both as "penalty plus loss on the margin $m = y f(\mathbf{x})$":
 
 Plot the two losses against $m$ and they have almost the same shape: both roughly linear for very negative margins (badly wrong), both going toward zero for large positive margins. The difference is at the right end. The hinge loss reaches exactly zero at $m = 1$, so confidently correct points drop out completely and the solution is sparse in the training points. The log loss only approaches zero, so every point keeps a little influence, the solution is not sparse, and in exchange the score has a probabilistic meaning.
 
-In practice the two usually give very similar linear boundaries and similar accuracy. Choose logistic regression when you need probabilities or coefficients to interpret, and the SVM when the kernel trick or the margin's robustness in high dimensions is the attraction. Kernelized logistic regression exists too, but because it isn't sparse, every training point must be kept for prediction, which is a large part of why the kernel trick became associated with SVMs.
+In practice the two usually give very similar linear boundaries and similar accuracy. Choose logistic regression when you need probabilities or coefficients to interpret, and the SVM when the kernel trick or a large-margin boundary in high dimensions is the attraction. Kernelized logistic regression exists too, but because it isn't sparse, every training point must be kept for prediction, which is a large part of why the kernel trick became associated with SVMs.
 
 </GoDeeper>
 
 **Scale the features.** Both the margin and the RBF distance are computed in the units of the inputs. A feature measured in thousands dominates the distance and the norm $\lVert\mathbf{w}\rVert$. Standardize every feature, inside a pipeline, before fitting any SVM.
 
-## 8. Minimal Implementation
+## Worked example
+
+### 8. Minimal Implementation
 
 The soft-margin dual of Sections 3 and 4, solved directly with a general-purpose constrained optimizer, then checked against scikit-learn: first with the linear kernel (recovering $\mathbf{w} = \sum_i\alpha_i y_i\mathbf{x}_i$), then with the RBF kernel by swapping the dot-product matrix for the kernel matrix. Finally a grid over $C$ and $\gamma$:
 
@@ -244,9 +263,8 @@ for gamma in [0.1, 1, 10, 100]:
     print(f"{gamma:<6}  " + "  ".join(row))
 ```
 
+```output
 Output (scikit-learn 1.7, SciPy 1.16):
-
-```
 linear, ours:    w = [1.816 1.208], b = -0.755, support vectors = 8, margin width = 0.917
 linear, sklearn: w = [1.817 1.208], b = -0.755, support vectors = 8
 rbf, largest decision-function gap vs sklearn on 500 new points: 4.6e-04
@@ -264,7 +282,26 @@ Reading it:
 - **The kernel trick is a one-line change (Section 5).** Replacing the dot-product matrix with the RBF kernel matrix, the same solver reproduces scikit-learn's decision function on 500 unseen points to within $5 \times 10^{-4}$, with the same 51 support vectors.
 - **$C$ and $\gamma$ interact.** At $\gamma = 0.1$ the bumps are wide and the model is close to linear, so it needs a large $C$ to fit the curved classes (0.897 at $C = 100$). At $\gamma = 1$ it does well across the board, best at 0.910. At $\gamma = 100$ every training point has its own tiny bump; accuracy falls and almost every point becomes a support vector (400 of 400 at $C = 0.1$), a sign of overfitting and of a slow model. Always search the two together, on a log scale.
 
-## 9. When *Not* to Use an SVM
+## Try it yourself
+
+<RunnableCode code={`points = [-2, -1, 1, 2]
+labels = [-1, -1, 1, 1]
+w, b = 1.0, 0.0
+margins = [y * (w * x + b) for x, y in zip(points, labels)]
+print("signed margins:", margins)
+print("geometric margin:", 1 / abs(w))
+
+# Try it: set w to 2 and recompute the geometric margin.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Using an SVM without scaling | Distance and margin depend on feature units. | Scale using training data inside each fold. |
+| Expecting probabilities by default | Margins are scores, not calibrated probabilities. | Calibrate on held-out data if probabilities matter. |
+| Choosing a very large C blindly | Hard constraints can fit outliers and narrow the margin. | Tune C and inspect support vectors. |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

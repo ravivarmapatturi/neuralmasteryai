@@ -11,11 +11,11 @@ import boundaryDark from './img/decision-boundary.png';
 import LogisticRegressionStudio from '../../../viz/LogisticRegressionStudio';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Logistic Regression
-
-[Linear Regression](/docs/machine-learning/linear-regression) predicts a number. Many questions want a yes or no instead: will this email be spam, will this patient be readmitted, will this student pass. Logistic regression answers them with the same linear core, $\mathbf{w}^T\mathbf{x} + b$, passed through one extra function that turns it into a probability. Despite the name, it's a classification method. This page derives it in full: the sigmoid and what the weights mean, the loss that comes out of the probability model and why squared error is the wrong one, the gradient and the curvature, how the solvers use them, what happens when the classes can be perfectly separated, the extension to many classes, and whether the probabilities can be trusted.
-
 <ELI5>
 
 Imagine sorting emails into "spam" and "not spam". A flat yes or no throws information away; you'd rather hear "92% sure this is spam", so obvious spam and borderline cases can be treated differently.
@@ -23,6 +23,23 @@ Imagine sorting emails into "spam" and "not spam". A flat yes or no throws infor
 Logistic regression adds up evidence the way linear regression does: each word or feature adds or subtracts a few points. Then, instead of reporting the raw score, which could be anything from minus a thousand to plus a thousand, it squeezes the score into a number between 0 and 1 that behaves like a probability. Only at the very end does it draw a line: above 50%, call it spam. Everything below is that idea made exact.
 
 </ELI5>
+
+## Why it exists
+
+[Linear Regression](/docs/machine-learning/linear-regression) predicts a number. Many questions want a yes or no instead: will this email be spam, will this patient be readmitted, will this student pass. Logistic regression answers them with the same linear core, $\mathbf{w}^T\mathbf{x} + b$, passed through one extra function that turns it into a probability. Despite the name, it's a classification method. This page derives it in full: the sigmoid and what the weights mean, the loss that comes out of the probability model and why squared error is the wrong one, the gradient and the curvature, how the solvers use them, what happens when the classes can be perfectly separated, the extension to many classes, and whether the probabilities can be trusted.
+
+## The big picture
+
+<PenFlow title="Turn a linear score into a class probability" ariaLabel="Turn a linear score into a class probability" rows={[
+  { steps: { title: 'Score inputs', lines: ['Compute one weighted sum per example'], tone: 'blue' } },
+  { steps: { title: 'Apply sigmoid', lines: ['Map any real score into 0 to 1'], tone: 'purple' } },
+  { steps: { title: 'Fit by likelihood', lines: ['Reward probabilities assigned to the observed labels'], tone: 'green' } },
+  { steps: { title: 'Choose a threshold', lines: ['Make the decision using its error costs'], tone: 'orange' } }
+]} caption="The sigmoid changes the model score into a probability, while the decision threshold is a separate choice." />
+
+<Worksheet title="Map scores to probabilities" ariaLabel="Map scores to probabilities" stages={[{ tag: "Worked values", color: "yellow", note: "The sigmoid probabilities for scores -2, 0, and 2.", grid: { head: ['Score z', 'Probability σ(z)'], rows: [{ label: '-2', cells: ['0.119'] }, { label: '0', cells: ['0.500'] }, { label: '2', cells: ['0.881'] }] } }]} />
+
+
 
 ## 1. From a Score to a Probability
 
@@ -167,7 +184,7 @@ $$
 \sigma'(z) = \frac{e^{-z}}{(1+e^{-z})^2} = \underbrace{\frac{1}{1+e^{-z}}}_{\sigma(z)}\cdot\underbrace{\frac{e^{-z}}{1+e^{-z}}}_{1-\sigma(z)} = \hat{p}(1-\hat{p})
 $$
 
-**Step 3, multiply:**
+### Step 3: Multiply
 
 $$
 \frac{\partial \ell}{\partial z} = \left(-\frac{y}{\hat{p}}+\frac{1-y}{1-\hat{p}}\right)\hat{p}(1-\hat{p}) = -y(1-\hat{p}) + (1-y)\hat{p} = \hat{p}-y
@@ -179,7 +196,7 @@ The $\hat{p}$ in the first denominator cancels against the $\hat{p}$ from $\sigm
 
 </GoDeeper>
 
-**The same shape as linear regression.** Compare the [linear regression gradient](/docs/machine-learning/linear-regression#3-deriving-the-gradient-step-by-step): "prediction minus target, times input". The loss and the output function are both different, yet the gradient has the same form. That isn't a coincidence. Linear and logistic regression are both **generalized linear models**, each with its "canonical" link function (identity for Gaussian targets, logit for Bernoulli ones), and every GLM with its canonical link has this gradient. The same cancellation happens for softmax with cross-entropy (Section 7), which is why the output layer of every neural network classifier, and every language model's next-token loss, has a gradient of "predicted probabilities minus one-hot target".
+**The same shape as linear regression.** Compare the [linear regression gradient](/docs/machine-learning/linear-regression#3-deriving-the-gradient-step-by-step): "prediction minus target, times input". The loss and the output function are both different, yet the gradient has the same form. That isn't a coincidence. Linear and logistic regression are both **generalized linear models**, each pairing a link function with an assumed distribution (identity for Gaussian targets, logit for Bernoulli ones). That pairing gives the gradient above. The same cancellation happens for softmax with cross-entropy (Section 7), which is why the output layer of every neural network classifier, and every language model's next-token loss, has a gradient of "predicted probabilities minus one-hot target".
 
 **Convexity, proved.** Differentiate once more to get the Hessian, the matrix of second derivatives. Since $\partial(\hat{p} - y)/\partial z = \sigma'(z) = \hat{p}(1-\hat{p})$:
 
@@ -261,7 +278,9 @@ A classifier's probabilities are **calibrated** if, among all examples it scores
 
 Check calibration with a reliability diagram (see [Model Evaluation & Metrics](/docs/machine-learning/model-evaluation-metrics#classification-metrics)), and choose the decision threshold from the costs of each kind of mistake rather than defaulting to 0.5: with calibrated probabilities, if a false negative costs ten times a false positive, the cost-minimizing threshold is $1/11 \approx 0.09$.
 
-## 9. Minimal Implementation
+## Worked example
+
+### 9. Minimal Implementation
 
 Gradient descent, Newton's method from Section 5, and scikit-learn's unpenalized fit, on 400 students whose pass probability follows a known logistic curve (true $w = 1.2$, $b = -6$, so 50% at 5 hours). Then a separable toy dataset, to watch Section 6's runaway weight:
 
@@ -317,9 +336,8 @@ for epochs in [1000, 10000, 100000]:
 print(f"separable, scikit-learn default (L2, C=1): w={LogisticRegression().fit(Xs, ys).coef_[0, 0]:.2f}")
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
   newton step 1: |gradient| = 1.4e+00
   newton step 2: |gradient| = 3.3e-01
   newton step 3: |gradient| = 1.0e-01
@@ -340,7 +358,24 @@ separable, scikit-learn default (L2, C=1): w=1.04
 
 All three fits agree with each other and land close to the true parameters; the remaining gap is sampling noise from 400 coin flips. Newton's gradient norm shows the quadratic convergence of Section 5: the exponent roughly doubles from step 4 to step 7, going from $10^{-2}$ to $10^{-8}$ in three steps, while gradient descent needed 20,000 steps to get as close. The odds ratio of 3.29 per hour and the jump from 22% to 75% between 4 and 6 hours are Section 2's interpretation in numbers. On the separable data the unpenalized weight keeps growing with every tenfold increase in steps, exactly as Section 6 predicts; scikit-learn's default L2 penalty gives a finite answer.
 
-## 10. When *Not* to Use Logistic Regression
+## Try it yourself
+
+<RunnableCode code={`import math
+scores = [-2, 0, 2]
+probs = [1 / (1 + math.exp(-z)) for z in scores]
+print([round(p, 3) for p in probs])
+
+# Try it: change the threshold to 0.8 and count positive predictions.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Calling every score a probability | The raw score can be any real number. | Apply sigmoid or softmax first. |
+| Treating 0.5 as mandatory | The best threshold depends on error costs and prevalence. | Choose it on validation data. |
+| Using accuracy on rare positives | A majority-only classifier can look strong. | Report recall, precision, and calibration. |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
@@ -358,7 +393,7 @@ As a **baseline**, though, it's hard to beat: fast, convex, well calibrated, and
 | Idea | In one line |
 |---|---|
 | Model | $P(y = 1 \mid \mathbf{x}) = \sigma(\mathbf{w}^T\mathbf{x} + b)$, a linear model for the log-odds |
-| Sigmoid | $1/(1 + e^{-z})$; its inverse is the logit $\log\frac{p}{1-p}$ |
+| Sigmoid | $1/(1 + e^{-z})$; its inverse is the logit $\log(p/(1-p))$ |
 | Weights | $+1$ unit of $x_j$ multiplies the odds by $e^{w_j}$, the odds ratio |
 | Loss | Binary cross-entropy, the negative log-likelihood of a Bernoulli model |
 | Not squared error | Its gradient has a $\hat{p}(1-\hat{p})$ factor that vanishes when confidently wrong; non-convex |

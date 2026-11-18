@@ -63,6 +63,14 @@ const ROUTES = [
   'docs/machine-learning/ridge-regression',
   'docs/machine-learning/lasso-regression',
   'docs/machine-learning/elastic-net',
+  'docs/machine-learning/logistic-regression',
+  'docs/machine-learning/unsupervised-learning',
+  'docs/machine-learning/decision-tree',
+  'docs/machine-learning/random-forest',
+  'docs/machine-learning/boosting',
+  'docs/machine-learning/xgboost-lightgbm-catboost',
+  'docs/machine-learning/support-vector-machines',
+  'docs/machine-learning/k-nearest-neighbors',
   // Keep the already-approved pilot last so the Vite dev server has warmed its
   // route modules before this large lazy-loaded page is checked.
   'docs/search-ranking-recommendations/tf-idf',

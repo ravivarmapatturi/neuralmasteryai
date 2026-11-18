@@ -143,3 +143,29 @@ Three-viewport overlap guard:
 ```
 
 Linear Regression's final audit added the previously missing `Remember` table and a five-item source list. Its four screenshots were refreshed after that edit. The final browser results still show 8/8 captures, 375px/1440px widths without overflow, and no console/page errors.
+
+## Machine Learning batch 2 — eight pages
+
+Pages: Logistic Regression, Unsupervised Learning, Decision Tree, Random Forest, Boosting, XGBoost/LightGBM/CatBoost, Support Vector Machines, and k-Nearest Neighbors.
+
+All eight pages now have the standard ordered sections, numerical Worksheets grounded in their existing examples, and marked exercises. Existing technical material, diagrams, code and output were retained. The route overlap guard passed all eight pages at 1440/768/375 px; the first Logistic Regression attempt timed out before article rendering, and an isolated retry passed. All eight browser RunnableCode examples completed. Decision Tree and XGBoost-family pages were captured in light and dark at desktop and mobile widths with no overflow or browser errors.
+
+Static gates passed: notebook (0 violations), math (1,991 pages), MDX (2,019/2,019), links (2,147 routes, 0 broken links/anchors), typecheck, tracker, and diff check. Full Vitest passed (231 files, 1,172 tests). Build deferred because 3 GiB RAM was available, below the 5 GiB threshold. Agy launch failed with `unknown agent "Antigravity"`; Codex implemented the batch per the user's fallback instruction.
+
+```output
+Full unit suite:
+Test Files  231 passed (231)
+Tests  1172 passed (1172)
+
+Diagram label overlap guard:
+First run: 7 passed, Logistic Regression article-load timeout
+Isolated retry: 1 passed
+
+Browser examples:
+8 completed; no page or console errors
+
+Available RAM before build decision:
+3 GiB (< 5 GiB threshold); build deferred
+```
+
+See `ml-2/scorecard.md` and `ml-2/browser-results.json` for detailed checks, outputs, and capture paths.

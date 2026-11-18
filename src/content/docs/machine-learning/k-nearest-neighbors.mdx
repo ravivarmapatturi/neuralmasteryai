@@ -10,11 +10,10 @@ import DecisionBoundaryPlayground from '../../../viz/DecisionBoundaryPlayground'
 import RunnableCode from '../../../components/content/RunnableCode';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # K-Nearest Neighbors
-
-Every model so far, from [linear regression](/docs/machine-learning/linear-regression) to [SVMs](/docs/machine-learning/support-vector-machines), learns parameters during training and then predicts from those parameters alone. k-nearest neighbours learns nothing. It stores the training set and, for each new point, looks up the most similar stored examples and lets them vote. This page shows why something that simple works, with a classic result bounding its error at twice the best achievable; how the one hyperparameter $k$ trades bias for variance; why the choice of distance, and especially feature scaling, matters more than anything else; why it breaks down as the number of features grows, measured rather than asserted; and how neighbour search is made fast enough to use.
-
 <ELI5>
 
 You've moved to a new town and want to guess whether a particular house is expensive. You don't know any formula for house prices. But you can look at the five houses most like it (same street, similar size, similar age) and check what they sold for. If most of them were expensive, this one probably is too.
@@ -22,6 +21,23 @@ You've moved to a new town and want to guess whether a particular house is expen
 That's the whole algorithm: to label something new, find the $k$ most similar things you've already seen and go with the majority. Everything below is about making "most similar" mean the right thing, and choosing how many neighbours to ask.
 
 </ELI5>
+
+## Why it exists
+
+Every model so far, from [linear regression](/docs/machine-learning/linear-regression) to [SVMs](/docs/machine-learning/support-vector-machines), learns parameters during training and then predicts from those parameters alone. k-nearest neighbours learns nothing. It stores the training set and, for each new point, looks up the most similar stored examples and lets them vote. This page shows why something that simple works, with a classic result bounding its error at twice the best achievable; how the one hyperparameter $k$ trades bias for variance; why the choice of distance, and especially feature scaling, matters more than anything else; why it breaks down as the number of features grows, measured rather than asserted; and how neighbour search is made fast enough to use.
+
+## The big picture
+
+<PenFlow title="Predict from the labels of nearby examples" ariaLabel="Predict from the labels of nearby examples" rows={[
+  { steps: { title: 'Choose a distance', lines: ['Scale features before comparing them'], tone: 'blue' } },
+  { steps: { title: 'Find k neighbors', lines: ['Keep the closest training rows'], tone: 'purple' } },
+  { steps: { title: 'Vote or average', lines: ['Use class counts or target mean'], tone: 'green' } },
+  { steps: { title: 'Validate k', lines: ['Balance local detail against noise'], tone: 'orange' } }
+]} caption="The query is predicted from stored training examples, so scale and k define the model." />
+
+<Worksheet title="Compare k-NN on the wine data" ariaLabel="Compare k-NN on the wine data" stages={[{ tag: "Worked values", color: "yellow", note: "The existing five-fold results use 178 wines and 13 measurements.", grid: { head: ['Setting', 'Accuracy'], rows: [{ label: 'k=5, raw features', cells: ['0.663'] }, { label: 'k=5, standardized', cells: ['0.961'] }, { label: 'k=15, standardized', cells: ['0.967'] }] } }]} />
+
+
 
 ## 1. The Algorithm
 
@@ -152,7 +168,9 @@ The [RBF SVM](/docs/machine-learning/support-vector-machines#the-kernel-trick) p
 
 </GoDeeper>
 
-## 7. Minimal Implementation
+## Worked example
+
+### 7. Minimal Implementation
 
 A vectorized k-NN classifier: all query-to-training distances from one matrix product, using $\lVert\mathbf{a} - \mathbf{b}\rVert^2 = \lVert\mathbf{a}\rVert^2 + \lVert\mathbf{b}\rVert^2 - 2\mathbf{a}^T\mathbf{b}$, then the $k$ smallest per row with `argpartition` (linear time, no full sort). It runs on the wine dataset (178 wines, 13 chemical measurements, 3 grape cultivars), then checks scaling, the choice of $k$, and the curse of dimensionality:
 
@@ -199,9 +217,8 @@ for d in [2, 10, 100, 1000]:
           f"edge of a cube holding 1% of the data {0.01 ** (1 / d):.2f}")
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
 feature standard deviations: smallest 0.12  largest 314.0
 k=5, standardized: ours 0.961, scikit-learn 0.961
 k=5, raw features: 0.663
@@ -222,7 +239,9 @@ d=1000  nearest/farthest distance ratio 0.90   edge of a cube holding 1% of the 
 - **$k$ behaves as Section 3 predicts.** Training accuracy is a perfect 1.000 at $k = 1$ and means nothing. Cross-validated accuracy peaks around $k = 15$ and collapses at $k = 101$, where each fold's 142 training wines are mostly being averaged together.
 - **The curse is real (Section 5).** By 100 dimensions, the nearest of 1,000 random points is 72% as far away as the farthest, and a neighbourhood holding 1% of the data spans 95% of every axis.
 
-**Try it yourself.** The same algorithm in its simplest, unvectorized form, running in your browser (a Python interpreter compiled to WebAssembly; nothing is sent to a server):
+## Try it yourself
+
+The same algorithm in its simplest, unvectorized form, running in your browser (a Python interpreter compiled to WebAssembly; nothing is sent to a server):
 
 <RunnableCode code={`import numpy as np
 from collections import Counter
@@ -239,7 +258,7 @@ y_train = np.array([0, 0, 1, 1])
 print("Prediction for [0.2, 0.2], k=1:", knn_predict(X_train, y_train, np.array([0.2, 0.2]), k=1))
 print("Prediction for [4.8, 5.2], k=3:", knn_predict(X_train, y_train, np.array([4.8, 5.2]), k=3))
 
-# Try changing the query point or k yourself and hit Run again.
+# Try it: change the query point or k and compare the predicted label.
 `} />
 
 Then write it yourself against four tests:
@@ -256,6 +275,8 @@ def knn_predict(X_train, y_train, x_query, k=5):
     k-nearest-neighbors majority vote over X_train/y_train."""
     # Your implementation here
     pass
+
+# Try it: implement the distance calculation and majority vote, then rerun the four tests.
 `}
   tests={`assert knn_predict(X_train, y_train, np.array([0.2, 0.2]), k=1) == 0
 assert knn_predict(X_train, y_train, np.array([0.2, 0.2]), k=3) == 0
@@ -263,7 +284,15 @@ assert knn_predict(X_train, y_train, np.array([4.8, 5.2]), k=1) == 1
 assert knn_predict(X_train, y_train, np.array([4.8, 5.2]), k=3) == 1`}
 />
 
-## 8. When *Not* to Use k-NN
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Leaving features in unlike units | Large-scale features dominate the distance. | Fit scaling on each training fold. |
+| Using k=1 training accuracy as evidence | Every training point is its own nearest neighbor. | Choose k by cross-validation. |
+| Keeping brute-force search at huge scale | Query cost grows with every stored example. | Use an approximate index or a compact model. |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
@@ -286,7 +315,7 @@ k-NN is at its best as a quick, assumption-free baseline on small, low-dimension
 | Consistency | With $k \to \infty$ and $k/n \to 0$, error converges to the Bayes error |
 | Choosing $k$ | Bias grows with $k$, variance falls like $\sigma^2/k$; pick by cross-validation |
 | $k = 1$ | 100% training accuracy, always; it means nothing |
-| Distance | Euclidean by default; Manhattan for robustness; cosine for embeddings |
+| Distance | Euclidean by default; Manhattan when coordinate-wise distance is meaningful; cosine for embeddings |
 | Scaling | Decides everything: 0.663 raw vs 0.961 standardized on the wine data |
 | Curse | A 1% neighbourhood spans $0.01^{1/d}$ of each axis: 0.63 at $d = 10$; distances concentrate |
 | Speed | k-d and ball trees in low dimensions; HNSW and other ANN indexes for embeddings |

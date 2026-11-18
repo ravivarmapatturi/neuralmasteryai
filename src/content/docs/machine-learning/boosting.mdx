@@ -7,11 +7,11 @@ description: "Boosting derived: additive models built one weak learner at a time
 import GradientBoostingResidualDiagram from '../../../viz/diagrams/GradientBoostingResidualDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Boosting: AdaBoost & Gradient Boosting
-
-[Random Forest](/docs/machine-learning/random-forest) averages many deep trees grown independently. That removes variance, but it can't remove bias: the average of many models that all miss the same pattern still misses it. Boosting takes the opposite approach. It builds the model one small tree at a time, and each new tree is fitted to what the trees so far got wrong. This page derives the two main forms. AdaBoost's reweighting rule turns out to be the exact solution of a stage-by-stage fit to a particular loss, and gradient boosting generalizes that to any differentiable loss by doing gradient descent where each step is a whole tree. The page then covers what each tree's leaves should predict, the settings that keep boosting from overfitting, and when not to use it.
-
 <ELI5>
 
 Imagine a class preparing for an exam with a series of tutors. The first tutor teaches the basics. The second looks at which questions the class still gets wrong and teaches just those. The third looks at what's still wrong after that, and so on. No single tutor is brilliant, but each one fixes a bit of what's left, and together they cover everything.
@@ -19,6 +19,23 @@ Imagine a class preparing for an exam with a series of tutors. The first tutor t
 Boosting builds a model the same way. Each new small tree looks at the current model's mistakes and learns to correct a little of them. Everything below is that idea made exact: how "the mistakes" is measured, and how big each correction should be.
 
 </ELI5>
+
+## Why it exists
+
+[Random Forest](/docs/machine-learning/random-forest) averages many deep trees grown independently. That removes variance, but it can't remove bias: the average of many models that all miss the same pattern still misses it. Boosting takes the opposite approach. It builds the model one small tree at a time, and each new tree is fitted to what the trees so far got wrong. This page derives the two main forms. AdaBoost's reweighting rule turns out to be the exact solution of a stage-by-stage fit to a particular loss, and gradient boosting generalizes that to any differentiable loss by doing gradient descent where each step is a whole tree. The page then covers what each tree's leaves should predict, the settings that keep boosting from overfitting, and when not to use it.
+
+## The big picture
+
+<PenFlow title="Add small corrections to the current model" ariaLabel="Add small corrections to the current model" rows={[
+  { steps: { title: 'Start with a simple prediction', lines: ['Measure residual errors'], tone: 'blue' } },
+  { steps: { title: 'Fit one weak learner', lines: ['Aim at the remaining pattern'], tone: 'purple' } },
+  { steps: { title: 'Scale the correction', lines: ['Use a learning rate η'], tone: 'green' } },
+  { steps: { title: 'Repeat and validate', lines: ['Stop before fitting noise'], tone: 'orange' } }
+]} caption="Each stage adds a scaled correction, so small learning rates need more rounds but can improve validation performance." />
+
+<Worksheet title="Take one gradient-boosting step" ariaLabel="Take one gradient-boosting step" stages={[{ tag: "Worked values", color: "yellow", note: "Targets [2, -1], initial predictions [0, 0], and learning rate 0.5.", grid: { head: ['Example', 'Target', 'First update', 'New prediction'], rows: [{ label: 'A', cells: ['2', '1', '1'] }, { label: 'B', cells: ['-1', '-0.5', '-0.5'] }] } }]} />
+
+
 
 ## 1. Additive Models, Built One Piece at a Time
 
@@ -162,7 +179,7 @@ Boosting fits the training data more closely with every round, so it needs contr
 
 Early experiments with AdaBoost found something surprising: test error often kept falling long after training error reached zero, as if adding stumps could never hurt. Schapire, Freund, Bartlett and Lee (1998) explained it through **margins**. Even after every training example is classified correctly, further rounds keep increasing the margin $y_i F(\mathbf{x}_i)$ of the examples, pushing them further from the boundary, and they proved generalization bounds that depend on the distribution of margins rather than on the number of rounds. A model whose training examples all have large margins generalizes well, however many stumps it contains.
 
-That's a tendency, not a guarantee. With noisy labels, the exponential loss makes AdaBoost chase the mislabelled examples indefinitely, and it does overfit; Dietterich (2000) showed it degrading quickly as label noise was added, while bagging was barely affected. Gradient boosting with a bounded-gradient loss (log loss, Huber) is more robust, and early stopping is still needed for both.
+That's a tendency, not a guarantee. With noisy labels, the exponential loss makes AdaBoost chase the mislabelled examples indefinitely, and it does overfit; Dietterich (2000) showed it degrading quickly as label noise was added, while bagging was barely affected. Gradient boosting with log loss or Huber loss reduces the pull from extreme residuals; early stopping is still needed for both.
 
 </GoDeeper>
 
@@ -179,7 +196,9 @@ That's a tendency, not a guarantee. With noisy labels, the exponential loss make
 | Tuned accuracy on tabular data | Strong | Usually the strongest |
 | Works with defaults | Very well | Needs tuning, especially $\eta$ and $M$ |
 
-## 7. Minimal Implementation
+## Worked example
+
+### 7. Minimal Implementation
 
 Both algorithms from scratch, using scikit-learn's tree only as the weak learner. AdaBoost runs on Hastie's classic 10-feature problem, where the class is decided by whether the sum of squared features exceeds a threshold, a curved boundary that a single stump can barely touch. Gradient boosting runs on Friedman's benchmark, then sweeps the learning rate with validation-based early stopping:
 
@@ -253,9 +272,8 @@ for lr in [1.0, 0.3, 0.1, 0.03]:
     print(f"lr={lr:<4}  best round {best + 1:>4}  test MSE there {test[best]:.2f}   test MSE at round 1000 {test[-1]:.2f}")
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
 one stump:                 test error 0.457
 AdaBoost,  10 stumps:       test error ours 0.360   scikit-learn 0.360
 AdaBoost, 100 stumps:       test error ours 0.200   scikit-learn 0.200
@@ -274,11 +292,33 @@ What it shows:
 - **Shrinkage matters most (Section 5).** With $\eta = 1$ the model peaks after 8 trees at 6.78 and never recovers. Every smaller rate does far better, and $\eta = 0.03$ is best at 2.03, using 951 trees.
 - **Boosting overfits slowly.** At $\eta = 0.1$, test error rises from 2.18 at the validation-chosen round to 2.22 at round 1000, which is why early stopping is part of the algorithm.
 
-## 8. When *Not* to Use Boosting
+## Try it yourself
+
+<RunnableCode code={`targets = [2.0, -1.0]
+predictions = [0.0, 0.0]
+rate = 0.5
+residuals = [y - p for y, p in zip(targets, predictions)]
+updated = [p + rate * r for p, r in zip(predictions, residuals)]
+mse = sum((y - p) ** 2 for y, p in zip(targets, updated)) / len(targets)
+print("residuals:", residuals)
+print("updated predictions:", updated)
+print("new MSE:", mse)
+
+# Try it: use a learning rate of 0.25 and compare the new MSE.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Making every tree deep | Large steps can fit noise and overfit quickly. | Use shallow trees and validation-based stopping. |
+| Increasing rounds without a validation set | Training loss keeps falling even after generalization worsens. | Track a held-out metric. |
+| Calling residual fit a universal gradient | For other losses, use the negative loss gradient. | Derive the pseudo-residual for the chosen loss. |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
-| Noisy or mislabelled targets, especially with AdaBoost | A [random forest](/docs/machine-learning/random-forest), or gradient boosting with a robust loss (Huber, log loss) and strong regularization |
+| Noisy or mislabelled targets, especially with AdaBoost | A [random forest](/docs/machine-learning/random-forest), or gradient boosting with Huber or log loss and strong regularization |
 | You need good results without tuning | A random forest, which is far less sensitive to its settings |
 | Training must be parallel across many machines with simple code | Bagging parallelizes trivially; boosting is sequential across rounds (libraries parallelize within a round) |
 | Predictions must extrapolate beyond the training range | Linear or trend models; boosted trees predict a constant past the edge |

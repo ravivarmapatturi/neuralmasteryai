@@ -11,11 +11,11 @@ import treeStructureDark from './img/tree-structure.png';
 import treeStructureLight from './img/tree-structure-light.png';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Decision Trees
-
-Every model so far, from [linear regression](/docs/machine-learning/linear-regression) to [logistic regression](/docs/machine-learning/logistic-regression), computes a weighted sum of the features and draws one smooth boundary. A decision tree does something entirely different: it asks a sequence of yes/no questions about one feature at a time, and each answer narrows down the prediction. This page derives how a tree chooses its questions (the impurity measures, and why the obvious one doesn't work), the greedy algorithm that grows it and what it costs, what each leaf predicts, how to stop a tree from memorizing its training data, and why trees are unstable, which is the reason the next three pages exist.
-
 <ELI5>
 
 Think of the game Twenty Questions. You're trying to guess an animal. A good first question is "Does it live in water?" because it splits the possibilities roughly in half, whatever the answer. A bad first question is "Is it a platypus?" because it almost always gets "no" and you've learned nearly nothing.
@@ -23,6 +23,23 @@ Think of the game Twenty Questions. You're trying to guess an animal. A good fir
 A decision tree plays Twenty Questions with data. To predict whether a student passes, it might ask "Studied more than 5 hours?" then "Attended most lectures?" and so on, until the group of students who gave the same answers is mostly one outcome. Choosing good questions, the ones that sort the data most cleanly, is the whole algorithm. Everything below is that game made exact.
 
 </ELI5>
+
+## Why it exists
+
+Every model so far, from [linear regression](/docs/machine-learning/linear-regression) to [logistic regression](/docs/machine-learning/logistic-regression), computes a weighted sum of the features and draws one smooth boundary. A decision tree does something entirely different: it asks a sequence of yes/no questions about one feature at a time, and each answer narrows down the prediction. This page derives how a tree chooses its questions (the impurity measures, and why the obvious one doesn't work), the greedy algorithm that grows it and what it costs, what each leaf predicts, how to stop a tree from memorizing its training data, and why trees are unstable, which is the reason the next three pages exist.
+
+## The big picture
+
+<PenFlow title="Choose a feature test at each node" ariaLabel="Choose a feature test at each node" rows={[
+  { steps: { title: 'Start with a mixed node', lines: ['Count the examples in each class'], tone: 'blue' } },
+  { steps: { title: 'Try candidate splits', lines: ['Compare weighted child impurity'], tone: 'purple' } },
+  { steps: { title: 'Keep the best test', lines: ['Route examples left or right'], tone: 'green' } },
+  { steps: { title: 'Stop and predict', lines: ['Limit depth or prune small gains'], tone: 'orange' } }
+]} caption="A split is useful when its children are less mixed than their parent." />
+
+<Worksheet title="Measure one Gini split" ariaLabel="Measure one Gini split" stages={[{ tag: "Worked values", color: "yellow", note: "A parent with counts 3 and 1 splits into children (2, 0) and (1, 1).", grid: { head: ['Node', 'Class counts', 'Gini'], rows: [{ label: 'Parent', cells: ['3, 1', '0.375'] }, { label: 'Left child', cells: ['2, 0', '0.000'] }, { label: 'Right child', cells: ['1, 1', '0.500'] }, { label: 'Weighted children', cells: ['2 each', '0.250'] }] } }]} />
+
+
 
 ## 1. What a Tree Is
 
@@ -188,7 +205,9 @@ The first weakness deserves numbers. In Section 8, the same depth-1 tree (a sing
 
 High variance with low bias is exactly the situation averaging is good at fixing. Average many trees grown on different resamples and the variance shrinks while the bias stays low. That's the [random forest](/docs/machine-learning/random-forest). Alternatively, use many *shallow* trees, each correcting the errors of the ones before. That's [boosting](/docs/machine-learning/boosting). Single trees are rarely the strongest model; they're the building block of the strongest tabular models there are.
 
-## 8. Minimal Implementation
+## Worked example
+
+### 8. Minimal Implementation
 
 A complete CART classifier in plain NumPy: Gini impurity, the sorted sweep from Section 3, recursive growth with a depth limit, and majority-class leaves. It's compared against scikit-learn at several depths on the breast-cancer data, followed by cost-complexity pruning and the instability experiment:
 
@@ -268,9 +287,8 @@ for v, c in sorted(zip(vals, cnts), key=lambda kv: -kv[1]):
     print(f"root split on {str(v)}: {c} of 100 resamples")
 ```
 
+```output
 Output (scikit-learn 1.7):
-
-```
 depth  ours: train  test   sklearn: train  test
     1       0.932  0.889            0.932  0.889
     2       0.942  0.906            0.942  0.906
@@ -293,7 +311,29 @@ Reading the results:
 - **Pruning helps and simplifies.** Cross-validated cost-complexity pruning cuts the tree from 16 leaves to 6 and gains 1.2 points of test accuracy. A 6-leaf tree is also something a clinician could read.
 - **The root is unstable**: five different features win the first split across 100 resamples.
 
-## 9. When *Not* to Use a Single Decision Tree
+## Try it yourself
+
+<RunnableCode code={`def gini(counts):
+    total = sum(counts)
+    return 1 - sum((n / total) ** 2 for n in counts)
+
+parent = gini([3, 1])
+children = (2 * gini([2, 0]) + 2 * gini([1, 1])) / 4
+print("parent:", round(parent, 3))
+print("weighted children:", round(children, 3))
+print("gain:", round(parent - children, 3))
+
+# Try it: move one positive example from the right child to the left.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Choosing a deep tree by training accuracy | A deep tree can memorize individual rows. | Use validation data and pruning. |
+| Comparing raw child impurity | Large children should count more in the average. | Weight each child impurity by its size. |
+| Expecting smooth extrapolation | Leaves predict constants outside observed thresholds. | Use a model suited to continuous trends. |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

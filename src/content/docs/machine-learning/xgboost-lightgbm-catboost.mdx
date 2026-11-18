@@ -7,11 +7,11 @@ description: "The three production gradient-boosting libraries derived: XGBoost'
 import TreeGrowthStrategyDiagram from '../../../viz/diagrams/TreeGrowthStrategyDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # XGBoost, LightGBM & CatBoost
-
-[Boosting](/docs/machine-learning/boosting) derived gradient boosting: each new tree is fitted to the negative gradient of the loss, and its leaf values are re-solved for the best step. XGBoost, LightGBM and CatBoost are the three libraries that turned that algorithm into the default method for tabular data. Each changes the algorithm, not only the engineering. This page derives XGBoost's objective, which chooses splits using second derivatives and a penalty on the tree itself, then the tricks that make split-finding fast, LightGBM's changes to how trees grow and which rows and features they see, and CatBoost's fix for a subtle leak in how categorical features are usually encoded. Two experiments check the derivations: a from-scratch XGBoost that reproduces the library's training predictions to $10^{-6}$, and the three libraries side by side on data with a 500-level categorical feature.
-
 <ELI5>
 
 Three car makers start from the same engine design. One adds a better fuel-injection system and careful tuning, so every drop of fuel goes further. One redesigns the engine to rev faster and cut weight, so it's the quickest on a long highway. One adds a gearbox that handles rough, unusual roads that make the other two stall.
@@ -19,6 +19,23 @@ Three car makers start from the same engine design. One adds a better fuel-injec
 XGBoost, LightGBM and CatBoost all start from the same gradient boosting engine. XGBoost uses more information at each step and penalizes complicated trees. LightGBM is built for speed on very large data. CatBoost is built for data full of categories, like city names or product codes. Everything below is what each one changed, made exact.
 
 </ELI5>
+
+## Why it exists
+
+[Boosting](/docs/machine-learning/boosting) derived gradient boosting: each new tree is fitted to the negative gradient of the loss, and its leaf values are re-solved for the best step. XGBoost, LightGBM and CatBoost are the three libraries that turned that algorithm into the default method for tabular data. Each changes the algorithm, not only the engineering. This page derives XGBoost's objective, which chooses splits using second derivatives and a penalty on the tree itself, then the tricks that make split-finding fast, LightGBM's changes to how trees grow and which rows and features they see, and CatBoost's fix for a subtle leak in how categorical features are usually encoded. Two experiments check the derivations: a from-scratch XGBoost that reproduces the library's training predictions to $10^{-6}$, and the three libraries side by side on data with a 500-level categorical feature.
+
+## The big picture
+
+<PenFlow title="Build boosted trees with efficient split search" ariaLabel="Build boosted trees with efficient split search" rows={[
+  { steps: { title: 'Define loss and penalty', lines: ['Score fit and leaf complexity'], tone: 'blue' } },
+  { steps: { title: 'Aggregate gradients', lines: ['Summarize each candidate leaf'], tone: 'purple' } },
+  { steps: { title: 'Search thresholds', lines: ['Use histograms or ordered categories'], tone: 'green' } },
+  { steps: { title: 'Add a regularized tree', lines: ['Update predictions and repeat'], tone: 'orange' } }
+]} caption="Tree-growth and feature-handling choices change speed, memory, and leakage risk." />
+
+<Worksheet title="Score a candidate XGBoost split" ariaLabel="Score a candidate XGBoost split" stages={[{ tag: "Worked values", color: "yellow", note: "With left (G, H) = (4, 2), right (-4, 2), parent (0, 4), and λ = 1, split gain is 16/3.", grid: { head: ['Term', 'Value'], rows: [{ label: 'Left score', cells: ['4²/(2+1) = 16/3'] }, { label: 'Right score', cells: ['(-4)²/(2+1) = 16/3'] }, { label: 'Parent score', cells: ['0²/(4+1) = 0'] }, { label: 'Gain', cells: ['0.5 × (16/3 + 16/3) = 16/3'] }] } }]} />
+
+
 
 ## 1. XGBoost's Objective, Derived
 
@@ -156,7 +173,9 @@ After tuning, the three usually land within a small margin of each other on nume
 
 **The settings that matter most**, in all three: the learning rate and the number of trees (small rate, many trees, stop early on a validation set, as on the [Boosting page](/docs/machine-learning/boosting)); tree size (`max_depth`, `num_leaves`, `depth`); row and column subsampling (`subsample`, `colsample_bytree`, and their LightGBM and CatBoost equivalents); and the regularization terms $\lambda$ (`reg_lambda`, `lambda_l2`, `l2_leaf_reg`) and $\gamma$ (`gamma`, `min_split_gain`). [Hyperparameter Optimization](/docs/machine-learning/hyperparameter-optimization) covers searching them efficiently.
 
-## 7. Minimal Implementation
+## Worked example
+
+### 7. Minimal Implementation
 
 First, XGBoost from scratch: the gradient and Hessian of log loss, trees built by the gain formula of Section 1, and leaves set to $-G/(H+\lambda)$. It's compared with the real library using the same settings, exact split search and the same starting point:
 
@@ -228,9 +247,8 @@ print(f"largest log-odds difference, ours vs xgboost: training set {np.abs(ours_
 print(f"test accuracy: ours {np.mean((ours > 0) == y_te):.3f}, xgboost {np.mean((theirs > 0) == y_te):.3f}")
 ```
 
+```output
 Output (XGBoost 3.4):
-
-```
 largest log-odds difference, ours vs xgboost: training set 1.1e-06, test set 4.5e-01
 test accuracy: ours 0.953, xgboost 0.959
 ```
@@ -289,9 +307,8 @@ p_true = 1 / (1 + np.exp(-logit[te]))
 print(f"{'true probabilities (the floor)':34s} test log loss {log_loss(y[te], p_true):.4f}   AUC {roc_auc_score(y[te], p_true):.4f}")
 ```
 
+```output
 Output (XGBoost 3.4, LightGBM 4.7, CatBoost 1.2; times from one run on one shared machine):
-
-```
 XGBoost, city as an integer code   test log loss 0.4759   AUC 0.8513   (27.7 s)
 XGBoost, native categorical        test log loss 0.5082   AUC 0.8311   (4.1 s)
 LightGBM, native categorical       test log loss 0.4700   AUC 0.8560   (7.3 s)
@@ -301,7 +318,27 @@ true probabilities (the floor)     test log loss 0.4203   AUC 0.8872
 
 On this data the way the city column is handled matters far more than anything else. CatBoost's ordered target statistics get within 0.013 of the best possible log loss. The two partition-based approaches are well behind, and XGBoost's native categorical splits, with default settings, actually did worse than treating the city ID as a meaningless integer: with 500 cities and about 80 training rows each, sorting categories by their training gradients finds groupings that don't hold up (the GoDeeper box above explains why). LightGBM's smoothing helps it some. None of this says CatBoost is better in general: with only numeric features, or with tuned categorical settings (LightGBM's `cat_smooth`, `min_data_per_group`; a cross-fitted target encoding in front of XGBoost), the gap shrinks or disappears. It says that for high-cardinality categories, leak-free target statistics are the right default, and that defaults are worth testing rather than trusting.
 
-## 8. When *Not* to Use Gradient-Boosted Trees
+## Try it yourself
+
+<RunnableCode code={`left_g, left_h = 4, 2
+right_g, right_h = -4, 2
+parent_g, parent_h = left_g + right_g, left_h + right_h
+lam = 1
+score = lambda g, h: g * g / (h + lam)
+gain = 0.5 * (score(left_g, left_h) + score(right_g, right_h) - score(parent_g, parent_h))
+print("split gain:", round(gain, 3))
+
+# Try it: change left_g to 3 and recompute the gain.`} />
+
+## Common mistakes
+
+| Mistake | Why it fails | Better move |
+| --- | --- | --- |
+| Comparing default timings across libraries | Thread counts and hardware settings differ. | Benchmark one fixed environment and data split. |
+| Treating categorical handling as identical | CatBoost uses ordered statistics; other libraries differ. | Choose encoding behavior deliberately. |
+| Ignoring regularization | Tree count alone does not control complexity. | Tune depth, leaf penalties, and learning rate together. |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
