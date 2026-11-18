@@ -65,6 +65,7 @@ export default function VisualizationContainer({
     <VizVisibleContext.Provider value={visible}>
     <div
       ref={frameRef}
+      className="nm-viz-frame"
       role="group"
       aria-label={title}
       aria-describedby={footer ? footerId : undefined}
