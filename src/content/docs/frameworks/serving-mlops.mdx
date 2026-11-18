@@ -4,10 +4,22 @@ sidebar_position: 5
 description: "vLLM, TorchServe, Triton, Docker, CI/CD for ML, and observability -- the tooling layer that turns a notebook model into a real production system."
 ---
 
-
 import ContinuousBatchingSimulationDiagram from '../../../viz/diagrams/ContinuousBatchingSimulationDiagram';
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Serving & MLOps / LLMOps
+
+## Why it exists
+
+A trained model must run within deployment, reliability and observation constraints. Serving and MLOps frameworks provide the runtime and release controls around inference.
+
+<ELI5>
+
+A trained model must run within deployment, reliability and observation constraints. Serving and MLOps frameworks provide the runtime and release controls around inference.
+
+</ELI5>
 
 A model that only runs in a notebook isn't a production system. This is the tooling layer that makes it one.
 
@@ -42,3 +54,30 @@ Exact-match caching only helps when the same string comes in twice — useless f
 It's not a free win, and hit rates vary enormously by workload — template-heavy agent inner loops (the same sub-task repeated with minor variation) see 40-70% hit rates, while long-tail conversational agents see closer to 10-25%, since fewer requests are actually similar enough to reuse. It also has a real, documented failure mode: pure embedding-similarity matching can wrongly cache-hit two queries that are *textually* similar but carry different intent, or miss two queries that are worded completely differently but mean the same thing — current work on this (["Why Agent Caching Fails and How to Fix It"](https://arxiv.org/pdf/2602.18922)) proposes canonicalizing a query's *structured intent* via an LLM before the similarity check, rather than trusting embedding similarity alone. Worth treating as a real correctness lever to tune (similarity threshold, what counts as "equivalent"), not a drop-in optimization with no downside.
 
 Frameworks section complete. Next: [Interview Prep](/docs/interview-prep/roadmap) — putting everything from the previous sections into practice under interview conditions.
+
+## The big picture
+
+<PenFlow ariaLabel="frameworks/serving-mlops overview" rows={[{ steps: { title: 'Serve model', lines: ['runtime and request handling'], tone: 'blue' } }, { steps: { title: 'Package', lines: ['container and dependencies'], tone: 'purple' } }, { steps: { title: 'Release', lines: ['CI/CD and rollback'], tone: 'orange' } }, { steps: { title: 'Observe', lines: ['latency, errors and quality'], tone: 'green' } }]} caption="runtime and request handling." />
+
+## Worked example
+
+The page covers model serving, containerization, CI/CD, LLM observability and semantic caching.
+
+## Try it yourself
+
+# Try it: Production readiness spans deployment and monitoring, not only the serving endpoint.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Deploying without rollback | A bad release can stay live | Version artifacts and keep rollback ready |
+| Monitoring latency only | Quality and cost can degrade unseen | Track errors, quality and usage |
+| Caching without correctness checks | Stale answers can be returned | Scope cache keys and validate freshness |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| No production service is needed | Run the model locally |
+| The cache cannot preserve user or policy boundaries | Do not cache those responses |

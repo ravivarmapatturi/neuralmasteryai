@@ -4,11 +4,23 @@ sidebar_position: 4
 description: "LangChain, LlamaIndex, and agent frameworks compared -- the real components (engine, tools, parser, memory) every framework wires up underneath."
 ---
 
-
 import AgentControlFlowGraphDiagram from '../../../viz/diagrams/AgentControlFlowGraphDiagram';
 import AgentFrameworkAxisDiagram from '../../../viz/diagrams/AgentFrameworkAxisDiagram';
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # LLM / Agent Frameworks
+
+## Why it exists
+
+LLM and agent frameworks package retrieval, tool calls and multi-step orchestration. They help when those parts need coordination, but add abstractions that should be justified.
+
+<ELI5>
+
+LLM and agent frameworks package retrieval, tool calls and multi-step orchestration. They help when those parts need coordination, but add abstractions that should be justified.
+
+</ELI5>
 
 The tools that implement the concepts from [LLMs & GenAI](/docs/llms-genai/roadmap) and [Agents](/docs/agents/roadmap) so you're not wiring up RAG pipelines and tool-calling loops from scratch every time.
 
@@ -88,5 +100,32 @@ A simplified but real LangGraph-style control-flow graph — step through it and
 - [Google ADK (adk-python)](https://github.com/google/adk-python) — Agent Development Kit.
 - [DSPy](https://dspy.ai) — programming, not prompting, language models.
 - [LlamaIndex agent docs](https://developers.llamaindex.ai/python/framework/understanding/agent/) — `FunctionAgent`/`AgentWorkflow` and LlamaIndex's agent-building APIs.
+
+## The big picture
+
+<PenFlow ariaLabel="frameworks/llm-agent-frameworks overview" rows={[{ steps: { title: 'Model call', lines: ['prompt and structured output'], tone: 'blue' } }, { steps: { title: 'Retrieval', lines: ['index and fetch context'], tone: 'purple' } }, { steps: { title: 'Tool execution', lines: ['validate and invoke actions'], tone: 'orange' } }, { steps: { title: 'Orchestration', lines: ['route, retry and observe'], tone: 'green' } }]} caption="prompt and structured output." />
+
+## Worked example
+
+The page surveys LangChain, LlamaIndex, MCP SDKs and agent orchestration frameworks.
+
+## Try it yourself
+
+# Try it: Choose the abstraction according to retrieval, tool and workflow needs.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Using a framework for one simple call | The abstraction can obscure the request | Use a direct SDK call |
+| Allowing unvalidated tool arguments | The model output is not a trusted command | Validate schemas and authorize actions |
+| Hiding control flow in callbacks | Failures become hard to trace | Keep important state and steps observable |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The workflow is a single deterministic call | Use a direct client library |
+| The framework obscures safety controls | Use explicit orchestration code |
 
 Next: [Serving & MLOps/LLMOps](/docs/frameworks/serving-mlops) — getting any of this into production reliably.

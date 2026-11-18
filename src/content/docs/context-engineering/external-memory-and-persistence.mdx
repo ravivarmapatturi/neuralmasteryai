@@ -9,7 +9,14 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # External Memory, Hierarchical Recall & KV Cache Optimization
+
+## Why it exists
+
+A long-running agent cannot keep every past result in its active context. External memory stores durable facts and retrieves only relevant records, while keeping injected memory outside the stable system prefix.
 
 When an autonomous agent finishes a task and terminates its process, every token in its active context window is discarded. If the same agent is launched five minutes later to fix a related bug in the same codebase, starting from a blank context window forces it to re-read files, re-discover environment settings, and repeat previous diagnostic dead ends.
 
@@ -32,7 +39,7 @@ When a new case arrives, the detective does not dump 40 heavy filing cabinets on
 
 Modern computing systems achieve high throughput and massive storage through memory hierarchies: L1/L2/L3 CPU caches, main DRAM, and NVMe SSDs. Agent memory architectures adopt an identical structure:
 
-```
+```output
 +--------------------------------------------------------------------------+
 |  Tier 1: L1 Working Memory (In-Context KV Cache)                         |
 |  - Storage: GPU VRAM / Host RAM                                          |
@@ -89,7 +96,7 @@ Where should external memories be inserted into the prompt? This architectural d
 
 Recall how modern inference engines evaluate prefix caches. The KV cache matches an incoming sequence $T = [t_1, t_2, \dots, t_N]$ against stored GPU memory blocks by hashing prefixes:
 
-```
+```output
 Static Prefix (Cached):
 [t1: System Prompt][t2: Format Rules][t3: Tool Schemas] ----> KV Cache Hit! (100%)
 
@@ -114,7 +121,7 @@ When querying semantic memory, naive vector search often retrieves irrelevant ch
 
 Production architectures employ a **Two-Stage Retrieval Pipeline**:
 
-```
+```output
 +-------------------------------------------------------------------------+
 |                              Query Intent                               |
 |        "Fix JWT expiration drift in auth/session.py with pytest"         |
@@ -155,7 +162,7 @@ How do raw execution turns transform into persistent semantic knowledge? In huma
 
 In autonomous agents, **Memory Consolidation** runs as an out-of-band asynchronous worker:
 
-```
+```output
 [Agent Turn Execution] ---> Writes to SQLite Episodic WAL (L2)
                                        |
                                        v
@@ -373,6 +380,35 @@ CREATE INDEX IF NOT EXISTS idx_facts_domain ON agent_semantic_facts(domain);
 | **Transactional WAL** | Write episodic traces immediately to disk via SQLite WAL before issuing API calls. | If the agent container crashes mid-execution, the episodic record survives for recovery. |
 
 ---
+
+## The big picture
+
+<PenFlow ariaLabel="context-engineering/external-memory-and-persistence overview" rows={[{ steps: { title: 'Persist facts', lines: ['episodic and semantic records'], tone: 'blue' } }, { steps: { title: 'Retrieve', lines: ['rank by relevance to current task'], tone: 'purple' } }, { steps: { title: 'Inject safely', lines: ['append as a user memory block'], tone: 'orange' } }, { steps: { title: 'Consolidate', lines: ['update durable memory asynchronously'], tone: 'green' } }]} caption="episodic and semantic records." />
+
+<Worksheet title="Timezone memory retrieval" ariaLabel="Timezone memory retrieval" stages={[{ tag: "Inputs", color: "yellow", note: "The verification harness retrieves one record, mem_101, and formats it as a user-role injection; token estimate is calculated from the payload words.", grid: { head: ['', 'source value'], rows: [{ label: 'records retrieved', cells: ['1'] }, { label: 'memory ID', cells: ['mem_101'] }, { label: 'injection role', cells: ['user'] }, { label: 'token estimate', cells: ['payload words × 2'] }] } }]} />
+
+## Worked example
+
+The harness asks about timezone expiration and asserts that the top retrieved record is mem_101. It asserts the memory is injected with role `user`, not into the system prompt.
+
+## Try it yourself
+
+# Try it: External recall should help the current task without mutating a cache-sensitive system prefix.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Writing retrieved memory into the system prompt | The changing prefix can invalidate cache reuse | Inject memory in a later message |
+| Retrieving too many records | Irrelevant facts consume context | Limit and rerank candidates |
+| Treating stored memory as ground truth | Old records can be stale | Track provenance and confidence |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The task is stateless and short | Use only the current context |
+| Retrieved records cannot be verified or safely isolated | Avoid relying on external memory |
 
 ## Sources
 

@@ -4,11 +4,23 @@ sidebar_position: 3
 description: "PyTorch's actual design, and the tools that turn deep learning theory into code you can run and train -- the frameworks underneath every model here."
 ---
 
-
 import ChainRuleBackpropDiagram from '../../../viz/diagrams/ChainRuleBackpropDiagram';
 import ExperimentTrackingComparisonDiagram from '../../../viz/diagrams/ExperimentTrackingComparisonDiagram';
 
+import { ELI5 } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+
 # Core ML/DL Frameworks
+
+## Why it exists
+
+Model training needs tensor operations, data pipelines and experiment records. Framework choices should fit the model, data scale and reproducibility needs.
+
+<ELI5>
+
+Model training needs tensor operations, data pipelines and experiment records. Framework choices should fit the model, data scale and reproducibility needs.
+
+</ELI5>
 
 The tools that turn the theory from [Deep Learning](/docs/deep-learning/roadmap) into code you can actually run and train.
 
@@ -64,5 +76,32 @@ with mlflow.start_run():
 ```
 
 Running an actual **sweep** (a grid or Bayesian search over hyperparameters, exactly the 5-run comparison above but automated instead of launched by hand) is what both tools are built to orchestrate directly — W&B Sweeps and MLflow's integration with Optuna/Ray Tune both launch, track, and rank many runs like this one automatically, rather than requiring a human to remember to compare them after the fact.
+
+## The big picture
+
+<PenFlow ariaLabel="frameworks/core-ml-dl-frameworks overview" rows={[{ steps: { title: 'Tensor framework', lines: ['models and accelerators'], tone: 'blue' } }, { steps: { title: 'Data utilities', lines: ['datasets and preprocessing'], tone: 'purple' } }, { steps: { title: 'Track runs', lines: ['metrics, config and artifacts'], tone: 'orange' } }, { steps: { title: 'Reproduce', lines: ['record versions and seeds'], tone: 'green' } }]} caption="models and accelerators." />
+
+## Worked example
+
+The page covers PyTorch, Hugging Face transformers/datasets and experiment tracking.
+
+## Try it yourself
+
+# Try it: The framework stack links training code to data and reproducible experiments.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Tracking metrics without config | Results cannot be reproduced | Save parameters and versions |
+| Mixing incompatible tensor/data formats | Conversion overhead and bugs appear | Keep interfaces explicit |
+| Choosing a library by popularity | It may not fit hardware or workflow | Prototype the actual path |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| A plain numerical script is enough | Use NumPy or the core runtime |
+| The task is production serving | Use serving frameworks |
 
 Next: [LLM / Agent Frameworks](/docs/frameworks/llm-agent-frameworks) — the tooling layer built on top of these for building RAG pipelines and agents specifically.

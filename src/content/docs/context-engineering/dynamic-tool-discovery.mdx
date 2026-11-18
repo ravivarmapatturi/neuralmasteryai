@@ -9,7 +9,14 @@ import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
 import NotebookCallout from '../../../components/notebook/NotebookCallout';
 
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+
 # Dynamic Tool Discovery, Semantic Routing & Schema Pruning
+
+## Why it exists
+
+Giving an agent every tool schema on every turn wastes context and can make tool selection harder. Dynamic discovery retrieves a small, relevant set, then prunes unnecessary schema fields before sending them to the model.
 
 Early autonomous agent tutorials demonstrate tool calling by defining three or four JSON functions directly inside the API request payload. However, enterprise systems quickly amass hundreds of specialized APIs: git operations, cloud provisioning, SQL interfaces, ticket tracking, observability queries, and communication channels. Ingesting every tool schema into every API call exhausts input token limits, degrades model reasoning, and drives up token expenses.
 
@@ -45,7 +52,7 @@ $$
 
 At current frontier pricing ($3.00 per million input tokens), tool schemas alone cost $2.25 per run and consume nearly 40% of a 128,000-token context window on static overhead.
 
-```
+```output
 +-----------------------------------------------------------------------+
 |  Static Injection (Anti-Pattern): 200 Tools = 50,000 tokens / turn    |
 |  [Tool 1][Tool 2][Tool 3] ... [Tool 199][Tool 200]                   |
@@ -68,7 +75,7 @@ Furthermore, empirical testing shows that exposing an LLM to hundreds of simulta
 
 To support hundreds of enterprise capabilities without blowing up context, production agent harnesses employ a two-phase selection architecture:
 
-```
+```output
 +--------------------------------------------------------------------------+
 |                              User Task Intent                            |
 |             "Check recent git commit and run failed pytest suite"         |
@@ -408,6 +415,35 @@ When an agent needs to check Datadog APM traces, the gateway dynamically surface
 | **Orthogonal Signatures** | Never present two tools with identical parameter descriptions in the same turn. | Ambiguous tool signatures trigger parameter hallucination and schema validation rejections. |
 
 ---
+
+## The big picture
+
+<PenFlow ariaLabel="context-engineering/dynamic-tool-discovery overview" rows={[{ steps: { title: 'Describe catalog', lines: ['names, summaries and tags'], tone: 'blue' } }, { steps: { title: 'Route intent', lines: ['retrieve relevant tools'], tone: 'purple' } }, { steps: { title: 'Prune schemas', lines: ['remove unused parameter detail'], tone: 'orange' } }, { steps: { title: 'Expose selected tools', lines: ['keep required tools pinned'], tone: 'green' } }]} caption="names, summaries and tags." />
+
+<Worksheet title="Tool-schema overhead" ariaLabel="Tool-schema overhead" stages={[{ tag: "Inputs", color: "yellow", note: "The catalog totals 1,160 tokens; selected schemas retain git_diff and run_pytest, with their listed token costs summing to 460.", grid: { head: ['', 'value'], rows: [{ label: 'full catalog', cells: ['1,160 tokens'] }, { label: 'git_diff', cells: ['220 tokens'] }, { label: 'run_pytest', cells: ['240 tokens'] }, { label: 'selected total', cells: ['460 tokens'] }, { label: 'reduction', cells: ['60.3%'] }] } }]} />
+
+## Worked example
+
+The source assigns 220 tokens to git_diff and 240 to run_pytest. Together they use 460 of the 1,160 catalog tokens, a reduction of 60.3%.
+
+## Try it yourself
+
+# Try it: Retrieval plus schema pruning cuts what the model must inspect while preserving the two needed tools.
+
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| --- | --- | --- |
+| Dropping a required pinned tool | A task may need a safety or recovery tool | Pin required capabilities |
+| Pruning required fields | The call becomes invalid | Preserve schema-required parameters |
+| Routing by vague descriptions | Similar tools may be confused | Use precise summaries and test route results |
+
+## When not to use it
+
+| Situation | Better choice |
+| --- | --- |
+| The tool catalog is small and stable | Send the full schema directly |
+| Tools have side effects but no authorization checks | Do not expose them until scoped controls exist |
 
 ## Sources
 
