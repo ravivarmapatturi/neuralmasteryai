@@ -19,6 +19,8 @@
 
 | `2026-11-18T11:25:00+05:30` | `Codex` | `pilot/page-standard` | `src/content/docs/software-system-design/{data,indexing,sql-vs-nosql,transactions-and-isolation,consistency-models,cap-and-pacelc,distributed-systems,consensus-and-leader-election}.mdx`, `docs/evidence/rollout/rest-10/`, `docs/evidence/rollout/PROGRESS.md` | Standardize the next eight remaining Learn pages per the rollout brief using their existing real examples; validate and commit locally | `IN_PROGRESS` | Pending verification | Batch 10. No push. |
 
+| `2026-11-18T11:45:00+05:30` | `Codex` | `pilot/page-standard` | `src/content/docs/software-system-design/{replication,sharding,consistent-hashing,caching-and-invalidation,distributed-locks,sagas-and-outbox,microservices-vs-monolith,service-discovery}.mdx`, `docs/evidence/rollout/rest-11/`, `docs/evidence/rollout/PROGRESS.md` | Standardize the next eight Software System Design pages with source-grounded examples; validate and commit locally | `IN_PROGRESS` | Pending verification | Batch 11. No push. |
+
 ## Active & Historical Task Board
 
 | `2026-11-17T23:51:03+05:30` | `Codex` | `search-rank-rec` | `AGENT_TRACKER.md`, Part 2 shared typography, Part 2b visual labels/guard, Part 3 Search + A7 content/evidence | Resume notebook phase 2 from existing uncommitted Part 2; complete and commit Parts 2, 2b, and 3 locally | `BLOCKED` | check:notebook + static typography tests passed; typecheck passed; Playwright typography failed (4/4): blog title h1 computes 17px vs Learn h1 36px | agy runner unavailable; existing Part 2 tree has no prior implementation commit/evidence. Browser guard exposed unresolved title scale mismatch; stopped without Part 2 commit or advancing to 2b/3 to avoid unsupported completion claims. No push. |

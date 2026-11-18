@@ -5,12 +5,26 @@ description: "Distinguish lock ownership from effect authority, reject paused ow
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { LockFencingEpoch } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # Distributed Locks, Leases, and Fencing Tokens
 
 <ELI5>A maintenance key is lent to one worker for a limited time. If that worker pauses and returns late, a second worker may already have received a new key. Expiry in the lending office does not physically stop the first worker opening a door. The door must recognize which key belongs to the current ownership era.</ELI5>
+
+## Why it exists
+
+A lease can expire while its old holder is paused and later resumes. A lock service may grant a new owner, yet the old worker can still send a delayed write. The protected resource must reject effects from obsolete ownership.
+
+## The big picture
+
+<PenFlow ariaLabel="Distributed Locks, Leases, and Fencing Tokens: overview" rows={[{ steps: { title: "Acquire ownership", lines: ["receive monotonic epoch"], tone: "blue" } }, { steps: { title: "Pause old holder", lines: ["lease expires while request is delayed"], tone: "purple" } }, { steps: { title: "New holder writes", lines: ["resource records newer epoch"], tone: "orange" } }, { steps: { title: "Reject late effect", lines: ["resource checks the fence"], tone: "green" } }]} caption="A stored fence of 8 prevents an old epoch 7 write from changing the resource." />
+
+<Worksheet title="Fencing and release identity" ariaLabel="Fencing and release identity" stages={[{ tag: "Source values", color: "yellow", note: "The source contrasts accepted/rejected writes with and without fencing; a late A release leaves B\u2019s lock intact.", grid: { head: ["", "fencing", "accepted writes", "stored result"], rows: [{ label: "old epoch 7 after new 8", cells: ["off", "yes", "A then B"] }, { label: "old epoch 7 after new 8", cells: ["on", "no", "B"] }, { label: "late A release", cells: ["owner token check", "no", "B still owns"] }] } }]} />
+
+The worksheet uses the values printed by the runnable examples below.
 
 Distinguish lock ownership from effect authority, reject paused owners with storage-enforced fencing, and choose simpler atomic alternatives where they cover the invariant.
 A **distributed lock** coordinates ownership across processes or machines. A **lease** limits ownership in time under its protocol's assumptions. These mechanisms can reduce conflicting work, but do not automatically prevent a former owner from issuing delayed writes after its lease expires. Correctness depends on the resource accepting the effect, not only the service granting the lock.
@@ -110,20 +124,28 @@ The resource must also define what repeated writes within one epoch mean. A fenc
 
 Lease renewal has an uncertainty window as well. A client that stops receiving renewal responses cannot know from that absence alone whether the server accepted the last renewal. It should stop initiating protected work according to its lease protocol, yet an already issued request may remain in flight. Fencing handles that stale request at the resource boundary when a newer owner has been established. Clock measurements and generous expiry margins can reduce accidental overlap, but they do not make an old process cease to exist. Test a paused process that resumes after another worker has completed a write, not merely a process that exits cleanly. Also verify release ownership: an old worker's cleanup must not delete a newer worker's lock. A unique release token addresses that deletion race; it is not automatically the monotonic fence the storage service requires.
 
-## Failure Modes and Better Choices
+## Worked example
 
-A lease heartbeat stops and both workers continue effects. Enforce destination fencing and stop initiating new work when authority is unknown. An old release deletes the replacement lock. Compare owner identity atomically. A lock is used to repair a single-row race already covered by a conditional update. Simplify the design and keep the invariant at one authoritative boundary.
+The example's release comparison prints Late A release: False and shows B still owns the lock; the fencing model rejects the old token after a newer owner.
 
-A global lock serializes independent operations. Partition ownership only where the business rule permits it. A worker performs an external call that cannot check its epoch. Use the destination's supported identity/reconciliation protocol or state the weaker guarantee. A restore resets token history and permits stale writes. Include ownership metadata in recovery and invalidate obsolete workers deliberately.
+## Try it yourself
 
-## When Not to Use a Distributed Lock
+Use the runnable examples above. Apply their existing `# Try it:` edit, rerun the code, and update the corresponding worksheet value.
 
-| Situation | Better mechanism |
-| --- | --- |
-| One local store can enforce the rule atomically | Transaction or conditional update |
-| Only duplicate computation is undesirable | A bounded fill lease with an explicit weaker contract |
-| The destination cannot reject stale effects | Redesign ownership or use supported effect identity |
-| Work can be owned durably in a queue | Queue lifecycle and idempotent processing |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Rely on lease expiry to stop old code | A paused process can resume with an in-flight request | Check a monotonic fence at the resource |
+| Use random ownership token as a write fence | Equality protects release but does not order owners | Keep release identity and monotonic effect epoch separate |
+| Forget the fence on restore | Old requests may become acceptable again | Restore ownership metadata with the protected state |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| One store can enforce the invariant atomically | Use a conditional update or transaction |
+| The destination cannot check stale ownership | Redesign the effect boundary |
 
 ## Remember
 

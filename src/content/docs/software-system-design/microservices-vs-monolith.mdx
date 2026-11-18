@@ -5,12 +5,26 @@ description: "Choose deployment boundaries from ownership, change patterns, and 
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ServiceBoundaryCost } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # Microservices and Modular Monolith Boundaries
 
 <ELI5>A workshop can have separate benches for cutting, painting, and packing without putting each bench in a different building. Separate buildings can let teams work independently, but every transfer needs transport and a handover agreement. Choose that separation when its independence is useful enough to pay for the new boundaries.</ELI5>
+
+## Why it exists
+
+Splitting one deployable into network services adds independent failure, latency, and operational boundaries. It helps when ownership, change, or resource needs are genuinely independent. We should measure that benefit against the extra handovers and compatible-version work.
+
+## The big picture
+
+<PenFlow ariaLabel="Microservices and Modular Monolith Boundaries: overview" rows={[{ steps: { title: "Map capability", lines: ["name data and invariant owner"], tone: "blue" } }, { steps: { title: "Measure coupling", lines: ["changes, releases, shared state"], tone: "purple" } }, { steps: { title: "Estimate boundary cost", lines: ["network and availability chain"], tone: "orange" } }, { steps: { title: "Extract incrementally", lines: ["compatible contract and rollback"], tone: "green" } }]} caption="Two 5 ms handovers raise three 20 ms stages from 60 to 70 ms." />
+
+<Worksheet title="Three serial stages and two handovers" ariaLabel="Three serial stages and two handovers" stages={[{ tag: "Source values", color: "yellow", note: "Business work totals 60 ms. The modeled totals are 60 ms with no handover and 70 ms with 5 ms per link; three independent .999 components yield .997003 joint availability.", grid: { head: ["", "value"], rows: [{ label: "business work", cells: ["60 ms"] }, { label: "local total", cells: ["60 ms"] }, { label: "two handovers", cells: ["10 ms"] }, { label: "separated total", cells: ["70 ms"] }, { label: "three required components", cells: ["0.997003"] }] } }]} />
+
+The worksheet uses the values printed by the runnable examples below.
 
 Choose deployment boundaries from ownership, change patterns, and failure isolation; calculate network costs and plan extraction without creating a distributed monolith.
 A **modular monolith** keeps one deployable application while enforcing internal boundaries between responsibilities. **Microservices** place independently operated capabilities behind network interfaces, commonly with explicit data ownership and deployment autonomy. Neither topology establishes good domain boundaries automatically. A module can be deeply coupled, and a separate process can still require every other service to change in lockstep.
@@ -109,20 +123,28 @@ The 60 ms business path plus 10 ms of network handover illustrates one serial co
 
 Independent deployment requires compatibility work. If service A cannot be released until B is released in the same window, the architecture has retained coordinated deployment while adding distributed failure modes. Version interfaces, expand schemas compatibly, and let older and newer callers coexist during the migration. Teams also need ownership of alerts, data repair, capacity, and incident response for the extracted service. Without that ownership, an apparent organizational boundary becomes another ambiguous dependency during failure. A practical extraction begins with a module whose data and responsibility are already clear, establishes observability and rollback, and measures whether the new independence is used. If the system still changes as one unit, retaining a modular monolith can preserve simpler transactions and debugging while leaving an extraction path open for a concrete future need.
 
-## Failure Modes and Better Choices
+## Worked example
 
-A service extraction replaces local calls with dozens of tiny RPCs. Redesign operation granularity before scaling the network. Teams still write each other's tables and coordinate every release. Establish ownership or retain the simpler deployable boundary. A shared dependency defeats the promised isolation. Apply budgets at that shared resource.
+The RunnableCode prints 60 ms for zero handover and 70 ms for 5 ms per link; its availability calculation is round(0.999 ** 3, 6) = 0.997003.
 
-A rollback points old code at incompatible new state. Preserve version compatibility and test both transition directions. A shadow deployment repeats real external effects. Disable those effects or use a safe comparison harness. A service is chosen because the module is small. Evaluate independent change, ownership, and operational value rather than lines of code.
+## Try it yourself
 
-## When Not to Split a Service
+Use the runnable examples above. Apply their existing `# Try it:` edit, rerun the code, and update the corresponding worksheet value.
 
-| Situation | Better first step |
-| --- | --- |
-| The invariant needs one small atomic owner | Keep that transition local |
-| Boundaries change with every feature | Improve modules and learn the domain |
-| Releases still require all participants together | Repair compatibility and ownership |
-| No operational owner can support another deployment | Keep a simpler topology |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Split by executable count | Process separation does not prove independent ownership | Measure coordinated changes and data boundaries |
+| Ignore serial network costs | Each required hop adds a failure and latency path | Trace end-to-end calls and failure behavior |
+| Dual-write during extraction without protocol | Partial failure leaves ambiguous authority | Keep one writer or use a defined migration protocol |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| One local transaction owns the invariant | Keep the transition within one deployable boundary |
+| Teams still release every service together | Improve module and contract boundaries first |
 
 ## Remember
 

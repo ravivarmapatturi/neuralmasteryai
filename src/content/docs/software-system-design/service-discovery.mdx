@@ -5,12 +5,26 @@ description: "Resolve logical services to eligible endpoints, model stale discov
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { DiscoveryCacheFreshness } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # Service Discovery and Endpoint Freshness
 
 <ELI5>An office directory tells callers which desks exist. A printed copy can still list a desk after it closes, and a listed desk may not be ready to help. Callers need a refresh policy and a safe reaction when the directory and reality disagree. Service discovery manages that changing map without making it perfect.</ELI5>
+
+## Why it exists
+
+Service membership changes faster than every client cache and connection. Removing an endpoint from a registry does not instantly stop stale clients from routing to it. Discovery needs a freshness policy, readiness contract, and safe response to stale or unknown state.
+
+## The big picture
+
+<PenFlow ariaLabel="Service Discovery and Endpoint Freshness: overview" rows={[{ steps: { title: "Register candidates", lines: ["logical name maps to endpoints"], tone: "blue" } }, { steps: { title: "Cache a revision", lines: ["client uses candidates until refresh"], tone: "purple" } }, { steps: { title: "Drain or fail", lines: ["existing connections may persist"], tone: "orange" } }, { steps: { title: "Refresh safely", lines: ["replace map; bound retry"], tone: "green" } }]} caption="At second 20 a 30-second client cache still includes A after removal at second 5." />
+
+<Worksheet title="Three candidates and a 30-second cache" ariaLabel="Three candidates and a 30-second cache" stages={[{ tag: "Source values", color: "yellow", note: "At second 20 the cached set still includes stale A. After the refresh at second 30, the current set contains B and C.", grid: { head: ["", "candidates", "known stale"], rows: [{ label: "second 20", cells: ["A, B, C", "A"] }, { label: "second 30", cells: ["B, C", "none"] }, { label: "six future routes, cached", cells: ["A, B, C, A, B, C", "A may be stale"] }, { label: "six future routes, refreshed", cells: ["B, C, B, C, B, C", "none"] }] } }]} />
+
+The worksheet uses the values printed by the runnable examples below.
 
 Resolve logical services to eligible endpoints, model stale discovery caches, and coordinate readiness, draining, and reconnect without treating registration as authority.
 **Service discovery** maps a logical service identity to locations or routes that can currently serve it. A registry, DNS record, orchestrator service, client library, or proxy can participate. The map changes during scaling, deployment, failure, and recovery. Discovery does not itself authenticate every endpoint, prove readiness for every operation, or preserve a mutation's correctness after retry.
@@ -105,20 +119,28 @@ DNS-based discovery makes this distinction particularly visible. A DNS record pr
 
 Health information also has a scope. A process can answer a liveness probe while its database is unavailable, and a readiness check can become too aggressive if it removes every instance during a shared dependency outage. Decide whether readiness means the instance can accept its own workload, which dependencies it checks, and what failure response clients should receive. Discovery is not a replacement for request timeouts or circuit breaking because a recently eligible endpoint can fail immediately afterward. During a rolling update, trace one client's resolved candidates, selected endpoint, connection reuse, and response. Repeat with a deliberately stale cache and a slow drain. That trace reveals whether a failed request is caused by stale membership, broken transport, or an application that was advertised before it could serve. Each cause needs a different repair.
 
-## Failure Modes and Better Choices
+## Worked example
 
-All clients clear good endpoints during a registry timeout. Separate unknown control-plane state from a confirmed empty set. Old connections keep using a retiring instance indefinitely. Add protocol-aware draining and a bounded lifetime. One stale endpoint receives repeated attempts from every client. Use passive failure signals and bounded selection retries without converting every business operation into unsafe replay.
+The first example's ready set is B,C and expiry is 30; the second prints six destinations from the cached and refreshed sets.
 
-A service name resolves but the backend cannot perform its action. Fix readiness and dependency policy rather than only DNS. A stale former leader accepts writes. Enforce ownership at the mutation boundary. A selector binds another environment's instances. Scope labels, namespaces, identity, and policy so location discovery cannot become cross-environment authorization.
+## Try it yourself
 
-## When Not to Build a Custom Registry
+Use the runnable examples above. Apply their existing `# Try it:` edit, rerun the code, and update the corresponding worksheet value.
 
-| Situation | Better starting point |
-| --- | --- |
-| The platform already supplies suitable service routing | Use and test that supported mechanism |
-| A stable external endpoint is sufficient | A bounded static configuration with rotation policy |
-| The real need is exclusive write authority | A supported coordination protocol |
-| Client libraries cannot safely handle versioned updates | A suitable proxy boundary |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Assume registry removal updates every client instantly | Resolver caches and pooled connections have separate lifetimes | Measure propagation and drain existing work |
+| Use readiness as writer authority | A stale process may still accept effects | Enforce mutation ownership at the destination |
+| Retry a request just because its endpoint failed | The first endpoint may already have committed | Preserve operation identity and reconcile outcome |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| The platform already provides suitable routing | Use and test its supported mechanism |
+| The real need is exclusive write authority | Use a coordination and fencing protocol |
 
 ## Remember
 

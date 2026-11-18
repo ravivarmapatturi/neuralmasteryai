@@ -5,6 +5,8 @@ description: "Choose cache-aside or write paths from ownership and freshness req
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import CacheInvalidationRaceExplorer from '../../../viz/diagrams/CacheInvalidationRaceExplorer';
 
@@ -13,6 +15,18 @@ import CacheInvalidationRaceExplorer from '../../../viz/diagrams/CacheInvalidati
 <ELI5>
 A shop assistant keeps a price note beside the till to avoid calling the stockroom for every sale. When the price changes, removing the old note seems sufficient. But another assistant may already be carrying an earlier price from the stockroom and put it back after the removal. Keeping the note correct requires a rule about which version may be written, not just a rule about deleting it.
 </ELI5>
+
+## Why it exists
+
+Deleting a cache entry after a database write does not cancel an earlier read already in flight. That delayed reader can refill the empty cache with an older version. We need a fill rule that covers the race and a recovery policy for cache misses and outages.
+
+## The big picture
+
+<PenFlow ariaLabel="Caching Strategies and Invalidation Races: overview" rows={[{ steps: { title: "Read misses", lines: ["fetch authoritative version 7"], tone: "blue" } }, { steps: { title: "Writer commits 8", lines: ["then invalidates the cache"], tone: "purple" } }, { steps: { title: "Old reader fills late", lines: ["version 7 enters after delete"], tone: "orange" } }, { steps: { title: "Fence the fill", lines: ["reject versions below 8"], tone: "green" } }]} caption="An old fill can arrive after invalidation; a retained floor rejects it." />
+
+<Worksheet title="Delayed version 7 refill after version 8" ariaLabel="Delayed version 7 refill after version 8" stages={[{ tag: "Source values", color: "yellow", note: "The first model stores version 7 after invalidation and reports the hit is stale. A version floor of 8 rejects the delayed fill. At 95% hit rate, the illustrative average is 4.5 ms; at 50%, 27 ms.", grid: { head: ["", "value"], rows: [{ label: "database after write", cells: ["version 8"] }, { label: "late cache hit", cells: ["version 7"] }, { label: "fence floor", cells: ["version 8"] }, { label: "fill accepted", cells: ["no"] }, { label: "95% hit average", cells: ["4.5 ms"] }, { label: "50% hit average", cells: ["27 ms"] }] } }]} />
+
+The worksheet uses the values printed by the runnable examples below.
 
 A **cache** retains derived information to avoid repeated expensive work. The authoritative source still determines correctness, while cache identity, freshness, and refill behavior determine which stored result may be reused. A cache can reduce normal load yet become a correctness boundary and a failure amplifier if its stale or missing states are not designed.
 
@@ -114,20 +128,28 @@ for hit_rate in (.95, .50):
 # Try it: reset minimum_version to 0; the stale fill becomes admissible after metadata loss.
 `} />
 
-## Common Problems and Fixes
+## Worked example
 
-Delete-after-write tests pass sequentially but stale values reappear under concurrency. Reproduce the delayed fill and protect its version boundary. TTL is advertised as an absolute freshness bound. Account for snapshot age, read time, stale-on-error, and refill behavior. A lease expires while its old holder keeps running. Fence the late fill rather than assuming the old worker stopped.
+The RunnableCode prints the stale version-7 hit after the delete; the later model rejects version 7 below minimum_version 8 and calculates the two stated averages.
 
-A cache restart overloads the source. Bound misses and warmup, measure cold capacity, and preserve operation-specific failure behavior. Memory growth comes from negative lookups or unbounded keys. Set cardinality and eviction controls matched to the access pattern. A faster cache returns another tenant's data. Repair key identity and authorization before tuning latency.
+## Try it yourself
 
-## When Not to Cache the Result
+Use the runnable examples above. Apply their existing `# Try it:` edit, rerun the code, and update the corresponding worksheet value.
 
-| Situation | Better first step |
-| --- | --- |
-| Every request has unique expensive inputs | Reduce computation or define reusable subresults |
-| Current authorization is required and no freshness protocol exists | Read from an authoritative path |
-| The source query is inefficient but data reuse is low | Fix its access path and result size |
-| A derived copy has no invalidation or recovery owner | Keep one authority until the protocol is defined |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Assume delete cancels in-flight fills | The fetched value can outlive the cache entry | Fence fills by version or use a stronger protocol |
+| Treat TTL as age since source read | TTL may begin only when fill occurs | Track source version/time at the observation boundary |
+| Fail open to unlimited source traffic | A cache outage can multiply origin demand | Bound misses, coalesce fills, and test cold capacity |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| Authorization requires freshness without a fence | Read from an authoritative path |
+| There is no owner for invalidation and recovery | Keep one source until the protocol is specified |
 
 ## Remember
 

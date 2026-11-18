@@ -5,12 +5,26 @@ description: "Persist multi-service workflow state, connect local commits to pub
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { SagaReservationRecovery } from '../../../viz/diagrams/RemainingSystemDesignExperiments';
 
 # Sagas, Compensation, and the Transactional Outbox
 
 <ELI5>A trip booking can reserve a room before the flight is confirmed. If the flight fails, releasing the room is a new action, not a way to make the reservation never have happened. Someone must remember both the unfinished booking and the release obligation. A durable workflow keeps that memory across failures.</ELI5>
+
+## Why it exists
+
+A local database commit and a remote message publication cannot usually share one ordinary transaction. Crashing between them can lose the event or publish it twice. A durable outbox and an idempotent consumer make retries recoverable; a saga records partial completion across several owners.
+
+## The big picture
+
+<PenFlow ariaLabel="Sagas, Compensation, and the Transactional Outbox: overview" rows={[{ steps: { title: "Commit business state", lines: ["write outbox intent together"], tone: "blue" } }, { steps: { title: "Relay event", lines: ["publish stable event identity"], tone: "purple" } }, { steps: { title: "Handle partial workflow", lines: ["persist step and compensation"], tone: "orange" } }, { steps: { title: "Retry or reconcile", lines: ["consumer deduplicates effect"], tone: "green" } }]} caption="The outbox commits with the order; compensation returns the reserved 30 units once." />
+
+<Worksheet title="Reserve and compensate" ariaLabel="Reserve and compensate" stages={[{ tag: "Source values", color: "yellow", note: "Availability starts at 100, falls to 70 on a 30-unit reserve, then returns to 100 after repeated release attempts.", grid: { head: ["", "available", "meaning"], rows: [{ label: "initial", cells: ["100", "before reservation"] }, { label: "after reserve", cells: ["70", "30 reserved"] }, { label: "after repeated release", cells: ["100", "release identity prevents double return"] }] } }]} />
+
+The worksheet uses the values printed by the runnable examples below.
 
 Persist multi-service workflow state, connect local commits to publication with an outbox, and make compensations recoverable instead of treating them as distributed rollback.
 A **saga** coordinates a sequence of local business transitions with defined recovery or compensating actions. A **transactional outbox** records an event-publication obligation in the same local transaction as the state change that creates it. Together they can support recoverable workflows, but they solve different boundaries: saga state tracks the business process, while the outbox closes a local database-to-publication gap.
@@ -129,20 +143,28 @@ Compensation is not always the algebraic inverse of the original step. A shipped
 
 For an outbox, the local transaction records both the domain change and the event intent. The relay can crash after publication but before marking the row published, so downstream consumers still need duplicate tolerance. Multiple relay workers also need a supported way to claim work without losing rows or violating required order. If order matters per aggregate, preserve an aggregate sequence and ensure a later event cannot conceal a missing earlier transition. Monitor the oldest unpublished intent rather than only relay process health. A healthy relay that repeatedly fails one row can leave the associated business state invisible elsewhere. During repair, distinguish republishing the same event from creating a replacement event with a new identity. The first asks consumers to recognize a retry; the second may legitimately cause a new effect. Keeping that distinction explicit makes operational replay safer.
 
-## Failure Modes and Better Choices
+## Worked example
 
-A service commits a business row but crashes before publishing. Put the obligation in a transactional outbox. A relay replays and a subscriber performs the effect twice. Preserve event identity at the consumer. A coordinator declares capture failed after a timeout, but capture actually succeeded. Record uncertainty and reconcile before choosing a remedy.
+The runnable model prints 70 after reserve, 70 before compensation, and 100 after two calls using the same release identity.
 
-Compensation adds inventory twice. Make the corrective transition independently idempotent and tie it to its original reservation. A cancelled workflow is revived by a delayed success. Check expected state and workflow version. A poison event remains pending forever. Give unresolved workflows an owner, visibility, and an explicit escalation path rather than silently dropping them.
+## Try it yourself
 
-## When Not to Use a Saga
+Use the runnable examples above. Apply their existing `# Try it:` edit, rerun the code, and update the corresponding worksheet value.
 
-| Situation | Better starting design |
-| --- | --- |
-| One store can atomically own the whole invariant | A local transaction |
-| Intermediate states are unacceptable and participants support coordination | Evaluate a suitable distributed transaction |
-| No valid compensation or reconciliation exists | Redesign the business operation before distributing it |
-| A simple background action has one durable owner | A queue and operation record |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Publish only after database commit without an outbox | A crash can lose the message | Persist event intent in the same local transaction |
+| Assume an outbox means exactly-once delivery | Relay can crash after publish and retry | Keep stable event identity and deduplicate at the effect boundary |
+| Compensate by blindly reversing a number | A new or invalid release can create state | Tie compensation to the original durable reservation |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| One store owns the full invariant | Use a local transaction |
+| No valid compensation or reconciliation exists | Redesign before distributing the workflow |
 
 ## Remember
 

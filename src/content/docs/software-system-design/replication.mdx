@@ -5,6 +5,8 @@ description: "Trace a write from primary commit through replica receipt and repl
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import SoftwareReplicationExplorer from '../../../viz/diagrams/SoftwareReplicationExplorer';
 
@@ -13,6 +15,18 @@ import SoftwareReplicationExplorer from '../../../viz/diagrams/SoftwareReplicati
 <ELI5>
 A shop can copy its order book to a second branch so work can continue if the first branch closes. A message saying “your order is recorded” might mean the first book was updated, the second branch received a note, or the second book is already ready to use. Those are different promises. A copy helps only when we know how far it has caught up and which branch is allowed to accept new orders.
 </ELI5>
+
+## Why it exists
+
+A successful response can mean that the primary committed a write while replicas still hold an older value. The acknowledgement boundary determines which failures may lose that write, while replay determines when a replica can serve it. We need to trace both before choosing read or failover behavior.
+
+## The big picture
+
+<PenFlow ariaLabel="Replication, Acknowledgement, and Failover: overview" rows={[{ steps: { title: "Commit locally", lines: ["primary advances 7 to 8"], tone: "blue" } }, { steps: { title: "Acknowledge by policy", lines: ["local, remote flush, or replay"], tone: "purple" } }, { steps: { title: "Track replica progress", lines: ["received, durable, applied"], tone: "orange" } }, { steps: { title: "Route or promote safely", lines: ["barrier and one writer"], tone: "green" } }]} caption="Version 8 is acknowledged before the replica replays it." />
+
+<Worksheet title="Version 8 acknowledgement and recovery" ariaLabel="Version 8 acknowledgement and recovery" stages={[{ tag: "Source values", color: "yellow", note: "An immediate replica read returns 7; replay advances it to 8. On failover, only the durable candidate at 8 preserves the acknowledged write.", grid: { head: ["", "durable", "applied", "preserves 8"], rows: [{ label: "replica before replay", cells: ["7", "7", "no"] }, { label: "replica after replay", cells: ["8", "8", "yes"] }, { label: "behind failover candidate", cells: ["7", "7", "no"] }, { label: "stored, then replayed", cells: ["8", "8", "yes"] }] } }]} />
+
+The worksheet uses the values printed by the runnable examples below.
 
 **Replication** maintains additional copies of data by transferring changes from an authoritative writer or through a defined multi-writer protocol. It can support recovery and additional read capacity, but introduces questions about acknowledgement, visibility, conflicts, and ownership after failure. A replica is a process participating in a protocol, not a guarantee that every acknowledged write exists everywhere.
 
@@ -105,20 +119,28 @@ for standby in candidates:
 # Try it: raise acknowledged_version to 9; neither surviving candidate can invent the missing log.
 `} />
 
-## Common Problems and Fixes
+## Worked example
 
-Users cannot find a just-created record after a successful response. Trace read routing and add the required primary or progress-barrier policy. Write latency rises when a standby slows. Inspect the synchronous acknowledgement boundary and remote storage progress before reducing guarantees. A failover creates conflicting writes. Audit fencing and membership decisions, not just the promotion command.
+The source prints version 7 before replay and version 8 after replay; the two failover candidates retain durable/applied positions of (7,7) and (8,7).
 
-A replica is promoted quickly but loses acknowledged work. Check what acknowledgement meant and which durable history survived. A replica is current during idle tests but falls behind under reads. Test replay and read contention together. A deletion propagates to every copy and destroys needed history. Replication faithfully copying an erroneous change is why backups and point-in-time recovery remain separate responsibilities.
+## Try it yourself
 
-## When Not to Add Another Read Replica
+Use the runnable examples above. Apply their existing `# Try it:` edit, rerun the code, and update the corresponding worksheet value.
 
-| Situation | Better first action |
-| --- | --- |
-| Writes saturate one authoritative partition | Reduce write demand or reconsider ownership partitioning |
-| Reads require immediate latest-state visibility everywhere | Define and provision the required consistency protocol |
-| Most read cost comes from one inefficient query | Repair its access path and result size |
-| Failover and fencing are untested | Establish recovery correctness before counting another copy |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Assume acknowledgement means every replica is current | The configured policy may wait only for primary commit | Name the exact required remote stage |
+| Promote the lowest-latency replica | It may not contain acknowledged durable history | Choose from recovery progress and fence the old writer |
+| Use a replica for immediate read-your-writes | Replay may still be behind | Route to primary or wait on a progress barrier |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| Reads need latest state but no read protocol exists | Define a barrier or authoritative read route |
+| Failover and fencing are untested | Test recovery before adding another replica |
 
 ## Remember
 

@@ -5,6 +5,8 @@ description: "Partition data by an explicit ownership key, calculate skew and cr
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import ShardHotKeyExplorer from '../../../viz/diagrams/ShardHotKeyExplorer';
 
@@ -13,6 +15,18 @@ import ShardHotKeyExplorer from '../../../viz/diagrams/ShardHotKeyExplorer';
 <ELI5>
 A library can split its catalogue across several rooms, with each room responsible for different books. That creates more total shelf and staff capacity, but the sign at the entrance must tell readers where each book lives. A queue for one extremely popular book still waits at the room holding that book. Dividing ownership creates capacity only when the work can actually be divided.
 </ELI5>
+
+## Why it exists
+
+Adding owners increases aggregate capacity only when work can be divided among them. Equal record counts can hide one key that dominates requests. We need a key and routing rule that fit the invariant, the query path, and the actual traffic distribution.
+
+## The big picture
+
+<PenFlow ariaLabel="Sharding and Data Ownership: overview" rows={[{ steps: { title: "Choose ownership key", lines: ["colocate the state that changes together"], tone: "blue" } }, { steps: { title: "Route requests", lines: ["key maps to one owner"], tone: "purple" } }, { steps: { title: "Measure hot keys", lines: ["count operations, not just rows"], tone: "orange" } }, { steps: { title: "Plan migration", lines: ["copy, catch up, transfer authority"], tone: "green" } }]} caption="Three shards spread key counts evenly while key 0 remains hot." />
+
+<Worksheet title="Twelve keys and one hot key" ariaLabel="Twelve keys and one hot key" stages={[{ tag: "Source values", color: "yellow", note: "Key 0 has 6,000 operations/s; each other key has 100. Modulo assignment leaves shard 0 at 6,300/s with three shards and 6,100/s with six.", grid: { head: ["", "keys on hot shard", "operations/s"], rows: [{ label: "3 shards", cells: ["0, 3, 6, 9", "6,300"] }, { label: "6 shards", cells: ["0, 6", "6,100"] }, { label: "total workload", cells: ["12 keys", "7,100"] }] } }]} />
+
+The worksheet uses the values printed by the runnable examples below.
 
 **Sharding** partitions a dataset so that different owners serve different subsets of keys or records. It differs from replication, which maintains additional copies of the same state. A sharded system often replicates each shard, combining two mechanisms with different purposes: partitioning distributes work, while replication protects and serves copies of each partition.
 
@@ -110,20 +124,28 @@ For a relational source, a diagnostic query such as `SELECT customer_id, count(*
 
 MongoDB's shard-key documentation discusses cardinality, frequency, monotonic growth, and query patterns. DynamoDB's partition-key guidance similarly emphasizes distributing activity, not just data size. Use the chosen engine's analysis tools and supported resharding protocol in a test environment before applying ownership changes. A key that looks balanced on a uniform synthetic generator can behave differently under a real large tenant or trending object.
 
-## Common Problems and Fixes
+## Worked example
 
-The shard map is balanced while one owner is overloaded. Inspect per-key demand and operation cost before moving random ranges. A time-based key concentrates all new writes. Revisit range boundaries, a compound key, or hash distribution while accounting for time-range query costs. A global query times out when one owner is slow. Define partial-result semantics or provide an appropriate materialized view instead of silently dropping a shard.
+The RunnableCode assigns key 0 a rate of 6,000/s and the other eleven keys 100/s; increasing owners does not split key 0.
 
-Resharding loses a concurrent update. Identify the snapshot and change-stream boundary, fence ownership, and test writes during cutover. Old clients keep writing to the previous owner. Version and refresh routing, and make the former owner enforce the transfer. A unique identifier collides across shards. Route conflicting identifiers to a shared authoritative boundary or use a generation and collision-handling protocol that preserves the invariant.
+## Try it yourself
 
-## When Not to Shard Yet
+Use the runnable examples above. Apply their existing `# Try it:` edit, rerun the code, and update the corresponding worksheet value.
 
-| Situation | Better first step |
-| --- | --- |
-| A missing index causes large scans | Fix the access path |
-| One machine has safe capacity and recovery reserve | Keep a simpler replicated ownership boundary |
-| One indivisible write-hot key dominates | Change that key's operation model or admission policy |
-| No tested live migration protocol exists | Establish cutover correctness before adding ownership groups |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Balance rows but ignore request rate | One key can dominate the owner | Measure per-key traffic and operation cost |
+| Assume more shards split one hot key | A key maps to one owner in this model | Change the hot-key operation or admission policy |
+| Copy data and switch routes without fencing | Old and new owners may both accept writes | Use a versioned cutover and transfer authority |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| One machine has safe capacity and reserve | Keep the simpler ownership map |
+| One indivisible hot key is the only bottleneck | Redesign that operation before adding shards |
 
 ## Remember
 

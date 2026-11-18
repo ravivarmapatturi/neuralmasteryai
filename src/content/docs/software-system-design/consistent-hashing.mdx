@@ -5,6 +5,8 @@ description: "Trace clockwise key ownership, calculate the keys moved by a joini
 ---
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import Worksheet from '../../../components/notebook/Worksheet';
+import PenFlow from '../../../components/notebook/PenFlow';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import ConsistentHashMembershipExplorer from '../../../viz/diagrams/ConsistentHashMembershipExplorer';
 
@@ -13,6 +15,18 @@ import ConsistentHashMembershipExplorer from '../../../viz/diagrams/ConsistentHa
 <ELI5>
 Imagine numbered delivery lockers arranged around a circular street. Each parcel goes to the next locker clockwise from its number. Adding a locker changes the destination of nearby parcels rather than renumbering every locker on the street. The routing rule makes fewer destinations change, but workers still need to move the affected parcels and agree when the new locker becomes responsible.
 </ELI5>
+
+## Why it exists
+
+Changing a modulo divisor can move many keys even when only one owner joins. A hash ring limits reassignment to affected intervals under its mapping assumptions. It does not balance every workload or move data safely by itself.
+
+## The big picture
+
+<PenFlow ariaLabel="Consistent Hashing and Membership Changes: overview" rows={[{ steps: { title: "Place owner tokens", lines: ["one ordered circular space"], tone: "blue" } }, { steps: { title: "Find clockwise successor", lines: ["each key chooses its owner"], tone: "purple" } }, { steps: { title: "Join or remove a token", lines: ["only interval assignments change"], tone: "orange" } }, { steps: { title: "Transfer and fence", lines: ["migration protocol moves authority"], tone: "green" } }]} caption="Adding D at position 35 moves key 30 in the five-key example." />
+
+<Worksheet title="Five keys before and after D joins" ariaLabel="Five keys before and after D joins" stages={[{ tag: "Source values", color: "yellow", note: "A at 20, B at 50, C at 80; D joins at 35. Only key 30 changes from B to D.", grid: { head: ["", "before", "after"], rows: [{ label: "10", cells: ["A", "A"] }, { label: "30", cells: ["B", "D"] }, { label: "45", cells: ["B", "B"] }, { label: "60", cells: ["C", "C"] }, { label: "90", cells: ["A", "A"] }, { label: "moved", cells: ["\u2014", "1 of 5"] }] } }]} />
+
+The worksheet uses the values printed by the runnable examples below.
 
 **Consistent hashing** maps keys and ownership tokens into a shared hash space so membership changes affect a limited portion of the mapping under the scheme's assumptions. It is useful for distributed caches and partition placement where ordinary modulo assignment would remap many keys when the owner count changes. It is an assignment technique, not a transaction, replication, or migration protocol.
 
@@ -122,20 +136,28 @@ Export or inspect the engine's token ownership and physical topology using its s
 
 Before adding an owner, compute affected ranges and estimated bytes, decide transfer concurrency, and verify failure reserve while streaming. Exercise a stale client map and a failed joining node in a test environment. A successful steady-state lookup test after migration does not demonstrate that concurrent writes survived the transition.
 
-## Common Problems and Fixes
+## Worked example
 
-One-token placement produces an uneven interval distribution. Use appropriate virtual partitions or deliberate placement and evaluate actual bytes and work. Virtual replicas share a physical host. Select distinct failure domains before counting redundancy. Clients hash the same identifier differently. Standardize encoding, normalization, hash algorithm, boundary convention, and map version.
+The source outputs the owner for keys 10, 30, 45, 60, and 90, then prints moved keys [30].
 
-A new node causes origin or storage overload as caches become cold. Bound fill traffic and streaming, and include cold demand in the capacity plan. A removed owner still accepts writes from old clients. Enforce authority epochs or the engine's supported routing protocol. A hot key moves but remains hot. Change the read or write model rather than adding more unrelated ring positions.
+## Try it yourself
 
-## When Not to Use a Hash Ring
+Use the runnable examples above. Apply their existing `# Try it:` edit, rerun the code, and update the corresponding worksheet value.
 
-| Situation | Better fit |
-| --- | --- |
-| Queries primarily scan adjacent natural-key ranges | Range placement with a deliberate hotspot policy |
-| Explicit tenant placement is mandatory | A versioned directory or supported placement policy |
-| Owner count and workload are tiny and stable | A simpler measured assignment map |
-| One key dominates indivisible writes | Redesign that key's ownership or admission semantics |
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treat the ring as a migration protocol | Deterministic routing does not copy concurrent writes | Capture changes and fence ownership at cutover |
+| Count virtual tokens as independent machines | Several tokens may share one host | Select distinct physical failure domains |
+| Assume one moved key means little work | Key size and traffic can be skewed | Estimate bytes and foreground cost |
+
+## When not to use it
+
+| Situation | Better choice |
+| :--- | :--- |
+| Natural-key range scans dominate | Use range placement with hotspot controls |
+| A single hot key dominates writes | Change the key’s operation semantics |
 
 ## Remember
 
