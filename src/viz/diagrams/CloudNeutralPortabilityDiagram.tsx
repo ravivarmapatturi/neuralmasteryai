@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const ARTIFACTS = [
@@ -14,17 +13,39 @@ const ARTIFACTS = [
  * migrate or run multi-cloud, even without a near-term plan to. */
 export default function CloudNeutralPortabilityDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('k8s');
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(ARTIFACTS.length, 3500);
   const color = getConceptColor(t, 'attention');
-  const a = ARTIFACTS.find((x) => x.key === active)!;
+  const a = ARTIFACTS[cyc.value];
 
   return (
     <VisualizationContainer footer={a.desc}>
       <div style={{ display: 'flex', gap: 5, marginBottom: 12, flexWrap: 'wrap' }}>
-        {ARTIFACTS.map((x) => {
-          const isActive = active === x.key;
+        {ARTIFACTS.map((x, i) => {
+          const isActive = cyc.value === i;
           return (
-            <div key={x.key} onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
+            <div
+              key={x.key}
+              onClick={() => cyc.pick(i)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  cyc.pick(i);
+                }
+              }}
+              onMouseEnter={() => cyc.pick(i)}
+              style={{
+                cursor: 'pointer',
+                padding: '0.5rem 0.8rem',
+                borderRadius: 7,
+                background: isActive ? `${color}18` : t.surfaceAlt,
+                border: `1.5px solid ${isActive ? color : t.border}`,
+                boxShadow: isActive && !reducedMotion ? `0 0 8px ${color}33` : 'none',
+                transition: 'all 0.2s ease',
+              }}
+            >
               <span style={{ fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{x.label}</span>
             </div>
           );
@@ -35,7 +56,20 @@ export default function CloudNeutralPortabilityDiagram() {
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12 }}>
         {['AWS', 'GCP', 'Azure'].map((cloud) => (
-          <div key={cloud} style={{ flex: 1, maxWidth: 90, textAlign: 'center', padding: '0.5rem 0.4rem', borderRadius: 7, background: `${t.accentPrimary}12`, border: `1px solid ${t.accentPrimary}40` }}>
+          <div
+            key={cloud}
+            style={{
+              flex: 1,
+              maxWidth: 90,
+              textAlign: 'center',
+              padding: '0.5rem 0.4rem',
+              borderRadius: 7,
+              background: `${t.accentPrimary}12`,
+              border: `1px solid ${t.accentPrimary}40`,
+              boxShadow: !reducedMotion ? `0 0 6px ${t.accentPrimary}22` : 'none',
+              transition: 'all 0.3s ease',
+            }}
+          >
             <span style={{ fontSize: 10, fontWeight: 700, color: t.accentPrimary }}>{cloud}</span>
             <div style={{ fontSize: 8, color: t.textMuted, marginTop: 2 }}>✓ runs as-is</div>
           </div>

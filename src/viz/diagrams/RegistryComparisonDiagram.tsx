@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const REGISTRIES = [
@@ -14,17 +13,42 @@ const REGISTRIES = [
  * click one for when it's the natural pick. */
 export default function RegistryComparisonDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('ecr');
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(REGISTRIES.length, 3000);
   const color = getConceptColor(t, 'attention');
-  const active = REGISTRIES.find((r) => r.key === selected)!;
+  const active = REGISTRIES[cyc.value];
 
   return (
     <VisualizationContainer footer={`${active.label}: ${active.when}`}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {REGISTRIES.map((r) => {
-          const isSelected = selected === r.key;
+        {REGISTRIES.map((r, i) => {
+          const isSelected = cyc.value === i;
           return (
-            <div key={r.key} onClick={() => setSelected(r.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(r.key); } }} onMouseEnter={() => setSelected(r.key)} style={{ cursor: 'pointer', padding: '0.6rem 0.9rem', borderRadius: 8, background: isSelected ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isSelected ? color : t.border}`, flex: '1 1 120px', textAlign: 'center' }}>
+            <div
+              key={r.key}
+              onClick={() => cyc.pick(i)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  cyc.pick(i);
+                }
+              }}
+              onMouseEnter={() => cyc.pick(i)}
+              style={{
+                cursor: 'pointer',
+                padding: '0.6rem 0.9rem',
+                borderRadius: 8,
+                background: isSelected ? `${color}18` : t.surfaceAlt,
+                border: `1.5px solid ${isSelected ? color : t.border}`,
+                boxShadow: isSelected && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+                transform: isSelected && !reducedMotion ? 'scale(1.02)' : 'scale(1)',
+                transition: 'all 0.2s ease',
+                flex: '1 1 120px',
+                textAlign: 'center',
+              }}
+            >
               <span style={{ fontSize: 11.5, fontWeight: isSelected ? 700 : 500, color: isSelected ? color : t.textPrimary }}>{r.label}</span>
             </div>
           );

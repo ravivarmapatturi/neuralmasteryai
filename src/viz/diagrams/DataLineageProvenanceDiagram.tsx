@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const CONCEPTS = [
@@ -14,17 +13,40 @@ const CONCEPTS = [
  * what it means and how it differs from its neighbors. */
 export default function DataLineageProvenanceDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('lineage');
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(CONCEPTS.length, 3000);
   const color = getConceptColor(t, 'attention');
-  const info = CONCEPTS.find((c) => c.key === active)!;
+  const info = CONCEPTS[cyc.value];
 
   return (
     <VisualizationContainer footer={info.desc}>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        {CONCEPTS.map((c) => {
-          const isActive = active === c.key;
+        {CONCEPTS.map((c, i) => {
+          const isActive = cyc.value === i;
           return (
-            <div key={c.key} onClick={() => setActive(c.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(c.key); } }} onMouseEnter={() => setActive(c.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
+            <div
+              key={c.key}
+              onClick={() => cyc.pick(i)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  cyc.pick(i);
+                }
+              }}
+              onMouseEnter={() => cyc.pick(i)}
+              style={{
+                cursor: 'pointer',
+                padding: '0.5rem 0.8rem',
+                borderRadius: 7,
+                background: isActive ? `${color}18` : t.surfaceAlt,
+                border: `1.5px solid ${isActive ? color : t.border}`,
+                boxShadow: isActive && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+                transform: isActive && !reducedMotion ? 'scale(1.02)' : 'scale(1)',
+                transition: 'all 0.2s ease',
+              }}
+            >
               <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{c.label}</span>
             </div>
           );

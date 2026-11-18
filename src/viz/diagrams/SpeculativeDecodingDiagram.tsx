@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const DRAFT_TOKENS = ['The', 'quick', 'brown', 'fox', 'jumped'];
@@ -11,7 +10,9 @@ const ACCEPTED = 3; // target model accepts first 3, rejects the rest
  * the matching prefix. Click "verify" to see the accept/reject line. */
 export default function SpeculativeDecodingDiagram() {
   const t = useVizTokens();
-  const [verified, setVerified] = useState(true);
+  const cycle = useAutoCycle(2, 2400, 1);
+  const verified = cycle.value === 1;
+  const setVerified = (value: boolean | ((current: boolean) => boolean)) => cycle.pick((typeof value === 'function' ? value(verified) : value) ? 1 : 0);
   const draftColor = getConceptColor(t, 'query');
   const targetColor = getConceptColor(t, 'attention');
   const acceptColor = t.accentPrimary;

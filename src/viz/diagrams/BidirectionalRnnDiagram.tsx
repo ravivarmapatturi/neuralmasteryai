@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const TOKENS = ['the', 'bank', 'by', 'the', 'river'];
@@ -11,7 +10,9 @@ const TOKENS = ['the', 'bank', 'by', 'the', 'river'];
  * ("river") have reached it. */
 export default function BidirectionalRnnDiagram() {
   const t = useVizTokens();
-  const [hovered, setHovered] = useState<number | null>(null);
+  const cycle = useAutoCycle(TOKENS.length, 1500);
+  const hovered: number | null = cycle.value;
+  const setHovered = (value: number | null) => { if (value !== null) cycle.pick(value); };
   const fwdColor = getConceptColor(t, 'query');
   const bwdColor = getConceptColor(t, 'key');
   const outColor = getConceptColor(t, 'attention');

@@ -67,45 +67,45 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 3
 - `src/content/docs/agents/single-vs-multi-agent.mdx`
-  - [ ] `src/viz/diagrams/AgentSplitTradeoffDiagram.tsx`
+  - [x] `src/viz/diagrams/AgentSplitTradeoffDiagram.tsx`
 - `src/content/docs/mlops/ai-cost-engineering.mdx`
-  - [ ] `src/viz/diagrams/ModelRoutingSavingsDiagram.tsx`
-  - [ ] `src/viz/diagrams/QualityLatencyCostTriangleDiagram.tsx`
-  - [ ] `src/viz/diagrams/TrainingVsInferenceCostDiagram.tsx`
-  - [ ] `src/viz/diagrams/UtilizationCostDiagram.tsx`
+  - [x] `src/viz/diagrams/ModelRoutingSavingsDiagram.tsx`
+  - [x] `src/viz/diagrams/QualityLatencyCostTriangleDiagram.tsx`
+  - [x] `src/viz/diagrams/TrainingVsInferenceCostDiagram.tsx`
+  - [x] `src/viz/diagrams/UtilizationCostDiagram.tsx`
 - `src/content/docs/mlops/caching-strategies.mdx`
-  - [ ] `src/viz/diagrams/CacheAsideFlowDiagram.tsx`
-  - [ ] `src/viz/diagrams/CacheEvictionTtlDiagram.tsx`
-  - [ ] `src/viz/diagrams/WriteThroughVsWriteBehindDiagram.tsx`
+  - [x] `src/viz/diagrams/CacheAsideFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/CacheEvictionTtlDiagram.tsx`
+  - [x] `src/viz/diagrams/WriteThroughVsWriteBehindDiagram.tsx`
 - `src/content/docs/mlops/cicd-and-ml-cicd.mdx`
-  - [ ] `src/viz/diagrams/AutomatedRetrainLoopDiagram.tsx`
-  - [ ] `src/viz/diagrams/CiVsCdDiagram.tsx`
-  - [ ] `src/viz/diagrams/GitOpsReconciliationDiagram.tsx`
-  - [ ] `src/viz/diagrams/MlCicdPipelineStepsDiagram.tsx`
+  - [x] `src/viz/diagrams/AutomatedRetrainLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/CiVsCdDiagram.tsx`
+  - [x] `src/viz/diagrams/GitOpsReconciliationDiagram.tsx`
+  - [x] `src/viz/diagrams/MlCicdPipelineStepsDiagram.tsx`
 - `src/content/docs/mlops/cloud-computing.mdx`
-  - [ ] `src/viz/diagrams/CloudDistinctiveFeaturesDiagram.tsx`
-  - [ ] `src/viz/diagrams/CloudNeutralPortabilityDiagram.tsx`
-  - [ ] `src/viz/diagrams/CloudVocabularyMapDiagram.tsx`
-  - [ ] `src/viz/diagrams/ComputeSpectrumDiagram.tsx`
-  - [ ] `src/viz/diagrams/ManagedMlPlatformTradeoffDiagram.tsx`
-  - [ ] `src/viz/diagrams/RequestPathSecurityDiagram.tsx`
-  - [ ] `src/viz/diagrams/StorageUseCaseDiagram.tsx`
+  - [x] `src/viz/diagrams/CloudDistinctiveFeaturesDiagram.tsx`
+  - [x] `src/viz/diagrams/CloudNeutralPortabilityDiagram.tsx`
+  - [x] `src/viz/diagrams/CloudVocabularyMapDiagram.tsx`
+  - [x] `src/viz/diagrams/ComputeSpectrumDiagram.tsx`
+  - [x] `src/viz/diagrams/ManagedMlPlatformTradeoffDiagram.tsx`
+  - [x] `src/viz/diagrams/RequestPathSecurityDiagram.tsx`
+  - [x] `src/viz/diagrams/StorageUseCaseDiagram.tsx`
 - `src/content/docs/mlops/cloud-model-deployment.mdx`
-  - [ ] `src/viz/diagrams/CloudDeploymentChoiceDiagram.tsx`
+  - [x] `src/viz/diagrams/CloudDeploymentChoiceDiagram.tsx`
 - `src/content/docs/mlops/containers.mdx`
-  - [ ] `src/viz/diagrams/ContainerSecurityChecklistDiagram.tsx`
-  - [ ] `src/viz/diagrams/DockerArchitectureDiagram.tsx`
-  - [ ] `src/viz/diagrams/DockerfileLayerCachingDiagram.tsx`
-  - [ ] `src/viz/diagrams/ImageVsContainerDiagram.tsx`
-  - [ ] `src/viz/diagrams/MultiStageBuildDiagram.tsx`
-  - [ ] `src/viz/diagrams/RegistryComparisonDiagram.tsx`
-  - [ ] `src/viz/diagrams/VolumesAndNetworksDiagram.tsx`
+  - [x] `src/viz/diagrams/ContainerSecurityChecklistDiagram.tsx`
+  - [x] `src/viz/diagrams/DockerArchitectureDiagram.tsx`
+  - [x] `src/viz/diagrams/DockerfileLayerCachingDiagram.tsx`
+  - [x] `src/viz/diagrams/ImageVsContainerDiagram.tsx`
+  - [x] `src/viz/diagrams/MultiStageBuildDiagram.tsx`
+  - [x] `src/viz/diagrams/RegistryComparisonDiagram.tsx`
+  - [x] `src/viz/diagrams/VolumesAndNetworksDiagram.tsx`
 - `src/content/docs/mlops/data-engineering-and-versioning.mdx`
-  - [ ] `src/viz/diagrams/DataLineageProvenanceDiagram.tsx`
-  - [ ] `src/viz/diagrams/DataPipelineFlowDiagram.tsx`
-  - [ ] `src/viz/diagrams/DataProcessingScaleDiagram.tsx`
-  - [ ] `src/viz/diagrams/GitVsDataVersioningDiagram.tsx`
-  - [ ] `src/viz/diagrams/SchemaEvolutionDiagram.tsx`
+  - [x] `src/viz/diagrams/DataLineageProvenanceDiagram.tsx`
+  - [x] `src/viz/diagrams/DataPipelineFlowDiagram.tsx`
+  - [x] `src/viz/diagrams/DataProcessingScaleDiagram.tsx`
+  - [x] `src/viz/diagrams/GitVsDataVersioningDiagram.tsx`
+  - [x] `src/viz/diagrams/SchemaEvolutionDiagram.tsx`
 
 ## Batch 4
 - `src/content/docs/mlops/deployment-strategies.mdx`

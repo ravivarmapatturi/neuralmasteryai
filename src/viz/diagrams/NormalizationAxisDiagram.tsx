@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const NORMS = [
@@ -16,7 +15,9 @@ const ROWS = 4, COLS = 6;
  * type to see exactly which cells get normalized together. */
 export default function NormalizationAxisDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('layer');
+  const cycle = useAutoCycle(NORMS.length, 2300, NORMS.findIndex((method) => method.key === 'layer'));
+  const active = NORMS[cycle.value].key;
+  const setActive = (key: string) => cycle.pick(NORMS.findIndex((method) => method.key === key));
   const color = getConceptColor(t, 'attention');
   const n = NORMS.find((x) => x.key === active)!;
   const cell = 24;

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const LAYERS = [
@@ -13,7 +12,9 @@ const LAYERS = [
  * one for its formula and role. */
 export default function CoreBuildingBlocksDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('dense');
+  const cycle = useAutoCycle(LAYERS.length, 2300);
+  const active = LAYERS[cycle.value].key;
+  const setActive = (key: string) => cycle.pick(LAYERS.findIndex((block) => block.key === key));
   const color = getConceptColor(t, 'attention');
   const l = LAYERS.find((x) => x.key === active)!;
 

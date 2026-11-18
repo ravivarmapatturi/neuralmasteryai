@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const LAYERS = [
@@ -14,21 +13,55 @@ const LAYERS = [
  * one to see what it's actually responsible for. */
 export default function RequestPathSecurityDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('gateway');
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(LAYERS.length, 3000);
   const color = getConceptColor(t, 'attention');
-  const l = LAYERS.find((x) => x.key === active)!;
+  const l = LAYERS[cyc.value];
 
   return (
     <VisualizationContainer footer={l.desc}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
         {LAYERS.map((x, i) => {
-          const isActive = active === x.key;
+          const isActive = cyc.value === i;
           return (
             <div key={x.key} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-              <div onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.55rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}`, maxWidth: 110 }}>
+              <div
+                onClick={() => cyc.pick(i)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    cyc.pick(i);
+                  }
+                }}
+                onMouseEnter={() => cyc.pick(i)}
+                style={{
+                  cursor: 'pointer',
+                  padding: '0.5rem 0.55rem',
+                  borderRadius: 7,
+                  background: isActive ? `${color}18` : t.surfaceAlt,
+                  border: `1.5px solid ${isActive ? color : t.border}`,
+                  boxShadow: isActive && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+                  transform: isActive && !reducedMotion ? 'scale(1.03)' : 'scale(1)',
+                  transition: 'all 0.2s ease',
+                  maxWidth: 110,
+                }}
+              >
                 <span style={{ fontSize: 9, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{x.label}</span>
               </div>
-              {i < LAYERS.length - 1 && <span style={{ color: t.textMuted, fontSize: 11 }}>→</span>}
+              {i < LAYERS.length - 1 && (
+                <span
+                  style={{
+                    color: cyc.value === i && !reducedMotion ? color : t.textMuted,
+                    fontSize: 11,
+                    fontWeight: cyc.value === i ? 700 : 400,
+                    transition: 'color 0.2s ease',
+                  }}
+                >
+                  →
+                </span>
+              )}
             </div>
           );
         })}

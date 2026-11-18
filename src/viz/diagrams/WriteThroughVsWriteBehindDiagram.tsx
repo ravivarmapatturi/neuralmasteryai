@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -11,7 +10,9 @@ const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
  * and acked immediately, database catches up asynchronously). */
 export default function WriteThroughVsWriteBehindDiagram() {
   const t = useVizTokens();
-  const [behind, setBehind] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(2, 4000);
+  const behind = cyc.value === 1;
   const color = getConceptColor(t, 'attention');
 
   const STEPS = behind
@@ -21,10 +22,42 @@ export default function WriteThroughVsWriteBehindDiagram() {
   return (
     <VisualizationContainer footer={behind ? 'Write-behind: the write is acked as soon as the cache is updated -- fast, but a cache crash before the async flush to the database loses that write.' : 'Write-through: cache and database are updated together before acking -- never stale, but write latency is at least as slow as the database write itself.'}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <button type="button" onClick={() => setBehind(false)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: !behind ? 700 : 500, background: !behind ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${!behind ? color : t.border}`, color: !behind ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button
+          type="button"
+          onClick={() => cyc.pick(0)}
+          style={{
+            flex: 1,
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 10.5,
+            fontWeight: !behind ? 700 : 500,
+            background: !behind ? `${color}20` : t.surfaceAlt,
+            border: `1.25px solid ${!behind ? color : t.border}`,
+            color: !behind ? color : t.textSecondary,
+            boxShadow: !behind && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
           Write-through
         </button>
-        <button type="button" onClick={() => setBehind(true)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: behind ? 700 : 500, background: behind ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${behind ? color : t.border}`, color: behind ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button
+          type="button"
+          onClick={() => cyc.pick(1)}
+          style={{
+            flex: 1,
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 10.5,
+            fontWeight: behind ? 700 : 500,
+            background: behind ? `${color}20` : t.surfaceAlt,
+            border: `1.25px solid ${behind ? color : t.border}`,
+            color: behind ? color : t.textSecondary,
+            boxShadow: behind && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
           Write-behind
         </button>
       </div>

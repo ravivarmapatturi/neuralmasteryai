@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, PillSelect } from '../primitives';
+import { VisualizationContainer, Slider, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { RESPONSE_A_QUALITY, RESPONSE_B_QUALITY, judgeScoreWithPositionBias } from '../lib/llmEval';
 
@@ -8,7 +8,9 @@ type Order = 'AB' | 'BA';
 
 export default function JudgePositionBiasDiagram() {
   const t = useVizTokens();
-  const [order, setOrder] = useState<Order>('AB');
+  const cycle = useAutoCycle(2, 2600);
+  const order: Order = cycle.value === 0 ? 'AB' : 'BA';
+  const setOrder = (value: Order) => cycle.pick(value === 'AB' ? 0 : 1);
   const [bias, setBias] = useState(0.5);
 
   const aFirst = order === 'AB';

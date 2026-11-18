@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const FEATURES = {
@@ -21,27 +20,84 @@ const FEATURES = {
  * feature. */
 export default function CloudDistinctiveFeaturesDiagram() {
   const t = useVizTokens();
-  const [cloud, setCloud] = useState<'gcp' | 'azure'>('gcp');
-  const [active, setActive] = useState('vertex');
-  const color = getConceptColor(t, 'attention');
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(6, 3200);
+  const cloud: 'gcp' | 'azure' = cyc.value < 3 ? 'gcp' : 'azure';
   const list = FEATURES[cloud];
-  const f = list.find((x) => x.key === active) ?? list[0];
+  const activeIdx = cyc.value < 3 ? cyc.value : cyc.value - 3;
+  const f = list[activeIdx];
+  const color = getConceptColor(t, 'attention');
 
   return (
     <VisualizationContainer footer={f.desc}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-        <button type="button" onClick={() => { setCloud('gcp'); setActive('vertex'); }} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: cloud === 'gcp' ? 700 : 500, background: cloud === 'gcp' ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${cloud === 'gcp' ? color : t.border}`, color: cloud === 'gcp' ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button
+          type="button"
+          onClick={() => cyc.pick(0)}
+          style={{
+            flex: 1,
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 10.5,
+            fontWeight: cloud === 'gcp' ? 700 : 500,
+            background: cloud === 'gcp' ? `${color}20` : t.surfaceAlt,
+            border: `1.25px solid ${cloud === 'gcp' ? color : t.border}`,
+            color: cloud === 'gcp' ? color : t.textSecondary,
+            boxShadow: cloud === 'gcp' && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
           GCP
         </button>
-        <button type="button" onClick={() => { setCloud('azure'); setActive('azureml'); }} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: cloud === 'azure' ? 700 : 500, background: cloud === 'azure' ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${cloud === 'azure' ? color : t.border}`, color: cloud === 'azure' ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button
+          type="button"
+          onClick={() => cyc.pick(3)}
+          style={{
+            flex: 1,
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 10.5,
+            fontWeight: cloud === 'azure' ? 700 : 500,
+            background: cloud === 'azure' ? `${color}20` : t.surfaceAlt,
+            border: `1.25px solid ${cloud === 'azure' ? color : t.border}`,
+            color: cloud === 'azure' ? color : t.textSecondary,
+            boxShadow: cloud === 'azure' && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
           Azure
         </button>
       </div>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        {list.map((x) => {
-          const isActive = active === x.key;
+        {list.map((x, i) => {
+          const isActive = activeIdx === i;
+          const globalIdx = cloud === 'gcp' ? i : i + 3;
           return (
-            <div key={x.key} onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
+            <div
+              key={x.key}
+              onClick={() => cyc.pick(globalIdx)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  cyc.pick(globalIdx);
+                }
+              }}
+              onMouseEnter={() => cyc.pick(globalIdx)}
+              style={{
+                cursor: 'pointer',
+                padding: '0.5rem 0.8rem',
+                borderRadius: 7,
+                background: isActive ? `${color}18` : t.surfaceAlt,
+                border: `1.5px solid ${isActive ? color : t.border}`,
+                boxShadow: isActive && !reducedMotion ? `0 0 8px ${color}33` : 'none',
+                transform: isActive && !reducedMotion ? 'scale(1.02)' : 'scale(1)',
+                transition: 'all 0.2s ease',
+              }}
+            >
               <span style={{ fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{x.label}</span>
             </div>
           );

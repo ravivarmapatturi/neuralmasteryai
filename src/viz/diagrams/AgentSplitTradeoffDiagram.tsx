@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const TOTAL_WORK_UNITS = 100;
@@ -15,7 +14,9 @@ const COORDINATION_CALLS_PER_AGENT = 2; // one delegate call, one result-integra
  * output crosses before reaching the user) both scale with N. */
 export default function AgentSplitTradeoffDiagram() {
   const t = useVizTokens();
-  const [agentCount, setAgentCount] = useState(1);
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(5, 2500);
+  const agentCount = cyc.value + 1;
   const color = getConceptColor(t, 'attention');
   const colorWarn = t.accentDanger;
 
@@ -24,9 +25,9 @@ export default function AgentSplitTradeoffDiagram() {
   const coordinationLatency = isSingle ? 0 : agentCount * COORDINATION_LATENCY_PER_AGENT;
   const wallClockTime = parallelWork + coordinationLatency;
   const coordinationCalls = isSingle ? 0 : agentCount * COORDINATION_CALLS_PER_AGENT;
-  const handoffPoints = isSingle ? 0 : agentCount; // each specialist's output crosses one trust boundary back to the supervisor
+  const handoffPoints = isSingle ? 0 : agentCount;
 
-  const singleAgentTime = TOTAL_WORK_UNITS; // baseline for comparison
+  const singleAgentTime = TOTAL_WORK_UNITS;
   const speedup = singleAgentTime / wallClockTime;
 
   const maxBar = Math.max(singleAgentTime, wallClockTime, coordinationCalls * 10, handoffPoints * 10);
@@ -38,18 +39,26 @@ export default function AgentSplitTradeoffDiagram() {
 
   return (
     <VisualizationContainer footer={footer} title="Single-agent vs. multi-agent cost/complexity tradeoff">
-      <Slider label="Specialized agents" value={agentCount} onChange={setAgentCount} min={1} max={5} step={1} format={(v) => String(v)} />
+      <Slider
+        label="Specialized agents"
+        value={agentCount}
+        onChange={(v) => cyc.pick(v - 1)}
+        min={1}
+        max={5}
+        step={1}
+        format={(v) => String(v)}
+      />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
-        <BarRow label="Wall-clock time" value={wallClockTime} display={`${wallClockTime.toFixed(0)}`} width={barWidth(wallClockTime)} color={color} t={t} />
-        <BarRow label="Coordination LLM calls" value={coordinationCalls} display={String(coordinationCalls)} width={barWidth(coordinationCalls * 10)} color={t.textSecondary} t={t} />
-        <BarRow label="Inter-agent handoff points" value={handoffPoints} display={String(handoffPoints)} width={barWidth(handoffPoints * 10)} color={colorWarn} t={t} />
+        <BarRow label="Wall-clock time" value={wallClockTime} display={`${wallClockTime.toFixed(0)}`} width={barWidth(wallClockTime)} color={color} t={t} reducedMotion={reducedMotion} />
+        <BarRow label="Coordination LLM calls" value={coordinationCalls} display={String(coordinationCalls)} width={barWidth(coordinationCalls * 10)} color={t.textSecondary} t={t} reducedMotion={reducedMotion} />
+        <BarRow label="Inter-agent handoff points" value={handoffPoints} display={String(handoffPoints)} width={barWidth(handoffPoints * 10)} color={colorWarn} t={t} reducedMotion={reducedMotion} />
       </div>
     </VisualizationContainer>
   );
 }
 
-function BarRow({ label, display, width, color, t }: { label: string; value: number; display: string; width: string; color: string; t: ReturnType<typeof useVizTokens> }) {
+function BarRow({ label, display, width, color, t, reducedMotion }: { label: string; value: number; display: string; width: string; color: string; t: ReturnType<typeof useVizTokens>; reducedMotion: boolean }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: DIAGRAM_TYPE.secondaryLabel.size, marginBottom: 3 }}>
@@ -57,7 +66,7 @@ function BarRow({ label, display, width, color, t }: { label: string; value: num
         <span style={{ fontWeight: 600 }}>{display}</span>
       </div>
       <div style={{ height: 8, borderRadius: 4, background: t.surfaceAlt, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width, background: color, borderRadius: 4, transition: 'width 0.2s' }} />
+        <div style={{ height: '100%', width, background: color, borderRadius: 4, transition: reducedMotion ? 'none' : 'width 0.3s ease' }} />
       </div>
     </div>
   );

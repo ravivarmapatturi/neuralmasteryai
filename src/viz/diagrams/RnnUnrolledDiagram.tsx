@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STEPS = 4;
@@ -11,7 +10,9 @@ const STEPS = 4;
  * that carries information from step to step. */
 export default function RnnUnrolledDiagram() {
   const t = useVizTokens();
-  const [activeStep, setActiveStep] = useState<number | null>(null);
+  const cycle = useAutoCycle(STEPS, 1500);
+  const activeStep: number | null = cycle.value;
+  const setActiveStep = (value: number | null) => { if (value !== null) cycle.pick(value); };
   const cellColor = getConceptColor(t, 'attention');
   const tokenColor = getConceptColor(t, 'token');
 

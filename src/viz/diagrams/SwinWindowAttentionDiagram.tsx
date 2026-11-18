@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const GRID = 6;
@@ -11,7 +10,9 @@ const WIN = 3;
  * gets to attend across it over depth. */
 export default function SwinWindowAttentionDiagram() {
   const t = useVizTokens();
-  const [shifted, setShifted] = useState(false);
+  const cycle = useAutoCycle(2, 2200);
+  const shifted = cycle.value === 1;
+  const setShifted = (value: boolean) => cycle.pick(value ? 1 : 0);
   const color = getConceptColor(t, 'attention');
   const cell = 26;
   const offset = shifted ? Math.floor(WIN / 2) : 0;

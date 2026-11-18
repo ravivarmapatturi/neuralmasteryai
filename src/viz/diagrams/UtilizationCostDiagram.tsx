@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 
 const QUADRANTS = [
   { key: 'low-high', util: 'low', bill: 'high', label: 'Low util, high bill', desc: 'A fixable efficiency problem -- a data-loading bottleneck, insufficient batching, or over-provisioned capacity. The fix is technical.', tone: 'warn' },
@@ -14,18 +13,42 @@ const QUADRANTS = [
  * "this is genuinely what it costs." */
 export default function UtilizationCostDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('low-high');
-  const q = QUADRANTS.find((x) => x.key === active)!;
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(QUADRANTS.length, 3200);
+  const q = QUADRANTS[cyc.value];
   const toneColor = (tone: string) => (tone === 'ok' ? t.accentPrimary : tone === 'warn' ? t.accentWarn : t.accentDanger);
 
   return (
     <VisualizationContainer footer={q.desc}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
-        {QUADRANTS.map((x) => {
-          const isActive = active === x.key;
+        {QUADRANTS.map((x, i) => {
+          const isActive = cyc.value === i;
           const c = toneColor(x.tone);
           return (
-            <div key={x.key} onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.6rem 0.5rem', borderRadius: 7, textAlign: 'center', background: isActive ? `${c}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}>
+            <div
+              key={x.key}
+              onClick={() => cyc.pick(i)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  cyc.pick(i);
+                }
+              }}
+              onMouseEnter={() => cyc.pick(i)}
+              style={{
+                cursor: 'pointer',
+                padding: '0.6rem 0.5rem',
+                borderRadius: 7,
+                textAlign: 'center',
+                background: isActive ? `${c}18` : t.surfaceAlt,
+                border: `1.5px solid ${isActive ? c : t.border}`,
+                boxShadow: isActive && !reducedMotion ? `0 0 8px ${c}33` : 'none',
+                transform: isActive && !reducedMotion ? 'scale(1.02)' : 'scale(1)',
+                transition: 'all 0.2s ease',
+              }}
+            >
               <span style={{ fontSize: 9.5, fontWeight: isActive ? 700 : 500, color: isActive ? c : t.textPrimary }}>{x.label}</span>
             </div>
           );

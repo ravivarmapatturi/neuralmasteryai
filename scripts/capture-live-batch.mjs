@@ -136,6 +136,80 @@ const BATCH_CONFIGS = {
       ],
     },
   ],
+  3: [
+    {
+      route: '/docs/agents/single-vs-multi-agent',
+      diagrams: [
+        { name: 'AgentSplitTradeoffDiagram', match: 'Specialized agents' },
+      ],
+    },
+    {
+      route: '/docs/mlops/ai-cost-engineering',
+      diagrams: [
+        { name: 'ModelRoutingSavingsDiagram', match: 'Routed by difficulty' },
+        { name: 'QualityLatencyCostTriangleDiagram', match: 'Real-time chat' },
+        { name: 'TrainingVsInferenceCostDiagram', match: 'Month' },
+        { name: 'UtilizationCostDiagram', match: 'Low util, high bill' },
+      ],
+    },
+    {
+      route: '/docs/mlops/caching-strategies',
+      diagrams: [
+        { name: 'CacheAsideFlowDiagram', match: 'Cache miss' },
+        { name: 'CacheEvictionTtlDiagram', match: 'TTL expiry' },
+        { name: 'WriteThroughVsWriteBehindDiagram', match: 'Write-through' },
+      ],
+    },
+    {
+      route: '/docs/mlops/cicd-and-ml-cicd',
+      diagrams: [
+        { name: 'AutomatedRetrainLoopDiagram', match: 'Trigger' },
+        { name: 'CiVsCdDiagram', match: 'push/PR' },
+        { name: 'GitOpsReconciliationDiagram', match: 'Git repo' },
+        { name: 'MlCicdPipelineStepsDiagram', match: 'Code checks' },
+      ],
+    },
+    {
+      route: '/docs/mlops/cloud-computing',
+      diagrams: [
+        { name: 'CloudDistinctiveFeaturesDiagram', match: 'GCP' },
+        { name: 'CloudNeutralPortabilityDiagram', match: 'Docker container' },
+        { name: 'CloudVocabularyMapDiagram', match: 'Virtual machines' },
+        { name: 'ComputeSpectrumDiagram', match: 'EC2' },
+        { name: 'ManagedMlPlatformTradeoffDiagram', match: 'Managed platform' },
+        { name: 'RequestPathSecurityDiagram', match: 'VPC' },
+        { name: 'StorageUseCaseDiagram', match: 'Datasets, model artifacts' },
+      ],
+    },
+    {
+      route: '/docs/mlops/cloud-model-deployment',
+      diagrams: [
+        { name: 'CloudDeploymentChoiceDiagram', match: 'Synchronous, low-latency, steady traffic' },
+      ],
+    },
+    {
+      route: '/docs/mlops/containers',
+      diagrams: [
+        { name: 'ContainerSecurityChecklistDiagram', match: "Don't run as root" },
+        { name: 'DockerArchitectureDiagram', match: 'docker CLI' },
+        { name: 'DockerfileLayerCachingDiagram', match: 'Good order' },
+        { name: 'ImageVsContainerDiagram', match: 'read-only template' },
+        { name: 'MultiStageBuildDiagram', match: 'BUILD STAGE' },
+        { name: 'RegistryComparisonDiagram', match: 'Amazon ECR' },
+        { name: 'VolumesAndNetworksDiagram', match: 'Remove container' },
+      ],
+    },
+    {
+      route: '/docs/mlops/data-engineering-and-versioning',
+      diagrams: [
+        { name: 'DataLineageProvenanceDiagram', match: 'Lineage' },
+        { name: 'DataPipelineFlowDiagram', match: 'Feature Eng.' },
+        { name: 'DataProcessingScaleDiagram', match: 'Dataset size' },
+        { name: 'GitVsDataVersioningDiagram', match: '500GB dataset' },
+        { name: 'SchemaEvolutionDiagram', match: 'Producer (new schema)' },
+      ],
+    },
+  ],
 };
 
 async function main() {

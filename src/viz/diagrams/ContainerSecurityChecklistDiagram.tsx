@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const ITEMS = [
@@ -14,17 +13,43 @@ const ITEMS = [
  * matters, not just what to do. */
 export default function ContainerSecurityChecklistDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('base');
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(ITEMS.length, 3000);
   const color = getConceptColor(t, 'attention');
-  const info = ITEMS.find((i) => i.key === active)!;
+  const info = ITEMS[cyc.value];
 
   return (
     <VisualizationContainer footer={info.desc}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {ITEMS.map((item) => {
-          const isActive = active === item.key;
+        {ITEMS.map((item, i) => {
+          const isActive = cyc.value === i;
           return (
-            <div key={item.key} onClick={() => setActive(item.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(item.key); } }} onMouseEnter={() => setActive(item.key)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '0.55rem 0.8rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
+            <div
+              key={item.key}
+              onClick={() => cyc.pick(i)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  cyc.pick(i);
+                }
+              }}
+              onMouseEnter={() => cyc.pick(i)}
+              style={{
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '0.55rem 0.8rem',
+                borderRadius: 7,
+                background: isActive ? `${color}18` : t.surfaceAlt,
+                border: `1.5px solid ${isActive ? color : t.border}`,
+                boxShadow: isActive && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+                transform: isActive && !reducedMotion ? 'translateX(3px)' : 'none',
+                transition: 'all 0.2s ease',
+              }}
+            >
               <span style={{ color, fontSize: 13 }}>✓</span>
               <span style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{item.label}</span>
             </div>

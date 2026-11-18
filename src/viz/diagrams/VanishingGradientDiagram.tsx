@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath, Slider } from '../primitives';
+import { VisualizationContainer, VisualizationMath, Slider, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const STEPS = 14;
@@ -15,8 +14,12 @@ const TANH_PRIME = 0.9;
  * prod_{k=t+1}^{T} tanh'(z_k) W_h predicts. */
 export default function VanishingGradientDiagram() {
   const t = useVizTokens();
-  const [w, setW] = useState(0.9);
-  const [hoveredStep, setHoveredStep] = useState<number | null>(null);
+  const weightCycle = useAutoCycle(31, 140, 12);
+  const w = 0.3 + weightCycle.value * 0.05;
+  const setW = (value: number) => weightCycle.pick(Math.round((value - 0.3) / 0.05));
+  const stepCycle = useAutoCycle(STEPS, 900);
+  const hoveredStep: number | null = stepCycle.value;
+  const setHoveredStep = (value: number | null) => { if (value !== null) stepCycle.pick(value); };
   const factor = w * TANH_PRIME;
   const vanishing = factor < 1;
 

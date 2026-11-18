@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -17,18 +16,38 @@ const STORES = [
  * for what actually belongs there. */
 export default function StorageUseCaseDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('s3');
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(STORES.length, 3200);
   const color = getConceptColor(t, 'attention');
-  const s = STORES.find((x) => x.key === active)!;
+  const s = STORES[cyc.value];
 
   return (
     <VisualizationContainer footer={s.use}>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        {STORES.map((x) => {
-          const isActive = active === x.key;
+        {STORES.map((x, i) => {
+          const isActive = cyc.value === i;
           return (
             <SketchBox key={x.key} color={isActive ? color : t.border} strokeWidth={isActive ? 2 : 1.3}>
-              <div onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.5rem 0.8rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt }}>
+              <div
+                onClick={() => cyc.pick(i)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    cyc.pick(i);
+                  }
+                }}
+                onMouseEnter={() => cyc.pick(i)}
+                style={{
+                  cursor: 'pointer',
+                  padding: '0.5rem 0.8rem',
+                  borderRadius: 7,
+                  background: isActive ? `${color}18` : t.surfaceAlt,
+                  boxShadow: isActive && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+                  transition: 'all 0.2s ease',
+                }}
+              >
                 <span style={{ fontSize: 10.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary, fontFamily: HAND_FONT }}>{x.label}</span>
               </div>
             </SketchBox>

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 /** Naive contiguous allocation over-reserves and fragments; Paged
@@ -8,7 +7,9 @@ import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
  * the same 3 requests packed into the same memory two different ways. */
 export default function PagedAttentionDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<'naive' | 'paged'>('paged');
+  const cycle = useAutoCycle(2, 2600, 1);
+  const mode = cycle.value === 0 ? 'naive' : 'paged';
+  const setMode = (value: 'naive' | 'paged') => cycle.pick(value === 'naive' ? 0 : 1);
   const colors = [getConceptColor(t, 'query'), getConceptColor(t, 'attention'), t.accentWarn];
   const width = 560;
 

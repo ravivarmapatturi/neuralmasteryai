@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const INPUT = ['your', 'cat', 'is', 'lovely'];
@@ -12,7 +11,9 @@ const OUTPUT = ['votre', 'chat', 'est', 'adorable'];
  * from that one bottleneck, no matter how long the input was. */
 export default function Seq2SeqDiagram() {
   const t = useVizTokens();
-  const [hoveredContext, setHoveredContext] = useState(false);
+  const cycle = useAutoCycle(2, 2300);
+  const hoveredContext = cycle.value === 1;
+  const setHoveredContext = (value: boolean) => cycle.pick(value ? 1 : 0);
   const encColor = getConceptColor(t, 'embedding');
   const decColor = getConceptColor(t, 'attention');
   const ctxColor = t.accentDanger;

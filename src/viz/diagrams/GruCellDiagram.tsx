@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 type GateKey = 'reset' | 'update';
@@ -15,7 +14,9 @@ const GATES: { key: GateKey; label: string; x: number; latex: string; desc: stri
  * candidate, then blend old and candidate by how much z_t says to update. */
 export default function GruCellDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<GateKey | null>(null);
+  const cycle = useAutoCycle(GATES.length, 2100);
+  const active: GateKey | null = GATES[cycle.value].key;
+  const setActive = (value: GateKey | null) => { if (value !== null) cycle.pick(GATES.findIndex((gate) => gate.key === value)); };
   const width = 560;
   const height = 260;
   const lineY = 46;

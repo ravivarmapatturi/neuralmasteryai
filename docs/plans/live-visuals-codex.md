@@ -34,42 +34,42 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 2
 - `src/content/docs/deep-learning/initialization-regularization-scheduling.mdx`
-  - [ ] `src/viz/diagrams/LrSchedulesDiagram.tsx`
+  - [x] `src/viz/diagrams/LrSchedulesDiagram.tsx`
 - `src/content/docs/deep-learning/linear-attention-and-state-space-models.mdx`
-  - [ ] `src/viz/diagrams/LinearAttentionFactorizationDiagram.tsx`
+  - [x] `src/viz/diagrams/LinearAttentionFactorizationDiagram.tsx`
 - `src/content/docs/deep-learning/loss-functions.mdx`
-  - [ ] `src/viz/diagrams/RegressionLossesDiagram.tsx`
+  - [x] `src/viz/diagrams/RegressionLossesDiagram.tsx`
 - `src/content/docs/deep-learning/nn-layers-reference.mdx`
-  - [ ] `src/viz/diagrams/AttentionLayersCatalogDiagram.tsx`
-  - [ ] `src/viz/diagrams/ConvolutionalLayersCatalogDiagram.tsx`
-  - [ ] `src/viz/diagrams/CoreBuildingBlocksDiagram.tsx`
-  - [ ] `src/viz/diagrams/NormalizationAxisDiagram.tsx`
-  - [ ] `src/viz/diagrams/RecurrentLayersCatalogDiagram.tsx`
-  - [ ] `src/viz/diagrams/TransposedConvUpsampleDiagram.tsx`
+  - [x] `src/viz/diagrams/AttentionLayersCatalogDiagram.tsx`
+  - [x] `src/viz/diagrams/ConvolutionalLayersCatalogDiagram.tsx`
+  - [x] `src/viz/diagrams/CoreBuildingBlocksDiagram.tsx`
+  - [x] `src/viz/diagrams/NormalizationAxisDiagram.tsx`
+  - [x] `src/viz/diagrams/RecurrentLayersCatalogDiagram.tsx`
+  - [x] `src/viz/diagrams/TransposedConvUpsampleDiagram.tsx`
 - `src/content/docs/deep-learning/sequence-models.mdx`
-  - [ ] `src/viz/diagrams/BidirectionalRnnDiagram.tsx`
-  - [ ] `src/viz/diagrams/GruCellDiagram.tsx`
-  - [ ] `src/viz/diagrams/LstmCellDiagram.tsx`
-  - [ ] `src/viz/diagrams/RnnUnrolledDiagram.tsx`
-  - [ ] `src/viz/diagrams/Seq2SeqAttentionDiagram.tsx`
-  - [ ] `src/viz/diagrams/Seq2SeqDiagram.tsx`
-  - [ ] `src/viz/diagrams/VanishingGradientDiagram.tsx`
+  - [x] `src/viz/diagrams/BidirectionalRnnDiagram.tsx`
+  - [x] `src/viz/diagrams/GruCellDiagram.tsx`
+  - [x] `src/viz/diagrams/LstmCellDiagram.tsx`
+  - [x] `src/viz/diagrams/RnnUnrolledDiagram.tsx`
+  - [x] `src/viz/diagrams/Seq2SeqAttentionDiagram.tsx`
+  - [x] `src/viz/diagrams/Seq2SeqDiagram.tsx`
+  - [x] `src/viz/diagrams/VanishingGradientDiagram.tsx`
 - `src/content/docs/deep-learning/training-deep-networks.mdx`
-  - [ ] `src/viz/diagrams/LrScheduleDiagram.tsx`
+  - [x] `src/viz/diagrams/LrScheduleDiagram.tsx`
 - `src/content/docs/deep-learning/vision-architectures.mdx`
-  - [ ] `src/viz/diagrams/DetrSetPredictionDiagram.tsx`
-  - [ ] `src/viz/diagrams/SemanticVsInstanceSegmentationDiagram.tsx`
-  - [ ] `src/viz/diagrams/SwinWindowAttentionDiagram.tsx`
-  - [ ] `src/viz/diagrams/TwoStageVsOneStageDetectionDiagram.tsx`
-  - [ ] `src/viz/diagrams/UNetArchitectureDiagram.tsx`
-  - [ ] `src/viz/diagrams/ViTVariantsDiagram.tsx`
+  - [x] `src/viz/diagrams/DetrSetPredictionDiagram.tsx`
+  - [x] `src/viz/diagrams/SemanticVsInstanceSegmentationDiagram.tsx`
+  - [x] `src/viz/diagrams/SwinWindowAttentionDiagram.tsx`
+  - [x] `src/viz/diagrams/TwoStageVsOneStageDetectionDiagram.tsx`
+  - [x] `src/viz/diagrams/UNetArchitectureDiagram.tsx`
+  - [x] `src/viz/diagrams/ViTVariantsDiagram.tsx`
 - `src/content/docs/llms-genai/evaluation-and-serving.mdx`
-  - [ ] `src/viz/diagrams/ContinuousBatchingDiagram.tsx`
-  - [ ] `src/viz/diagrams/JudgePositionBiasDiagram.tsx`
-  - [ ] `src/viz/diagrams/PagedAttentionDiagram.tsx`
-  - [ ] `src/viz/diagrams/SpeculativeDecodingDiagram.tsx`
+  - [x] `src/viz/diagrams/ContinuousBatchingDiagram.tsx`
+  - [x] `src/viz/diagrams/JudgePositionBiasDiagram.tsx`
+  - [x] `src/viz/diagrams/PagedAttentionDiagram.tsx`
+  - [x] `src/viz/diagrams/SpeculativeDecodingDiagram.tsx`
 
-## Batch 3
+
 - `src/content/docs/llms-genai/foundation-model-internals.mdx`
   - [ ] `src/viz/InferenceFlowVisualizer.tsx`
   - [ ] `src/viz/diagrams/AlibiPositionalBiasDiagram.tsx`

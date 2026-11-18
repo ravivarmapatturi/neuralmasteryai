@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Mode = 'static' | 'dynamic' | 'continuous';
@@ -17,7 +16,10 @@ const REQUESTS = [
  * step. Select a mode, see the actual GPU-slot occupancy grid. */
 export default function ContinuousBatchingDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('continuous');
+  const modes: Mode[] = ['static', 'dynamic', 'continuous'];
+  const cycle = useAutoCycle(modes.length, 2800, 2);
+  const mode: Mode = modes[cycle.value];
+  const setMode = (value: Mode) => cycle.pick(modes.indexOf(value));
   const colors = [getConceptColor(t, 'query'), getConceptColor(t, 'attention'), t.accentWarn, t.accentDanger];
   const STEPS = 8;
 

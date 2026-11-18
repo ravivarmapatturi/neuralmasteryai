@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STEPS = [
@@ -17,7 +16,9 @@ const STEPS = [
  * it's the one that can stop the whole pipeline automatically. */
 export default function MlCicdPipelineStepsDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState(3);
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(STEPS.length, 2800);
+  const active = cyc.value;
   const color = getConceptColor(t, 'attention');
   const gateColor = t.accentDanger;
 
@@ -31,9 +32,21 @@ export default function MlCicdPipelineStepsDiagram() {
           return (
             <div
               key={s.label}
-              onClick={() => setActive(i)}
-              onMouseEnter={() => setActive(i)}
-              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '0.4rem 0.7rem', borderRadius: 6, background: isActive ? `${c}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? c : t.border}` }}
+              onClick={() => cyc.pick(i)}
+              onMouseEnter={() => cyc.pick(i)}
+              style={{
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '0.4rem 0.7rem',
+                borderRadius: 6,
+                background: isActive ? `${c}18` : t.surfaceAlt,
+                border: `1.5px solid ${isActive ? c : t.border}`,
+                boxShadow: isActive && !reducedMotion ? `0 0 6px ${c}33` : 'none',
+                transform: isActive && !reducedMotion ? 'translateX(3px)' : 'none',
+                transition: 'all 0.2s ease',
+              }}
             >
               <span style={{ fontSize: 10, fontWeight: 700, color: c, width: 16 }}>{i + 1}</span>
               <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? c : t.textPrimary }}>{s.label}</span>

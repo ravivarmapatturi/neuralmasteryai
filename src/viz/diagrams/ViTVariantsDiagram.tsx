@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const VARIANTS = [
@@ -13,7 +12,9 @@ const VARIANTS = [
  * base design -- click one for what it changes and why. */
 export default function ViTVariantsDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('swin');
+  const cycle = useAutoCycle(VARIANTS.length, 2400, VARIANTS.findIndex((variant) => variant.key === 'swin'));
+  const active = VARIANTS[cycle.value].key;
+  const setActive = (key: string) => cycle.pick(VARIANTS.findIndex((variant) => variant.key === key));
   const color = getConceptColor(t, 'attention');
   const v = VARIANTS.find((x) => x.key === active)!;
 

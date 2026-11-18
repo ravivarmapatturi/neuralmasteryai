@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { SelectableRow, VisualizationContainer } from '../primitives';
+import { SelectableRow, VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 
 const NEEDS = [
   {
@@ -49,22 +48,23 @@ const NEEDS = [
 
 export default function CloudDeploymentChoiceDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('realtime');
-  const info = NEEDS.find((n) => n.key === active)!;
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(NEEDS.length, 3500);
+  const info = NEEDS[cyc.value];
   const awsColor = t.accentWarn;
   const azureColor = t.accentSecondary;
 
   return (
     <VisualizationContainer footer={info.why}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {NEEDS.map((n) => {
-          const isActive = active === n.key;
+        {NEEDS.map((n, i) => {
+          const isActive = cyc.value === i;
           return (
             <SelectableRow
               key={n.key}
               selected={isActive}
               label={n.need}
-              onSelect={() => setActive(n.key)}
+              onSelect={() => cyc.pick(i)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -73,6 +73,9 @@ export default function CloudDeploymentChoiceDiagram() {
                 borderRadius: 8,
                 background: isActive ? `${t.accentPrimary}18` : t.surfaceAlt,
                 border: `1.5px solid ${isActive ? t.accentPrimary : t.border}`,
+                boxShadow: isActive && !reducedMotion ? `0 0 6px ${t.accentPrimary}33` : 'none',
+                transform: isActive && !reducedMotion ? 'translateX(3px)' : 'none',
+                transition: 'all 0.2s ease',
                 flexWrap: 'wrap',
               }}
             >

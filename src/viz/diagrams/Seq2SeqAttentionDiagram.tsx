@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor, valueColor } from './diagramSystem';
 
 const INPUT = ['your', 'cat', 'is', 'lovely'];
@@ -20,7 +19,9 @@ const WEIGHTS = [
  * click a decoder token to see which input tokens it actually leans on. */
 export default function Seq2SeqAttentionDiagram() {
   const t = useVizTokens();
-  const [decStep, setDecStep] = useState(1); // "chat" selected by default -> aligns with "cat"
+  const cycle = useAutoCycle(OUTPUT.length, 1800, 1);
+  const decStep = cycle.value;
+  const setDecStep = cycle.pick; // reader selection stops the automatic alignment trace
   const encColor = getConceptColor(t, 'embedding');
   const decColor = getConceptColor(t, 'attention');
 

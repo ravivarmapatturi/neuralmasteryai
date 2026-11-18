@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationMath } from '../primitives';
+import { VisualizationContainer, VisualizationMath, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 type GateKey = 'forget' | 'input' | 'candidate' | 'output';
@@ -18,7 +17,9 @@ const GATES: { key: GateKey; label: string; x: number; fn: 'σ' | 'tanh'; latex:
  * much. Click a gate to see its formula. */
 export default function LstmCellDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<GateKey | null>(null);
+  const cycle = useAutoCycle(GATES.length, 1900);
+  const active: GateKey | null = GATES[cycle.value].key;
+  const setActive = (value: GateKey | null) => { if (value !== null) cycle.pick(GATES.findIndex((gate) => gate.key === value)); };
   const width = 560;
   const height = 300;
   const lineY = 46;

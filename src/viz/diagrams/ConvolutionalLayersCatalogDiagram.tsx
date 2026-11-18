@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const LAYERS = [
@@ -16,7 +15,9 @@ const LAYERS = [
  * operates on and where it's actually used. */
 export default function ConvolutionalLayersCatalogDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('conv2d');
+  const cycle = useAutoCycle(LAYERS.length, 2300);
+  const active = LAYERS[cycle.value].key;
+  const setActive = (key: string) => cycle.pick(LAYERS.findIndex((layer) => layer.key === key));
   const color = getConceptColor(t, 'attention');
   const l = LAYERS.find((x) => x.key === active)!;
 

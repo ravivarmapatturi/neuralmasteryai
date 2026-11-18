@@ -1,13 +1,14 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 /** R-CNN's two-stage pipeline vs. YOLO/SSD's single pass -- click to
  * compare the steps each one runs per image. */
 export default function TwoStageVsOneStageDetectionDiagram() {
   const t = useVizTokens();
-  const [oneStage, setOneStage] = useState(true);
+  const cycle = useAutoCycle(2, 2600, 1);
+  const oneStage = cycle.value === 1;
+  const setOneStage = (value: boolean) => cycle.pick(value ? 1 : 0);
   const color = getConceptColor(t, 'attention');
 
   const TWO_STAGE = ['Propose candidate regions (Region Proposal Network)', 'Classify + refine each proposed region separately', 'Non-max suppression to remove overlapping boxes'];

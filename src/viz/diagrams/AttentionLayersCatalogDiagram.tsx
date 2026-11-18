@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const LAYERS = [
@@ -15,7 +14,9 @@ const LAYERS = [
  * computes. */
 export default function AttentionLayersCatalogDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('crossattn');
+  const cycle = useAutoCycle(LAYERS.length, 2300, LAYERS.findIndex((layer) => layer.key === 'crossattn'));
+  const active = LAYERS[cycle.value].key;
+  const setActive = (key: string) => cycle.pick(LAYERS.findIndex((layer) => layer.key === key));
   const color = getConceptColor(t, 'attention');
   const l = LAYERS.find((x) => x.key === active)!;
 

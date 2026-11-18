@@ -84,3 +84,55 @@ Pages covered:
 - Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
 - Layer 3 (`check:notebook`): 0 violations.
 - Layer 4 (Playwright screenshots): All 19 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-2/`.
+
+## Batch 3
+
+Pages covered:
+- `src/content/docs/agents/single-vs-multi-agent.mdx`
+- `src/content/docs/mlops/ai-cost-engineering.mdx`
+- `src/content/docs/mlops/caching-strategies.mdx`
+- `src/content/docs/mlops/cicd-and-ml-cicd.mdx`
+- `src/content/docs/mlops/cloud-computing.mdx`
+- `src/content/docs/mlops/cloud-model-deployment.mdx`
+- `src/content/docs/mlops/containers.mdx`
+- `src/content/docs/mlops/data-engineering-and-versioning.mdx`
+
+### Motion Rationales:
+1. `AgentSplitTradeoffDiagram`: Autocycles 1..5 specialized agents with dynamic width transition on makespan, coordination calls, and handoff points.
+2. `ModelRoutingSavingsDiagram`: Autocycles between routed and unrouted; highlights 80% small model vs 20% large model cost reduction.
+3. `QualityLatencyCostTriangleDiagram`: Autocycles 3 product modes (Latency-Critical, Balanced, Max-Quality); `Pulse` on ternary dot coordinates in trade-off space.
+4. `TrainingVsInferenceCostDiagram`: Autocycles month 0..12; `Pulse` on intersection of current month line with training vs inference curves.
+5. `UtilizationCostDiagram`: Autocycles 4 GPU utilization/bill quadrants with active badge glow.
+6. `CacheAsideFlowDiagram`: Autocycles Cache Hit vs Cache Miss with step highlighting along application -> cache -> DB flow.
+7. `CacheEvictionTtlDiagram`: Autocycles TTL expiry progression and LRU cache-full eviction with red/dimmed expired slots.
+8. `WriteThroughVsWriteBehindDiagram`: Autocycles Write-through vs Write-behind with step progression and latency comparison.
+9. `AutomatedRetrainLoopDiagram`: Autocycles schedule vs drift triggers with `FlowDots` along gate pipeline.
+10. `CiVsCdDiagram`: Autocycles CI vs CD with `FlowDots` along the push -> CI -> merge -> CD -> prod path.
+11. `GitOpsReconciliationDiagram`: Autocycles v1 vs v2 with rotating reconciliation sync indicator `⟳`.
+12. `MlCicdPipelineStepsDiagram`: Autocycles 7 pipeline steps with warning badge on Step 4 regression gate.
+13. `CloudDistinctiveFeaturesDiagram`: Autocycles GCP vs Azure services with card selection.
+14. `CloudNeutralPortabilityDiagram`: Autocycles Docker, K8s, Terraform with cloud target status glow.
+15. `CloudVocabularyMapDiagram`: Autocycles 6 cloud concepts mapping AWS, GCP, and Azure equivalents.
+16. `ComputeSpectrumDiagram`: Autocycles EC2, ECS, EKS, Lambda with `Pulse` on spectrum track.
+17. `ManagedMlPlatformTradeoffDiagram`: Autocycles Managed vs Self-hosted tradeoff matrix.
+18. `RequestPathSecurityDiagram`: Autocycles request path across VPC, ALB, Compute, IAM.
+19. `StorageUseCaseDiagram`: Autocycles S3, EBS, RDS, DynamoDB storage access.
+20. `CloudDeploymentChoiceDiagram`: Autocycles 6 deployment patterns with AWS & Azure solutions.
+21. `ContainerSecurityChecklistDiagram`: Autocycles 4 container security best practices.
+22. `DockerArchitectureDiagram`: Autocycles 5 runtime stages; `FlowDots` down to running container.
+23. `DockerfileLayerCachingDiagram`: Autocycles Good vs Bad ordering with code change toggle and REBUILD vs cached layer status.
+24. `ImageVsContainerDiagram`: Autocycles 1..5 container instances sharing read-only image.
+25. `MultiStageBuildDiagram`: Autocycles build stage vs copied minimal runtime stage.
+26. `RegistryComparisonDiagram`: Autocycles 4 container registries.
+27. `VolumesAndNetworksDiagram`: Autocycles container removal showing ephemeral container loss vs persistent volume survival.
+28. `DataLineageProvenanceDiagram`: Autocycles Lineage, Provenance, Snapshots, Reproducibility.
+29. `DataPipelineFlowDiagram`: Autocycles 6 pipeline stages with `FlowDots` and `PulseRect`.
+30. `DataProcessingScaleDiagram`: Autocycles dataset sizes 1GB..100GB with dynamic selection of Pandas -> Polars -> PySpark.
+31. `GitVsDataVersioningDiagram`: Autocycles Code vs 500GB dataset diff efficiency.
+32. `SchemaEvolutionDiagram`: Autocycles Optional safe change vs Required breaking change with consumer status.
+
+### Verification:
+- Layer 1 (`tsc -b`): Clean (exit code 0).
+- Layer 2 (`vitest run src/viz`): 84 files, 324 passed.
+- Layer 3 (`check:notebook`): 0 violations.
+- Layer 4 (Playwright screenshots): All 32 captured cleanly with 0 console/page errors in `docs/evidence/live-visuals/agy/batch-3/`.

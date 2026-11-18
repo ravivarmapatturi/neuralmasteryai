@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 /** The encoder-decoder-with-skip-connections shape -- click "with
@@ -8,7 +7,9 @@ import { getConceptColor } from './diagramSystem';
  * survives the downsample-then-upsample round trip. */
 export default function UNetArchitectureDiagram() {
   const t = useVizTokens();
-  const [skips, setSkips] = useState(true);
+  const cycle = useAutoCycle(2, 2600, 1);
+  const skips = cycle.value === 1;
+  const setSkips = (value: boolean | ((current: boolean) => boolean)) => cycle.pick((typeof value === 'function' ? value(skips) : value) ? 1 : 0);
   const color = getConceptColor(t, 'attention');
   const okColor = t.accentPrimary;
   const stages = [64, 40, 24];

@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle, usePrefersReducedMotion } from '../primitives';
+import { Pulse } from '../primitives/LiveFlow';
 import { getConceptColor } from './diagramSystem';
 
 const PRODUCTS = [
@@ -10,13 +10,14 @@ const PRODUCTS = [
 ];
 
 /** A three-way tradeoff surface, not a free win -- click a product
- * type to see where it should actually sit, since a real-time chat
+ * type to see where it actually sits, since a real-time chat
  * interface and a batch job have genuinely different priorities. */
 export default function QualityLatencyCostTriangleDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('chat');
+  const reducedMotion = usePrefersReducedMotion();
+  const cyc = useAutoCycle(PRODUCTS.length, 3500);
   const color = getConceptColor(t, 'attention');
-  const p = PRODUCTS.find((x) => x.key === active)!;
+  const p = PRODUCTS[cyc.value];
 
   const corners = { quality: { x: 150, y: 20 }, latency: { x: 40, y: 150 }, cost: { x: 260, y: 150 } };
   const dotX = (corners.quality.x * p.quality + corners.latency.x * p.latency + corners.cost.x * p.cost) / (p.quality + p.latency + p.cost);
@@ -25,10 +26,31 @@ export default function QualityLatencyCostTriangleDiagram() {
   return (
     <VisualizationContainer footer={p.desc}>
       <div style={{ display: 'flex', gap: 5, marginBottom: 10, flexWrap: 'wrap' }}>
-        {PRODUCTS.map((x) => {
-          const isActive = active === x.key;
+        {PRODUCTS.map((x, i) => {
+          const isActive = cyc.value === i;
           return (
-            <div key={x.key} onClick={() => setActive(x.key)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActive(x.key); } }} onMouseEnter={() => setActive(x.key)} style={{ cursor: 'pointer', padding: '0.4rem 0.6rem', borderRadius: 7, background: isActive ? `${color}18` : t.surfaceAlt, border: `1.5px solid ${isActive ? color : t.border}` }}>
+            <div
+              key={x.key}
+              onClick={() => cyc.pick(i)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  cyc.pick(i);
+                }
+              }}
+              onMouseEnter={() => cyc.pick(i)}
+              style={{
+                cursor: 'pointer',
+                padding: '0.4rem 0.6rem',
+                borderRadius: 7,
+                background: isActive ? `${color}18` : t.surfaceAlt,
+                border: `1.5px solid ${isActive ? color : t.border}`,
+                boxShadow: isActive && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+                transition: 'all 0.2s ease',
+              }}
+            >
               <span style={{ fontSize: 9.5, fontWeight: isActive ? 700 : 500, color: isActive ? color : t.textPrimary }}>{x.label}</span>
             </div>
           );
@@ -39,7 +61,8 @@ export default function QualityLatencyCostTriangleDiagram() {
         <text x={corners.quality.x} y={12} textAnchor="middle" fontSize={9} fill={t.textSecondary} fontWeight={600}>Quality</text>
         <text x={corners.latency.x - 5} y={165} textAnchor="middle" fontSize={9} fill={t.textSecondary} fontWeight={600}>Latency</text>
         <text x={corners.cost.x + 5} y={165} textAnchor="middle" fontSize={9} fill={t.textSecondary} fontWeight={600}>Cost</text>
-        <circle cx={dotX} cy={dotY} r={7} fill={`${color}40`} stroke={color} strokeWidth={2.5} />
+        {!reducedMotion && <Pulse cx={dotX} cy={dotY} r={14} color={color} />}
+        <circle cx={dotX} cy={dotY} r={7} fill={`${color}40`} stroke={color} strokeWidth={2.5} style={{ transition: reducedMotion ? 'none' : 'cx 0.3s ease, cy 0.3s ease' }} />
       </svg>
     </VisualizationContainer>
   );

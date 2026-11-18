@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const LAYERS = [
@@ -13,7 +12,9 @@ const LAYERS = [
  * -- click one for its update rule and why it exists. */
 export default function RecurrentLayersCatalogDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('lstm');
+  const cycle = useAutoCycle(LAYERS.length, 2400, LAYERS.findIndex((layer) => layer.key === 'lstm'));
+  const active = LAYERS[cycle.value].key;
+  const setActive = (key: string) => cycle.pick(LAYERS.findIndex((layer) => layer.key === key));
   const color = getConceptColor(t, 'attention');
   const l = LAYERS.find((x) => x.key === active)!;
 

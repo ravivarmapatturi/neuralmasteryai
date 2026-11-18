@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, useAutoCycle, usePrefersReducedMotion } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -13,30 +13,95 @@ const TTL_FRACTIONS = [10, 20, 30, 40, 50, 60, 70, 80]; // staggered expiry, per
  * new keys arriving once the cache is at capacity. */
 export default function CacheEvictionTtlDiagram() {
   const t = useVizTokens();
-  const [lru, setLru] = useState(false);
-  const [elapsedPct, setElapsedPct] = useState(35);
-  const [newKeys, setNewKeys] = useState(2);
+  const reducedMotion = usePrefersReducedMotion();
+  const [manualLru, setManualLru] = useState<boolean | null>(null);
+  const [manualElapsed, setManualElapsed] = useState<number | null>(null);
+  const [manualNewKeys, setManualNewKeys] = useState<number | null>(null);
+
+  // 10 steps of TTL progression (10..100) + 5 steps of LRU (0..4) = 15 frames
+  const cyc = useAutoCycle(15, 2000);
+  const autoLru = cyc.value >= 10;
+  const lru = manualLru ?? autoLru;
+  const autoElapsed = (cyc.value % 10) * 10 + 10;
+  const elapsedPct = manualElapsed ?? autoElapsed;
+  const autoNewKeys = (cyc.value - 10) % 5;
+  const newKeys = manualNewKeys ?? (autoNewKeys < 0 ? 0 : autoNewKeys);
+
   const color = getConceptColor(t, 'attention');
   const badColor = t.accentDanger;
 
   return (
     <VisualizationContainer footer={lru ? `Cache capacity: ${CAPACITY} keys. As ${newKeys} new key(s) arrive, the least-recently-used entries (leftmost) are evicted to make room -- oldest access, not oldest write.` : `Each key was written with a staggered TTL. At ${elapsedPct}% elapsed time, any key whose TTL has passed expires and is removed -- independent of how full the cache is.`}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <button type="button" onClick={() => setLru(false)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: !lru ? 700 : 500, background: !lru ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${!lru ? color : t.border}`, color: !lru ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button
+          type="button"
+          onClick={() => {
+            setManualLru(false);
+            setManualElapsed(35);
+          }}
+          style={{
+            flex: 1,
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 10.5,
+            fontWeight: !lru ? 700 : 500,
+            background: !lru ? `${color}20` : t.surfaceAlt,
+            border: `1.25px solid ${!lru ? color : t.border}`,
+            color: !lru ? color : t.textSecondary,
+            boxShadow: !lru && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
           TTL expiry
         </button>
-        <button type="button" onClick={() => setLru(true)} style={{ flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 10.5, fontWeight: lru ? 700 : 500, background: lru ? `${color}20` : t.surfaceAlt, border: `1.25px solid ${lru ? color : t.border}`, color: lru ? color : t.textSecondary, cursor: 'pointer' }}>
+        <button
+          type="button"
+          onClick={() => {
+            setManualLru(true);
+            setManualNewKeys(2);
+          }}
+          style={{
+            flex: 1,
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 10.5,
+            fontWeight: lru ? 700 : 500,
+            background: lru ? `${color}20` : t.surfaceAlt,
+            border: `1.25px solid ${lru ? color : t.border}`,
+            color: lru ? color : t.textSecondary,
+            boxShadow: lru && !reducedMotion ? `0 0 6px ${color}33` : 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
           LRU eviction (cache full)
         </button>
       </div>
-      {lru
-        ? <Slider label={`New keys arrived: ${newKeys}`} min={0} max={SLOT_COUNT - CAPACITY} step={1} value={newKeys} onChange={setNewKeys} />
-        : <Slider label={`Elapsed time: ${elapsedPct}%`} min={0} max={100} step={5} value={elapsedPct} onChange={setElapsedPct} />}
+      {lru ? (
+        <Slider
+          label={`New keys arrived: ${newKeys}`}
+          min={0}
+          max={SLOT_COUNT - CAPACITY}
+          step={1}
+          value={newKeys}
+          onChange={(v) => setManualNewKeys(v)}
+        />
+      ) : (
+        <Slider
+          label={`Elapsed time: ${elapsedPct}%`}
+          min={0}
+          max={100}
+          step={5}
+          value={elapsedPct}
+          onChange={(v) => setManualElapsed(v)}
+        />
+      )}
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
         {Array.from({ length: SLOT_COUNT }, (_, i) => {
           const gone = lru ? i < newKeys : elapsedPct >= TTL_FRACTIONS[i];
           return (
-            <SketchBox key={i} color={gone ? badColor : color} strokeWidth={1.5} style={{ width: 32, height: 32, opacity: gone ? 0.3 : 1 }}>
+            <SketchBox key={i} color={gone ? badColor : color} strokeWidth={1.5} style={{ width: 32, height: 32, opacity: gone ? 0.3 : 1, transition: 'all 0.3s ease' }}>
               <div style={{ width: 32, height: 32, background: gone ? 'none' : `${color}30` }} />
             </SketchBox>
           );
