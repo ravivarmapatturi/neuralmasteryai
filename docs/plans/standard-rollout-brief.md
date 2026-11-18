@@ -1,5 +1,12 @@
 # Codex brief: roll the signed-off page standard out to every Learn page (18 Nov 2026)
 
+> **READ FIRST — hard rules from Claude's review (18 Nov 08:00):**
+> 1. Program output, logs, plans and CLI results stay in a ```output fence (allowed by check:notebook, shown as a plain "output" box). NEVER rewrite them as bullet lists or delete them. A diff of yours that removes more code fences than it adds will be rejected.
+> 2. Never paste one caption on several pages; never repeat a PenFlow box title as its only line.
+> 3. MLOps is finished (Claude repaired and pushed it). Continue with **Machine Learning**, then Deep Learning, Agents, LLMs & GenAI, then the rest.
+> 4. Every page needs all Part 1 headings, including Worked example, Try it yourself and Common mistakes, built from the page's existing numbers and code.
+
+
 The owner signed off the TF-IDF pilot. The standard is `docs/standards/page-standard.md` (read it fully). The reference page is `src/content/docs/search-ranking-recommendations/tf-idf.mdx`. Every page in `src/content/docs/**` except `practice-problems/` must follow it. Shared look (desk, margin, coloured tables, light code, tabs, sizes, watermark) is already live in commit 4fd455c3; this brief is the per-page work.
 
 Roles: you (Codex) verify, write agy briefs in `docs/briefs/`, run agy, review. If agy fails or stalls, implement yourself. Do NOT push; Claude reviews and pushes. Work in this worktree (`platform-vite-pilot`, branch `pilot/page-standard`, rebased on origin/main). One heavy job at a time: wrap builds/Playwright/vitest in `flock /tmp/nm-heavy.lock` (a video render may hold it). Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
