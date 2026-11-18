@@ -71,7 +71,7 @@ Wrap heavy commands in `flock /tmp/nm-heavy.lock` (8 GB machine: one heavy job a
 1. `npx tsc -b`
 2. `npx vitest run src/viz` (and any test file next to a component you changed)
 3. `npm run check:notebook`
-4. Real browser: start your own dev server (`npx vite --port <your port> --strictPort`, Codex 5185, agy 5186), open each page in the batch, confirm it loads (no "Could not load this page"), every changed diagram moves, nothing overlaps, no console errors. Save one screenshot per changed diagram, 1440 px wide, light theme, to `docs/evidence/live-visuals/<lane>/batch-<n>/`.
+4. Real browser, done in ONE command held under the lock: `flock /tmp/nm-heavy.lock sh -c '<start your dev server in the background, run your Playwright/screenshot script, then kill the dev server by its PID>'`. Never leave a dev server running between batches (two agents share 8 GB). Ports: Codex 5185, agy 5186 (`npx vite --port <port> --strictPort`). Open each page in the batch, confirm it loads (no "Could not load this page"), every changed diagram moves, nothing overlaps, no console errors. Save one screenshot per changed diagram, 1440 px wide, light theme, to `docs/evidence/live-visuals/<lane>/batch-<n>/`.
 5. Commit the batch (one commit per batch) on your branch: `feat(viz): live visuals <lane> batch <n> (<pages>)`, ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. **Do not push.**
 6. Append to `docs/plans/live-visuals-<lane>-report.md`: for each diagram, the one sentence ("X moves because Y"), or "left static: reason". Tick the boxes in your lane file.
 
