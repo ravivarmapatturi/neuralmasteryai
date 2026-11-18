@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, FlowDots, Pulse, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const STEPS = [
@@ -17,7 +16,9 @@ const STEPS = [
  * LLM call. */
 export default function AgentLoopDiagram() {
   const t = useVizTokens();
-  const [step, setStep] = useState(0);
+  const cyc = useAutoCycle(STEPS.length, 2400);
+  const step = cyc.value;
+  const setStep = cyc.pick;
   const color = getConceptColor(t, 'attention');
   const width = 520;
   const height = 210;
@@ -76,6 +77,24 @@ export default function AgentLoopDiagram() {
           );
         })}
 
+        {step < 4 ? (
+          <FlowDots
+            key={step}
+            d={line(loopPositions[step % 4].x, loopPositions[step % 4].y, loopPositions[(step + 1) % 4].x, loopPositions[(step + 1) % 4].y)}
+            color={color}
+            dur={2.0}
+            count={1}
+          />
+        ) : (
+          <FlowDots
+            key="final"
+            d={line(loopPositions[1].x, loopPositions[1].y, finalPos.x, finalPos.y)}
+            color={color}
+            dur={2.0}
+            count={1}
+          />
+        )}
+
         {/* Branch arrow to Final Answer from loop (from step 3 / left or right) */}
         {(() => {
           const fromPos = loopPositions[1]; // from right or top
@@ -123,6 +142,7 @@ export default function AgentLoopDiagram() {
                 strokeWidth={isActive ? 2.5 : 1.5}
                 opacity={isActive || isFinal ? 1 : 0.7}
               />
+              {isActive && <Pulse cx={pos.x} cy={pos.y} r={nodeRadius} color={color} dur={2} />}
               <text
                 x={pos.x}
                 y={pos.y + 3}
@@ -138,8 +158,8 @@ export default function AgentLoopDiagram() {
         })}
       </svg>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
-        <VizButton onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>← prev</VizButton>
-        <VizButton onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))} disabled={step === STEPS.length - 1}>next →</VizButton>
+        <VizButton onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>← prev</VizButton>
+        <VizButton onClick={() => setStep(Math.min(STEPS.length - 1, step + 1))} disabled={step === STEPS.length - 1}>next →</VizButton>
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color, fontWeight: 700, marginTop: 6 }}>
         Step {step + 1} of {STEPS.length}: {STEPS[step].stage}

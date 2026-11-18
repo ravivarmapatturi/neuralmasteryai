@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { useNotebookPalette } from '../../theme/notebookPalette';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, FlowDots, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 import { SketchArrow, SketchPath, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -44,7 +44,10 @@ export default function LoopGraphAnatomyDiagram() {
   const t = useVizTokens();
   const nb = useNotebookPalette();
   const [selectedNode, setSelectedNode] = useState<keyof typeof NODES>('gate');
-  const [returnPath, setReturnPath] = useState<ReturnPath>('correction');
+  const PATHS: ReturnPath[] = ['correction', 'learning'];
+  const cyc = useAutoCycle(2, 4000);
+  const returnPath = PATHS[cyc.value];
+  const setReturnPath = (p: ReturnPath) => cyc.pick(PATHS.indexOf(p));
   const width = 560;
   const height = 300;
   const colorFor = (kind: NodeKind) =>
@@ -62,42 +65,72 @@ export default function LoopGraphAnatomyDiagram() {
         ]}
       />
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', marginTop: 8 }}>
-        {/* Forward edges -- each one carries a real named unit, not just "then" */}
+        {/* Forward edges -- both workers move in parallel */}
         <SketchArrow points={[[NODES.splitter.x - 14, NODES.splitter.y + 12], [NODES['worker-a'].x + 6, NODES['worker-a'].y - 12]]} color={nb.inkSoft} id="lga-e1" />
+        <FlowDots d={line(NODES.splitter.x - 14, NODES.splitter.y + 12, NODES['worker-a'].x + 6, NODES['worker-a'].y - 12)} color={nb.teal} dur={2.4} count={1} />
+
         <SketchArrow points={[[NODES.splitter.x + 14, NODES.splitter.y + 12], [NODES['worker-b'].x - 6, NODES['worker-b'].y - 12]]} color={nb.inkSoft} id="lga-e2" />
+        <FlowDots d={line(NODES.splitter.x + 14, NODES.splitter.y + 12, NODES['worker-b'].x - 6, NODES['worker-b'].y - 12)} color={nb.teal} dur={2.4} count={1} />
+
         <SketchArrow points={[[NODES['worker-a'].x + 8, NODES['worker-a'].y + 12], [NODES.gate.x - 40, NODES.gate.y - 10]]} color={nb.inkSoft} id="lga-e3" />
+        <FlowDots d={line(NODES['worker-a'].x + 8, NODES['worker-a'].y + 12, NODES.gate.x - 40, NODES.gate.y - 10)} color={nb.amber} dur={2.4} count={1} delay={1.2} />
+
         <SketchArrow points={[[NODES['worker-b'].x - 8, NODES['worker-b'].y + 12], [NODES.gate.x + 40, NODES.gate.y - 10]]} color={nb.inkSoft} id="lga-e4" />
+        <FlowDots d={line(NODES['worker-b'].x - 8, NODES['worker-b'].y + 12, NODES.gate.x + 40, NODES.gate.y - 10)} color={nb.amber} dur={2.4} count={1} delay={1.2} />
+
         <SketchArrow points={[[NODES.gate.x, NODES.gate.y + 12], [NODES.code.x, NODES.code.y - 10]]} color={nb.inkSoft} id="lga-e5" />
+        <FlowDots d={line(NODES.gate.x, NODES.gate.y + 12, NODES.code.x, NODES.code.y - 10)} color={nb.inkSoft} dur={2.4} count={1} delay={2.0} />
+
         <text x={(NODES.gate.x + NODES.code.x) / 2 + 8} y={(NODES.gate.y + NODES.code.y) / 2 + 3} fontSize={9} fontFamily={HAND_FONT} fill={nb.inkSoft}>accepted</text>
 
         {/* Return path -- one or the other, toggled, never both at once */}
         {returnPath === 'correction' ? (
-          <SketchArrow
-            points={[
-              [NODES.gate.x - 20, NODES.gate.y - 8],
-              [NODES.gate.x - 120, NODES.gate.y - 60],
-              [NODES['worker-a'].x - 30, NODES['worker-a'].y + 40],
-              [NODES['worker-a'].x - 6, NODES['worker-a'].y + 14],
-            ]}
-            color={nb.coral}
-            id="lga-return-correction"
-          />
+          <>
+            <SketchArrow
+              points={[
+                [NODES.gate.x - 20, NODES.gate.y - 8],
+                [NODES.gate.x - 120, NODES.gate.y - 60],
+                [NODES['worker-a'].x - 30, NODES['worker-a'].y + 40],
+                [NODES['worker-a'].x - 6, NODES['worker-a'].y + 14],
+              ]}
+              color={nb.coral}
+              id="lga-return-correction"
+            />
+            <FlowDots
+              d={`M ${NODES.gate.x - 20},${NODES.gate.y - 8} L ${NODES.gate.x - 120},${NODES.gate.y - 60} L ${NODES['worker-a'].x - 30},${NODES['worker-a'].y + 40} L ${NODES['worker-a'].x - 6},${NODES['worker-a'].y + 14}`}
+              color={nb.coral}
+              dur={2.6}
+              count={1}
+              delay={1.5}
+            />
+          </>
         ) : (
-          <SketchArrow
-            points={[
-              [NODES.gate.x + 30, NODES.gate.y + 4],
-              [NODES['worker-b'].x + 80, NODES['worker-b'].y + 50],
-              [NODES['worker-b'].x + 80, NODES['worker-b'].y - 40],
-              [NODES.splitter.x + 60, NODES.splitter.y - 4],
-              [NODES.splitter.x + 20, NODES.splitter.y - 12],
-            ]}
-            color={nb.coral}
-            id="lga-return-learning"
-          />
+          <>
+            <SketchArrow
+              points={[
+                [NODES.gate.x + 30, NODES.gate.y + 4],
+                [NODES['worker-b'].x + 80, NODES['worker-b'].y + 50],
+                [NODES['worker-b'].x + 80, NODES['worker-b'].y - 40],
+                [NODES.splitter.x + 60, NODES.splitter.y - 4],
+                [NODES.splitter.x + 20, NODES.splitter.y - 12],
+              ]}
+              color={nb.coral}
+              id="lga-return-learning"
+            />
+            <FlowDots
+              d={`M ${NODES.gate.x + 30},${NODES.gate.y + 4} L ${NODES['worker-b'].x + 80},${NODES['worker-b'].y + 50} L ${NODES['worker-b'].x + 80},${NODES['worker-b'].y - 40} L ${NODES.splitter.x + 60},${NODES.splitter.y - 4} L ${NODES.splitter.x + 20},${NODES.splitter.y - 12}`}
+              color={nb.coral}
+              dur={2.8}
+              count={1}
+              delay={1.5}
+            />
+          </>
         )}
         <text
-          x={returnPath === 'correction' ? NODES['worker-a'].x - 90 : NODES['worker-b'].x + 10}
-          y={returnPath === 'correction' ? NODES.gate.y - 55 : NODES.splitter.y + 14}
+          // correction label sits left of and below the return path's bend, so the line never crosses it
+          x={returnPath === 'correction' ? NODES['worker-a'].x - 34 : NODES['worker-b'].x + 10}
+          y={returnPath === 'correction' ? NODES['worker-a'].y + 58 : NODES.splitter.y + 14}
+          textAnchor={returnPath === 'correction' ? 'end' : 'start'}
           fontSize={9.5}
           fontFamily={HAND_FONT}
           fill={nb.coral}

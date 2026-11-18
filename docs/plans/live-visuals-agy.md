@@ -4,37 +4,37 @@ Read `docs/plans/live-visuals-rollout.md` first. Batches of 8 pages, in order. E
 
 ## Batch 1
 - `src/content/docs/agents/a2a/overview.mdx`
-  - [ ] `src/viz/diagrams/AgentCardDiagram.tsx`
-  - [ ] `src/viz/diagrams/CrossOrgInteropDiagram.tsx`
-  - [ ] `src/viz/diagrams/DelegationSequenceDiagram.tsx`
-  - [ ] `src/viz/diagrams/McpVsA2aScopeDiagram.tsx`
-  - [ ] `src/viz/diagrams/TaskLifecycleDiagram.tsx`
+  - [x] `src/viz/diagrams/AgentCardDiagram.tsx`
+  - [x] `src/viz/diagrams/CrossOrgInteropDiagram.tsx`
+  - [x] `src/viz/diagrams/DelegationSequenceDiagram.tsx`
+  - [x] `src/viz/diagrams/McpVsA2aScopeDiagram.tsx`
+  - [x] `src/viz/diagrams/TaskLifecycleDiagram.tsx`
 - `src/content/docs/agents/agent-architectures.mdx`
-  - [ ] `src/viz/diagrams/AgentEvolutionDiagram.tsx`
-  - [ ] `src/viz/diagrams/CoordinationPatternsDiagram.tsx`
-  - [ ] `src/viz/diagrams/HumanInTheLoopDiagram.tsx`
-  - [ ] `src/viz/diagrams/MemoryAsRetrievalDiagram.tsx`
-  - [ ] `src/viz/diagrams/ShortTermVsLongTermMemoryDiagram.tsx`
+  - [x] `src/viz/diagrams/AgentEvolutionDiagram.tsx`
+  - [x] `src/viz/diagrams/CoordinationPatternsDiagram.tsx`
+  - [x] `src/viz/diagrams/HumanInTheLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/MemoryAsRetrievalDiagram.tsx`
+  - [x] `src/viz/diagrams/ShortTermVsLongTermMemoryDiagram.tsx`
 - `src/content/docs/agents/agent-fundamentals.mdx`
-  - [ ] `src/viz/diagrams/AgentLoopDiagram.tsx`
-  - [ ] `src/viz/diagrams/ArgumentSchemaValidationDiagram.tsx`
-  - [ ] `src/viz/diagrams/ChatbotVsAgentDiagram.tsx`
-  - [ ] `src/viz/diagrams/ContextWindowBudgetDiagram.tsx`
-  - [ ] `src/viz/diagrams/ToolCallAnatomyDiagram.tsx`
-  - [ ] `src/viz/diagrams/ToolCallTraceDiagram.tsx`
+  - [x] `src/viz/diagrams/AgentLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/ArgumentSchemaValidationDiagram.tsx`
+  - [x] `src/viz/diagrams/ChatbotVsAgentDiagram.tsx`
+  - [x] `src/viz/diagrams/ContextWindowBudgetDiagram.tsx`
+  - [x] `src/viz/diagrams/ToolCallAnatomyDiagram.tsx`
+  - [x] `src/viz/diagrams/ToolCallTraceDiagram.tsx`
 - `src/content/docs/agents/agentic-coding-assistants.mdx`
-  - [ ] `src/viz/diagrams/AgenticCodingLoopDiagram.tsx`
-  - [ ] `src/viz/diagrams/CodingAgentSafetyModelDiagram.tsx`
-  - [ ] `src/viz/diagrams/OversightSpectrumDiagram.tsx`
-  - [ ] `src/viz/diagrams/VerificationLayersDiagram.tsx`
+  - [x] `src/viz/diagrams/AgenticCodingLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/CodingAgentSafetyModelDiagram.tsx`
+  - [x] `src/viz/diagrams/OversightSpectrumDiagram.tsx`
+  - [x] `src/viz/diagrams/VerificationLayersDiagram.tsx`
 - `src/content/docs/agents/browser-automation.mdx`
-  - [ ] `src/viz/diagrams/BrowserAgentActionDiagram.tsx`
+  - [x] `src/viz/diagrams/BrowserAgentActionDiagram.tsx`
 - `src/content/docs/agents/computer-use.mdx`
-  - [ ] `src/viz/diagrams/ComputerUseLoopDiagram.tsx`
+  - [x] `src/viz/diagrams/ComputerUseLoopDiagram.tsx`
 - `src/content/docs/agents/context-engineering.mdx`
-  - [ ] `src/viz/diagrams/ContextEngineeringStrategiesDiagram.tsx`
+  - [x] `src/viz/diagrams/ContextEngineeringStrategiesDiagram.tsx`
 - `src/content/docs/agents/loops-and-graphs.mdx`
-  - [ ] `src/viz/diagrams/LoopGraphAnatomyDiagram.tsx`
+  - [x] `src/viz/diagrams/LoopGraphAnatomyDiagram.tsx`
 
 ## Batch 2
 - `src/content/docs/agents/mcp/overview.mdx`

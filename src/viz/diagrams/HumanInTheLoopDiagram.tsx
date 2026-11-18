@@ -1,9 +1,10 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Pattern = 'approval' | 'escalation' | 'correction';
+
+const PATTERNS: Pattern[] = ['approval', 'escalation', 'correction'];
 
 const STAGES: Record<Pattern, { key: string; label: string; isHuman: boolean }[]> = {
   approval: [
@@ -34,7 +35,9 @@ const DESC: Record<Pattern, string> = {
  * to a person and why. */
 export default function HumanInTheLoopDiagram() {
   const t = useVizTokens();
-  const [pattern, setPattern] = useState<Pattern>('approval');
+  const cyc = useAutoCycle(3, 3500);
+  const pattern = PATTERNS[cyc.value];
+  const setPattern = (p: Pattern) => cyc.pick(PATTERNS.indexOf(p));
   const agentColor = getConceptColor(t, 'attention');
   const humanColor = t.accentWarn;
   const stages = STAGES[pattern];

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, FlowDots, line, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 type Stage = 'context' | 'plan' | 'act' | 'verify';
@@ -29,9 +28,13 @@ const TRACE: { stage: Stage; note: string }[] = [
  * doesn't work and the loop has to go back for more context. */
 export default function AgenticCodingLoopDiagram() {
   const t = useVizTokens();
-  const [step, setStep] = useState(0);
-  const [stage, setStage] = useState<Stage>('context');
+  const cyc = useAutoCycle(TRACE.length, 2500);
+  const step = cyc.value;
   const current = TRACE[step];
+  const stage = current.stage;
+  const setStepAndStage = (i: number) => {
+    cyc.pick(i);
+  };
   const color = getConceptColor(t, 'attention');
   const stageOrder: Stage[] = ['context', 'plan', 'act', 'verify'];
 
@@ -47,9 +50,7 @@ export default function AgenticCodingLoopDiagram() {
         label="Trace step"
         value={step}
         onChange={(v) => {
-          const i = v as number;
-          setStep(i);
-          setStage(TRACE[i].stage);
+          setStepAndStage(v as number);
         }}
         options={TRACE.map((_, i) => ({ value: i, label: `${i + 1}` }))}
       />
@@ -61,9 +62,8 @@ export default function AgenticCodingLoopDiagram() {
             const y = cy + r * Math.sin(a);
             const isActive = s === stage;
             const selectStage = () => {
-              setStage(s);
               const idx = TRACE.findIndex((tr) => tr.stage === s);
-              if (idx >= 0) setStep(idx);
+              if (idx >= 0) setStepAndStage(idx);
             };
             return (
               <g
@@ -96,7 +96,12 @@ export default function AgenticCodingLoopDiagram() {
             const y1 = cy + (r - 30) * Math.sin(a1);
             const x2 = cx + (r - 30) * Math.cos(a2);
             const y2 = cy + (r - 30) * Math.sin(a2);
-            return <line key={s} x1={x1} y1={y1} x2={x2} y2={y2} stroke={t.textMuted} strokeWidth={1} markerEnd="url(#acl-arrow)" />;
+            return (
+              <g key={s}>
+                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={t.textMuted} strokeWidth={1} markerEnd="url(#acl-arrow)" />
+                <FlowDots d={line(x1, y1, x2, y2)} color={color} dur={2.4} count={1} delay={i * 0.6} />
+              </g>
+            );
           })}
           <defs>
             <marker id="acl-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">

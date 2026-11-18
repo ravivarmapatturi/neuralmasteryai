@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const STRATEGIES = [
@@ -36,15 +35,16 @@ const STRATEGIES = [
  * for the concrete techniques underneath it. */
 export default function ContextEngineeringStrategiesDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('compress');
+  const cyc = useAutoCycle(STRATEGIES.length, 3000, 2);
+  const setActive = (k: string) => cyc.pick(STRATEGIES.findIndex((s) => s.key === k));
   const color = getConceptColor(t, 'attention');
-  const info = STRATEGIES.find((s) => s.key === active)!;
+  const info = STRATEGIES[cyc.value];
 
   return (
     <VisualizationContainer footer={info.detail}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {STRATEGIES.map((s) => {
-          const isActive = active === s.key;
+        {STRATEGIES.map((s, i) => {
+          const isActive = cyc.value === i;
           return (
             <div
               key={s.key}

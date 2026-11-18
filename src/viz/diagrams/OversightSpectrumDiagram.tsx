@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, Pulse, useAutoCycle } from '../primitives';
 import { getConceptColor } from './diagramSystem';
 
 const POINTS = [
@@ -30,9 +29,11 @@ const POINTS = [
  * reversible and contained the blast radius actually is. */
 export default function OversightSpectrumDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('spec-driven');
+  const cyc = useAutoCycle(POINTS.length, 3000, 1);
+  const selected = POINTS[cyc.value].key;
+  const setSelected = (k: string) => cyc.pick(POINTS.findIndex((p) => p.key === k));
   const color = getConceptColor(t, 'attention');
-  const active = POINTS.find((p) => p.key === selected)!;
+  const active = POINTS[cyc.value];
   const width = 420;
   const trackY = 50;
   const toX = (pos: number) => 30 + (pos / 100) * (width - 60);
@@ -61,6 +62,7 @@ export default function OversightSpectrumDiagram() {
               style={{ cursor: 'pointer' }}
             >
               <circle cx={x} cy={trackY} r={isActive ? 10 : 7} fill={isActive ? color : t.surfaceAlt} stroke={color} strokeWidth={2} />
+              {isActive && <Pulse cx={x} cy={trackY} r={10} color={color} dur={2} />}
               <text x={x} y={trackY - 18} textAnchor="middle" fontSize={9.5} fontWeight={isActive ? 700 : 500} fill={isActive ? color : t.textSecondary}>
                 {p.label}
               </text>

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const FIELDS = [
@@ -16,22 +15,22 @@ const FIELDS = [
  * this to judge fit, it doesn't type-check against it. */
 export default function AgentCardDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState('skills');
+  const cyc = useAutoCycle(FIELDS.length, 2500, 1);
   const color = getConceptColor(t, 'key');
-  const active = FIELDS.find((f) => f.key === selected)!;
+  const active = FIELDS[cyc.value];
 
   return (
     <VisualizationContainer footer={active.desc}>
       <div style={{ background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 8, padding: '0.9rem 1rem', fontFamily: 'monospace', fontSize: 12 }}>
         <div style={{ color: t.textMuted }}>{'{'}</div>
-        {FIELDS.map((f) => (
+        {FIELDS.map((f, i) => (
           <div
             key={f.key}
-            onClick={() => setSelected(f.key)}
-            onMouseEnter={() => setSelected(f.key)}
-            style={{ paddingLeft: 16, cursor: 'pointer', padding: '4px 0 4px 16px', background: selected === f.key ? `${color}18` : 'transparent', borderRadius: 4 }}
+            onClick={() => cyc.pick(i)}
+            onMouseEnter={() => cyc.pick(i)}
+            style={{ paddingLeft: 16, cursor: 'pointer', padding: '4px 0 4px 16px', background: cyc.value === i ? `${color}18` : 'transparent', borderRadius: 4 }}
           >
-            <span style={{ color: selected === f.key ? color : t.accentSecondary, fontWeight: selected === f.key ? 700 : 400 }}>{f.label}</span>
+            <span style={{ color: cyc.value === i ? color : t.accentSecondary, fontWeight: cyc.value === i ? 700 : 400 }}>{f.label}</span>
             <span style={{ color: t.textMuted }}>: </span>
             <span style={{ color: t.textSecondary }}>{f.value}</span>
           </div>

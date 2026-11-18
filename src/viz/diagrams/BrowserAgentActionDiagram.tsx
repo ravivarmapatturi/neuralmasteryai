@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton, ControlRow } from '../primitives';
+import { VisualizationContainer, VizButton, ControlRow, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 interface Element {
@@ -35,13 +35,31 @@ const STAGES: { id: StageId; label: string }[] = [
  * the real mechanism, not a screenshot-based approximation of it. */
 export default function BrowserAgentActionDiagram() {
   const t = useVizTokens();
+  const reduced = usePrefersReducedMotion();
   const [stageIndex, setStageIndex] = useState(0);
   const [chosen, setChosen] = useState<number | null>(null);
+  const [auto, setAuto] = useState(true);
   const color = getConceptColor(t, 'attention');
 
   const stage = STAGES[stageIndex].id;
 
+  useEffect(() => {
+    if (reduced || !auto) return;
+    const timer = window.setInterval(() => {
+      setStageIndex((prev) => {
+        if (prev < STAGES.length - 1) {
+          if (prev === 1) setChosen(3);
+          return prev + 1;
+        }
+        setChosen(null);
+        return 0;
+      });
+    }, 2200);
+    return () => window.clearInterval(timer);
+  }, [reduced, auto]);
+
   const step = () => {
+    setAuto(false);
     if (stage === 'decide') {
       setChosen(3); // the model "chooses" the cheaper Delta result
     }
@@ -49,6 +67,7 @@ export default function BrowserAgentActionDiagram() {
   };
 
   const reset = () => {
+    setAuto(false);
     setStageIndex(0);
     setChosen(null);
   };
@@ -62,10 +81,12 @@ export default function BrowserAgentActionDiagram() {
 
   return (
     <VisualizationContainer footer={footerByStage[stage]} title="Browser agent DOM-extraction action loop">
-      <ControlRow>
-        <VizButton onClick={step} disabled={stageIndex === STAGES.length - 1}>Step</VizButton>
-        <VizButton variant="secondary" onClick={reset}>Reset</VizButton>
-      </ControlRow>
+      <div onPointerDown={() => setAuto(false)}>
+        <ControlRow>
+          <VizButton onClick={step} disabled={stageIndex === STAGES.length - 1}>Step</VizButton>
+          <VizButton variant="secondary" onClick={reset}>Reset</VizButton>
+        </ControlRow>
+      </div>
 
       <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
         {STAGES.map((s, i) => (

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, FlowDots, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -14,7 +13,10 @@ type Mode = 'chatbot' | 'agent';
  * before ever producing a final answer. */
 export default function ChatbotVsAgentDiagram() {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('agent');
+  const MODES: Mode[] = ['chatbot', 'agent'];
+  const cyc = useAutoCycle(2, 4000, 1);
+  const mode = MODES[cyc.value];
+  const setMode = (m: Mode) => cyc.pick(MODES.indexOf(m));
   const color = mode === 'agent' ? getConceptColor(t, 'attention') : t.textMuted;
   const width = 560;
   const height = 150;
@@ -38,6 +40,7 @@ export default function ChatbotVsAgentDiagram() {
         {mode === 'chatbot' ? (
           <>
             <SketchArrow points={[[255, 73], [310, 73]]} color={color} strokeWidth={2} id="cva-arrow-2" />
+            <FlowDots d={line(110, 73, 310, 73)} color={color} dur={2.0} count={1} />
             <rect x={315} y={55} width={90} height={36} rx={7} fill={t.surfaceAlt} stroke="none" />
             <SketchRect x={315} y={55} width={90} height={36} color={t.textMuted} strokeWidth={1.5} id="cva-output" />
             <text x={360} y={77} textAnchor="middle" fontSize={11} fontFamily={HAND_FONT} fill={t.textSecondary}>Output</text>
@@ -47,9 +50,11 @@ export default function ChatbotVsAgentDiagram() {
           <>
             {/* Forward arrow: LLM decides to call a tool */}
             <SketchArrow points={[[255, 73], [292, 73]]} color={color} strokeWidth={2} id="cva-arrow-to-tool" />
+            <FlowDots d={line(255, 73, 292, 73)} color={color} dur={2.4} count={1} />
 
             {/* Loopback arch: tool observation fed back to LLM, with label placed safely above the curve */}
             <SketchArrow points={[[345, 53], [315, 26], [245, 26], [205, 53]]} color={color} strokeWidth={2} id="cva-loop" />
+            <FlowDots d="M 345,53 C 315,26 245,26 205,53" color={color} dur={2.4} count={1} delay={0.8} />
             <text x={280} y={15} textAnchor="middle" fontSize={9} fontWeight={600} fontFamily={HAND_FONT} fill={color}>loop, N times</text>
 
             {/* Tool Execution box */}
@@ -60,6 +65,7 @@ export default function ChatbotVsAgentDiagram() {
 
             {/* Final Answer branch */}
             <SketchArrow points={[[390, 73], [435, 73]]} color={color} strokeWidth={2} id="cva-arrow-3" />
+            <FlowDots d={line(390, 73, 435, 73)} color={color} dur={2.4} count={1} delay={1.8} />
             <rect x={440} y={55} width={100} height={36} rx={7} fill={t.surfaceAlt} stroke="none" />
             <SketchRect x={440} y={55} width={100} height={36} color={t.textMuted} strokeWidth={1.5} id="cva-final" />
             <text x={490} y={77} textAnchor="middle" fontSize={10.5} fontFamily={HAND_FONT} fill={t.textSecondary}>Final answer</text>

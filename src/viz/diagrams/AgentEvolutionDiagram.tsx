@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, FlowDots, PulseRect, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const STAGES = [
@@ -17,7 +16,9 @@ const STAGES = [
  * a stage to read what it added and what it still couldn't do. */
 export default function AgentEvolutionDiagram() {
   const t = useVizTokens();
-  const [selected, setSelected] = useState(4);
+  const cyc = useAutoCycle(STAGES.length, 3000, 4);
+  const selected = cyc.value;
+  const setSelected = cyc.pick;
   const width = 640;
   const height = 130;
   const nodeW = (width - 40) / STAGES.length;
@@ -36,11 +37,16 @@ export default function AgentEvolutionDiagram() {
           const isSelected = selected === i;
           const isLast = i === STAGES.length - 1;
           const color = isLast ? t.accentPrimary : t.accentSecondary;
+          const prevX = 20 + (i - 1) * nodeW + nodeW / 2;
           return (
             <g key={s.name}>
               {i > 0 && (
-                <line x1={20 + (i - 1) * nodeW + nodeW / 2 + 46} y1={y} x2={x - 46} y2={y} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#aev-arrow)" />
+                <>
+                  <line x1={prevX + 46} y1={y} x2={x - 46} y2={y} stroke={t.textMuted} strokeWidth={1.5} markerEnd="url(#aev-arrow)" />
+                  <FlowDots d={line(prevX + 46, y, x - 46, y)} color={t.accentSecondary} dur={3.2} delay={(i - 1) * 0.7} count={1} />
+                </>
               )}
+              <PulseRect x={x - 46} y={y - 20} w={92} h={40} color={color} blink dur={3.2} delay={(i - 1) * 0.7 + 0.5} />
               <g
                 onClick={() => setSelected(i)}
                 onMouseEnter={() => setSelected(i)}

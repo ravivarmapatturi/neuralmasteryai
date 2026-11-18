@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider } from '../primitives';
+import { VisualizationContainer, Slider, PulseRect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const WINDOW_SIZE = 100; // in "units", not real tokens -- illustrative budget
@@ -18,7 +17,9 @@ const SEGMENTS = [
  * strategy instead of just appending forever. */
 export default function ContextWindowBudgetDiagram() {
   const t = useVizTokens();
-  const [turns, setTurns] = useState(1);
+  const cyc = useAutoCycle(5, 2200, 0);
+  const turns = cyc.value + 1;
+  const setTurns = (val: number) => cyc.pick(val - 1);
   const scaledSegments = SEGMENTS.map((s) => ({ ...s, size: s.size * (0.4 + turns * 0.3) }));
   const total = scaledSegments.reduce((a, s) => a + s.size, 0);
   const overflow = total > WINDOW_SIZE;
@@ -35,6 +36,7 @@ export default function ContextWindowBudgetDiagram() {
       <Slider label={`conversation turns so far = ${turns}`} min={1} max={5} step={1} value={turns} onChange={setTurns} />
       <svg width="100%" viewBox={`0 0 ${width} 110`} style={{ display: 'block', marginTop: 8 }}>
         <rect x={barX} y={barY} width={barW} height={barH} rx={6} fill="none" stroke={t.textMuted} strokeWidth={1.5} strokeDasharray={overflow ? '4 3' : undefined} />
+        {overflow && <PulseRect x={barX} y={barY} w={barW} h={barH} color={t.accentDanger} blink dur={1.6} />}
         <text x={barX} y={barY - 8} fontSize={9} fill={t.textMuted}>context window ({WINDOW_SIZE} units)</text>
         {scaledSegments.map((s) => {
           const color = getConceptColor(t, s.color);

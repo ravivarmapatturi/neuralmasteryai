@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const PARTS = [
@@ -14,24 +13,25 @@ const PARTS = [
  * way for the calling application to execute it. */
 export default function ToolCallAnatomyDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<'name' | 'args' | null>(null);
+  const cyc = useAutoCycle(2, 2600);
+  const active = cyc.value === 0 ? 'name' : 'args';
   const color = getConceptColor(t, 'attention');
   const nameColor = getConceptColor(t, 'query');
   const argsColor = getConceptColor(t, 'value');
 
   return (
-    <VisualizationContainer footer={active ? PARTS.find((p) => p.key === active)!.desc : 'Click a part of the call below.'}>
+    <VisualizationContainer footer={PARTS.find((p) => p.key === active)!.desc}>
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
         <div style={{ padding: '10px 14px', borderRadius: 8, background: t.surfaceAlt, border: `1.5px solid ${t.border}`, fontSize: 11, fontFamily: 'monospace', color: t.textSecondary }}>
           "What's the weather in Tokyo?"
         </div>
         <div style={{ fontSize: 16, color: t.textMuted }}>→</div>
         <div style={{ padding: '10px 14px', borderRadius: 8, background: `${color}18`, border: `1.5px solid ${color}`, fontFamily: 'monospace', fontSize: 11 }}>
-          <span onMouseEnter={() => setActive('name')} onMouseLeave={() => setActive(null)} style={{ cursor: 'pointer', color: active === 'name' ? nameColor : t.textSecondary, fontWeight: active === 'name' ? 700 : 400 }}>
+          <span onClick={() => cyc.pick(0)} onMouseEnter={() => cyc.pick(0)} style={{ cursor: 'pointer', color: active === 'name' ? nameColor : t.textSecondary, fontWeight: active === 'name' ? 700 : 400 }}>
             get_weather
           </span>
           <span style={{ color: t.textMuted }}>(</span>
-          <span onMouseEnter={() => setActive('args')} onMouseLeave={() => setActive(null)} style={{ cursor: 'pointer', color: active === 'args' ? argsColor : t.textSecondary, fontWeight: active === 'args' ? 700 : 400 }}>
+          <span onClick={() => cyc.pick(1)} onMouseEnter={() => cyc.pick(1)} style={{ cursor: 'pointer', color: active === 'args' ? argsColor : t.textSecondary, fontWeight: active === 'args' ? 700 : 400 }}>
             city="Tokyo", unit="celsius"
           </span>
           <span style={{ color: t.textMuted }}>)</span>

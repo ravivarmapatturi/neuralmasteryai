@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton, ControlRow } from '../primitives';
+import { VisualizationContainer, VizButton, ControlRow, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import SketchBox from '../../components/notebook/SketchBox';
 
@@ -45,9 +45,11 @@ const ICON: Record<ActionKind, string> = {
  * routine UI actions and "consequential" ones. */
 export default function ComputerUseLoopDiagram() {
   const t = useVizTokens();
+  const reduced = usePrefersReducedMotion();
   const [index, setIndex] = useState(0);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [confirmed, setConfirmed] = useState<boolean[]>(new Array(STEPS.length).fill(false));
+  const [auto, setAuto] = useState(true);
 
   const color = getConceptColor(t, 'attention');
   const step = STEPS[index];
@@ -75,6 +77,22 @@ export default function ComputerUseLoopDiagram() {
     setConfirmed(new Array(STEPS.length).fill(false));
   };
 
+  useEffect(() => {
+    if (reduced || !auto) return;
+    const timer = window.setInterval(() => {
+      if (awaitingConfirmation) {
+        confirm();
+        return;
+      }
+      if (atEnd) {
+        reset();
+        return;
+      }
+      advance();
+    }, 2200);
+    return () => window.clearInterval(timer);
+  }, [reduced, auto, awaitingConfirmation, atEnd, index, confirmed]);
+
   let footer: string;
   if (awaitingConfirmation) {
     footer = `Paused: "${step.label}" is flagged consequential -- the loop will not execute it until a human confirms. This is Anthropic's own documented mitigation, not an assumption this diagram is making up.`;
@@ -86,14 +104,16 @@ export default function ComputerUseLoopDiagram() {
 
   return (
     <VisualizationContainer footer={footer} title="Computer-use agent loop with consequential-action confirmation">
-      <ControlRow>
-        {awaitingConfirmation ? (
-          <VizButton onClick={confirm}>Confirm (human-in-the-loop)</VizButton>
-        ) : (
-          <VizButton onClick={advance} disabled={atEnd}>Step</VizButton>
-        )}
-        <VizButton variant="secondary" onClick={reset}>Reset</VizButton>
-      </ControlRow>
+      <div onPointerDown={() => setAuto(false)}>
+        <ControlRow>
+          {awaitingConfirmation ? (
+            <VizButton onClick={() => { setAuto(false); confirm(); }}>Confirm (human-in-the-loop)</VizButton>
+          ) : (
+            <VizButton onClick={() => { setAuto(false); advance(); }} disabled={atEnd}>Step</VizButton>
+          )}
+          <VizButton variant="secondary" onClick={() => { setAuto(false); reset(); }}>Reset</VizButton>
+        </ControlRow>
+      </div>
 
       <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
         {STEPS.map((s, i) => {

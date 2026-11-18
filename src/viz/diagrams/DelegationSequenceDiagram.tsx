@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, FlowDots, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const MESSAGES = [
@@ -16,7 +15,9 @@ const MESSAGES = [
  * messages over time, not one blocking call. Step through it. */
 export default function DelegationSequenceDiagram() {
   const t = useVizTokens();
-  const [step, setStep] = useState(2);
+  const cyc = useAutoCycle(MESSAGES.length, 2400, 2);
+  const step = cyc.value;
+  const setStep = cyc.pick;
   const colorA = getConceptColor(t, 'query');
   const colorB = getConceptColor(t, 'key');
 
@@ -25,6 +26,12 @@ export default function DelegationSequenceDiagram() {
   const height = 30 + MESSAGES.length * rowH + 10;
   const ax = 70;
   const bx = width - 70;
+
+  const activeMsg = MESSAGES[step];
+  const activeFromX = activeMsg.from === 'A' ? ax : bx;
+  const activeToX = activeMsg.from === 'A' ? bx : ax;
+  const activeY = 30 + step * rowH + 15;
+  const activeColor = activeMsg.from === 'A' ? colorA : colorB;
 
   return (
     <VisualizationContainer footer={MESSAGES[step].label}>
@@ -55,10 +62,11 @@ export default function DelegationSequenceDiagram() {
             </g>
           );
         })}
+        <FlowDots key={step} d={line(activeFromX, activeY, activeToX, activeY)} color={activeColor} dur={1.6} count={1} />
       </svg>
       <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 6 }}>
-        <button type="button" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, border: `1px solid ${t.border}`, background: 'transparent', color: t.textSecondary, cursor: step === 0 ? 'default' : 'pointer' }}>← prev</button>
-        <button type="button" onClick={() => setStep((s) => Math.min(MESSAGES.length - 1, s + 1))} disabled={step === MESSAGES.length - 1} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, border: `1px solid ${t.border}`, background: 'transparent', color: t.textSecondary, cursor: step === MESSAGES.length - 1 ? 'default' : 'pointer' }}>next →</button>
+        <button type="button" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, border: `1px solid ${t.border}`, background: 'transparent', color: t.textSecondary, cursor: step === 0 ? 'default' : 'pointer' }}>← prev</button>
+        <button type="button" onClick={() => setStep(Math.min(MESSAGES.length - 1, step + 1))} disabled={step === MESSAGES.length - 1} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, border: `1px solid ${t.border}`, background: 'transparent', color: t.textSecondary, cursor: step === MESSAGES.length - 1 ? 'default' : 'pointer' }}>next →</button>
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 4 }}>
         Step {step + 1} of {MESSAGES.length}.

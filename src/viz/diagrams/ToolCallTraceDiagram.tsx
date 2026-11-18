@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VizButton } from '../primitives';
+import { VisualizationContainer, VizButton, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 const TRACE = [
@@ -17,7 +16,9 @@ const TRACE = [
  * Step through it turn by turn. */
 export default function ToolCallTraceDiagram() {
   const t = useVizTokens();
-  const [step, setStep] = useState(0);
+  const cyc = useAutoCycle(TRACE.length, 2200);
+  const step = cyc.value;
+  const setStep = cyc.pick;
   const roleColor = (r: string) => (r === 'user' ? t.textMuted : r === 'model' ? getConceptColor(t, 'attention') : getConceptColor(t, 'value'));
 
   return (
@@ -31,8 +32,8 @@ export default function ToolCallTraceDiagram() {
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
-        <VizButton onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>← prev</VizButton>
-        <VizButton onClick={() => setStep((s) => Math.min(TRACE.length - 1, s + 1))} disabled={step === TRACE.length - 1}>next →</VizButton>
+        <VizButton onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>← prev</VizButton>
+        <VizButton onClick={() => setStep(Math.min(TRACE.length - 1, step + 1))} disabled={step === TRACE.length - 1}>next →</VizButton>
       </div>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 6 }}>
         Turn {step + 1} of {TRACE.length}

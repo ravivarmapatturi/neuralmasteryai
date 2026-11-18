@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, FlowDots, PulseRect, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 /** MCP is usually deployed by one team (client + server together). A2A has
@@ -9,7 +8,9 @@ import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
  * either side to see what stays hidden vs. what's shared via A2A. */
 export default function CrossOrgInteropDiagram() {
   const t = useVizTokens();
-  const [side, setSide] = useState<'a' | 'b'>('a');
+  const cyc = useAutoCycle(2, 3500);
+  const side = cyc.value === 0 ? 'a' : 'b';
+  const setSide = (s: 'a' | 'b') => cyc.pick(s === 'a' ? 0 : 1);
   const colorA = getConceptColor(t, 'query');
   const colorB = getConceptColor(t, 'key');
   const width = 560;
@@ -41,13 +42,19 @@ export default function CrossOrgInteropDiagram() {
           <text x={445} y={80} textAnchor="middle" fontSize={9} fill={t.textMuted}>Model: in-house</text>
           <text x={445} y={96} textAnchor="middle" fontSize={9} fill={t.textMuted}>(all private)</text>
         </g>
+
+        <PulseRect x={350} y={20} w={190} h={100} color={colorB} blink dur={3} delay={1.4} />
+        <PulseRect x={20} y={20} w={190} h={100} color={colorA} blink dur={3} delay={2.9} />
+
         {/* Forward task request line: stops cleanly at Org B left edge (x=350) */}
         <line x1={210} y1={65} x2={348} y2={65} stroke={t.accentPrimary} strokeWidth={2} markerEnd="url(#coi-arrow)" />
+        <FlowDots d={line(210, 65, 348, 65)} color={colorA} dur={3} count={1} />
         <rect x={245} y={54} width={70} height={14} rx={3} fill={t.surface} />
         <text x={280} y={64} textAnchor="middle" fontSize={8} fontWeight={700} fill={t.accentPrimary}>Task Request</text>
 
         {/* Reverse status / response line: stops cleanly at Org A right edge (x=210) */}
         <line x1={350} y1={90} x2={212} y2={90} stroke={t.accentPrimary} strokeWidth={2} strokeDasharray="3 2" markerEnd="url(#coi-arrow)" />
+        <FlowDots d={line(350, 90, 212, 90)} color={colorB} dur={3} count={1} delay={1.5} />
         <rect x={245} y={81} width={70} height={14} rx={3} fill={t.surface} />
         <text x={280} y={91} textAnchor="middle" fontSize={8} fontWeight={700} fill={t.accentPrimary}>Task Result</text>
 

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 const LAYERS = [
@@ -41,10 +40,12 @@ const LAYERS = [
  * exactly what it catches and where it stops. */
 export default function VerificationLayersDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState('spec');
+  const cyc = useAutoCycle(LAYERS.length, 2800, 1);
+  const active = LAYERS[cyc.value].key;
+  const setActive = (k: string) => cyc.pick(LAYERS.findIndex((l) => l.key === k));
   const color = t.accentPrimary;
   const humanColor = t.accentWarn;
-  const info = LAYERS.find((l) => l.key === active)!;
+  const info = LAYERS[cyc.value];
 
   return (
     <VisualizationContainer footer={info.desc}>

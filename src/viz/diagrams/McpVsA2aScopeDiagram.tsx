@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, FlowDots, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchEllipse, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -12,7 +11,9 @@ const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
  * shape doesn't fit both. */
 export default function McpVsA2aScopeDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<'mcp' | 'a2a'>('mcp');
+  const cyc = useAutoCycle(2, 3500);
+  const active = cyc.value === 0 ? 'mcp' : 'a2a';
+  const setActive = (k: 'mcp' | 'a2a') => cyc.pick(k === 'mcp' ? 0 : 1);
   const mcpColor = getConceptColor(t, 'query');
   const a2aColor = getConceptColor(t, 'key');
   const width = 480;
@@ -38,6 +39,7 @@ export default function McpVsA2aScopeDiagram() {
           <SketchRect x={toolX - 30} y={10} width={60} height={40} color={mcpColor} strokeWidth={active === 'mcp' ? 2.5 : 1.5} id="m2a-tool" />
           <text x={toolX} y={34} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={mcpColor}>Tool</text>
           <SketchArrow points={[[agentX + 22, 30], [toolX - 32, 30]]} color={mcpColor} strokeWidth={2} id="m2a-arrow-1" />
+          <FlowDots d={line(agentX + 22, 30, toolX - 32, 30)} color={mcpColor} dur={2.0} count={1} />
           <text x={(agentX + toolX) / 2} y={20} textAnchor="middle" fontSize={8} fontFamily={HAND_FONT} fill={mcpColor}>MCP: call, get result</text>
         </g>
 
@@ -50,6 +52,8 @@ export default function McpVsA2aScopeDiagram() {
           <text x={agent2X} y={y + 44} textAnchor="middle" fontSize={9} fontFamily={HAND_FONT} fill={a2aColor}>Agent B</text>
           <SketchArrow points={[[agentX + 22, y + 34], [agent2X - 22, y + 34]]} color={a2aColor} strokeWidth={2} id="m2a-arrow-2" />
           <SketchArrow points={[[agent2X - 22, y + 48], [agentX + 22, y + 48]]} color={a2aColor} strokeWidth={2} id="m2a-arrow-3" />
+          <FlowDots d={line(agentX + 22, y + 34, agent2X - 22, y + 34)} color={a2aColor} dur={2.4} count={1} />
+          <FlowDots d={line(agent2X - 22, y + 48, agentX + 22, y + 48)} color={a2aColor} dur={2.4} count={1} delay={1.2} />
           <text x={(agentX + agent2X) / 2} y={y + 20} textAnchor="middle" fontSize={8} fontFamily={HAND_FONT} fill={a2aColor}>A2A: delegate, clarify, report progress</text>
         </g>
       </svg>

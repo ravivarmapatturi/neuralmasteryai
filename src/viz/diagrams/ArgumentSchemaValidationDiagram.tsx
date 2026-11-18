@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE } from './diagramSystem';
 
 type Schema = 'strict' | 'loose';
@@ -25,7 +24,10 @@ const SCHEMAS: Record<Schema, { def: string; call: string; valid: boolean; note:
  * guessing, and the guess is visibly, concretely wrong here. */
 export default function ArgumentSchemaValidationDiagram() {
   const t = useVizTokens();
-  const [schema, setSchema] = useState<Schema>('strict');
+  const SCHEMAS_LIST: Schema[] = ['strict', 'loose'];
+  const cyc = useAutoCycle(2, 3500);
+  const schema = SCHEMAS_LIST[cyc.value];
+  const setSchema = (s: Schema) => cyc.pick(SCHEMAS_LIST.indexOf(s));
   const s = SCHEMAS[schema];
   const color = s.valid ? t.accentPrimary : t.accentDanger;
 

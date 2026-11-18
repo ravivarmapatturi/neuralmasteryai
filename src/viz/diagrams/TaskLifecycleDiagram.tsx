@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer } from '../primitives';
+import { VisualizationContainer, FlowDots, PulseRect, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 import { SketchArrow, SketchRect } from '../../components/notebook/RoughShape';
 
@@ -20,7 +19,10 @@ const STATES: { key: State; desc: string; label: string; x: number; y: number }[
  * tool call. Click a state for what it means. */
 export default function TaskLifecycleDiagram() {
   const t = useVizTokens();
-  const [active, setActive] = useState<State>('input-required');
+  const cyc = useAutoCycle(STATES.length, 2500, 2);
+  const active = STATES[cyc.value].key;
+  const setActive = (s: State) => cyc.pick(STATES.findIndex((st) => st.key === s));
+  const activeState = STATES[cyc.value];
   const color = getConceptColor(t, 'key');
   const terminalColor = (s: State) => (s === 'completed' ? getConceptColor(t, 'attention') : s === 'failed' ? t.accentDanger : color);
 
@@ -34,15 +36,19 @@ export default function TaskLifecycleDiagram() {
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
         {/* submitted -> working */}
         <SketchArrow points={[[75 + stateW / 2, 75], [235 - stateW / 2 - 2, 75]]} color={t.textMuted} strokeWidth={1.5} arrowhead id="tl-arr-sub" />
+        <FlowDots d={line(75 + stateW / 2, 75, 235 - stateW / 2 - 2, 75)} color={t.textMuted} dur={2.4} count={1} />
 
         {/* working -> input-required */}
         <SketchArrow points={[[255, 75 + stateH / 2], [255, 150 - stateH / 2 - 2]]} color={active === 'input-required' ? color : t.textMuted} strokeWidth={1.5} arrowhead id="tl-arr-need" />
+        <FlowDots d={line(255, 75 + stateH / 2, 255, 150 - stateH / 2 - 2)} color={color} dur={2.4} count={1} delay={0.6} />
 
         {/* input-required -> working (loopback upon clarification) */}
         <SketchArrow points={[[215, 150 - stateH / 2], [215, 75 + stateH / 2 + 2]]} color={active === 'input-required' ? color : t.textMuted} strokeWidth={1.5} arrowhead id="tl-arr-back" />
+        <FlowDots d={line(215, 150 - stateH / 2, 215, 75 + stateH / 2 + 2)} color={color} dur={2.4} count={1} delay={1.8} />
 
         {/* working -> completed */}
         <SketchArrow points={[[235 + stateW / 2, 68], [425 - stateW / 2 - 2, 45]]} color={active === 'completed' ? getConceptColor(t, 'attention') : t.textMuted} strokeWidth={1.5} arrowhead id="tl-arr-comp" />
+        <FlowDots d={line(235 + stateW / 2, 68, 425 - stateW / 2 - 2, 45)} color={getConceptColor(t, 'attention')} dur={2.4} count={1} delay={1.2} />
 
         {/* working -> failed */}
         <SketchArrow points={[[235 + stateW / 2, 82], [425 - stateW / 2 - 2, 105]]} color={active === 'failed' ? t.accentDanger : t.textMuted} strokeWidth={1.5} arrowhead id="tl-arr-fail" />
@@ -62,6 +68,7 @@ export default function TaskLifecycleDiagram() {
             </g>
           );
         })}
+        <PulseRect x={activeState.x - stateW / 2} y={activeState.y - stateH / 2} w={stateW} h={stateH} color={terminalColor(activeState.key)} dur={2} />
       </svg>
       <div style={{ textAlign: 'center', fontSize: DIAGRAM_TYPE.caption.size, color: t.textMuted, marginTop: 4 }}>
         A delegated task branches from working into terminal completed / failed states, or pauses in input-required for clarification.

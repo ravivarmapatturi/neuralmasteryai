@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect } from '../primitives';
+import { VisualizationContainer, PillSelect, FlowDots, line, useAutoCycle } from '../primitives';
 import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
 
 type Pattern = 'hierarchical' | 'peer' | 'blackboard';
@@ -40,7 +39,10 @@ function getPerimeterPoints(
  * flexibility. */
 export default function CoordinationPatternsDiagram() {
   const t = useVizTokens();
-  const [pattern, setPattern] = useState<Pattern>('hierarchical');
+  const PATTERNS: Pattern[] = ['hierarchical', 'peer', 'blackboard'];
+  const cyc = useAutoCycle(3, 4000);
+  const pattern = PATTERNS[cyc.value];
+  const setPattern = (p: Pattern) => cyc.pick(PATTERNS.indexOf(p));
   const color = getConceptColor(t, 'attention');
   const width = 340;
   const height = 220;
@@ -79,16 +81,18 @@ export default function CoordinationPatternsDiagram() {
           agents.map((a, i) => {
             const { startX, startY, endX, endY } = getPerimeterPoints(cx, cy, centerR, a.x, a.y, agentR + 4);
             return (
-              <line
-                key={i}
-                x1={startX}
-                y1={startY}
-                x2={endX}
-                y2={endY}
-                stroke={color}
-                strokeWidth={1.5}
-                markerEnd="url(#coord-arrow)"
-              />
+              <g key={i}>
+                <line
+                  x1={startX}
+                  y1={startY}
+                  x2={endX}
+                  y2={endY}
+                  stroke={color}
+                  strokeWidth={1.5}
+                  markerEnd="url(#coord-arrow)"
+                />
+                <FlowDots d={line(startX, startY, endX, endY)} color={color} dur={2.2} count={1} />
+              </g>
             );
           })}
 
@@ -103,29 +107,34 @@ export default function CoordinationPatternsDiagram() {
                 const offset = 18;
                 const midX = cx + offset * Math.cos(midAngle);
                 const midY = cy + offset * Math.sin(midAngle);
+                const pathD = `M ${a.x},${a.y} Q ${midX},${midY} ${b.x},${b.y}`;
                 return (
-                  <path
-                    key={`${i}-${actualJ}`}
-                    d={`M ${a.x},${a.y} Q ${midX},${midY} ${b.x},${b.y}`}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth={1.2}
-                    opacity={0.65}
-                  />
+                  <g key={`${i}-${actualJ}`}>
+                    <path
+                      d={pathD}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth={1.2}
+                      opacity={0.65}
+                    />
+                    <FlowDots d={pathD} color={color} dur={2.6} count={1} delay={i * 0.4} />
+                  </g>
                 );
               }
               const { startX, startY, endX, endY } = getPerimeterPoints(a.x, a.y, agentR, b.x, b.y, agentR);
               return (
-                <line
-                  key={`${i}-${actualJ}`}
-                  x1={startX}
-                  y1={startY}
-                  x2={endX}
-                  y2={endY}
-                  stroke={color}
-                  strokeWidth={1.2}
-                  opacity={0.65}
-                />
+                <g key={`${i}-${actualJ}`}>
+                  <line
+                    x1={startX}
+                    y1={startY}
+                    x2={endX}
+                    y2={endY}
+                    stroke={color}
+                    strokeWidth={1.2}
+                    opacity={0.65}
+                  />
+                  <FlowDots d={line(startX, startY, endX, endY)} color={color} dur={2.4} count={1} delay={i * 0.5} />
+                </g>
               );
             })
           )}
@@ -134,17 +143,19 @@ export default function CoordinationPatternsDiagram() {
           agents.map((a, i) => {
             const { startX, startY, endX, endY } = getPerimeterPoints(a.x, a.y, agentR, cx, cy, 26);
             return (
-              <line
-                key={i}
-                x1={startX}
-                y1={startY}
-                x2={endX}
-                y2={endY}
-                stroke={color}
-                strokeWidth={1.3}
-                strokeDasharray="3 2"
-                opacity={0.7}
-              />
+              <g key={i}>
+                <line
+                  x1={startX}
+                  y1={startY}
+                  x2={endX}
+                  y2={endY}
+                  stroke={color}
+                  strokeWidth={1.3}
+                  strokeDasharray="3 2"
+                  opacity={0.7}
+                />
+                <FlowDots d={i % 2 === 0 ? line(startX, startY, endX, endY) : line(endX, endY, startX, startY)} color={color} dur={2.4} count={1} delay={i * 0.5} />
+              </g>
             );
           })}
 
