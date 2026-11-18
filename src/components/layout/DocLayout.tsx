@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useLocation } from 'react-router-dom';
 import ErrorBoundary from '../ErrorBoundary';
 import Navbar from './Navbar';
@@ -17,6 +17,7 @@ import { getPageByRoute } from '../../lib/contentTree';
 import { useDocumentTitle } from '../../lib/useDocumentTitle';
 import { useDocumentMeta } from '../../lib/useDocumentMeta';
 import { sectionBreadcrumb } from '../../data/sectionMeta';
+const TeachMode = lazy(() => import('../teach/TeachMode'));
 
 const SIDEBAR_COLLAPSE_KEY = 'neural-mastery-sidebar-collapsed';
 const TOC_COLLAPSE_KEY = 'neural-mastery-toc-collapsed';
@@ -144,6 +145,7 @@ export default function DocLayout() {
           <FeedbackBox key={page.route} route={page.route} />
           <MarkUnderstoodButton />
           <LoveNudge route={page.route} />
+          <Suspense fallback={null}><TeachMode key={page.route} route={page.route} /></Suspense>
           <PrevNext route={page.route} />
         </main>
         <div className="nm-toc-wrap" style={{ position: 'relative', flexShrink: 0 }}>
