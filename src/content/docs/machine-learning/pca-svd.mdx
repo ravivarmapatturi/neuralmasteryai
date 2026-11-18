@@ -9,6 +9,9 @@ import screeDark from './img/pca-scree.png';
 import PcaProjectionDiagram from '../../../viz/diagrams/PcaProjectionDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # PCA, Kernel PCA & Truncated SVD
 
@@ -21,6 +24,21 @@ Picture a swarm of bees flying along a straight country road. To tell a friend w
 PCA finds that road automatically: the direction along which the points spread out the most, then the next most spread-out direction at right angles to it, and so on. Keep the first few, drop the rest, and you've described the data with fewer numbers while losing as little as possible. Everything below is that idea made exact.
 
 </ELI5>
+
+## Why it exists
+
+Many measurements repeat the same underlying signal, so carrying every feature wastes memory and can make later models harder to fit. PCA keeps the directions that preserve the most variance; for sparse text, truncated SVD avoids centring, which would turn 100,000 stored values into 100,000,000 nonzeros.
+
+## The big picture
+
+<PenFlow title="Choose a representation for the data" ariaLabel="PCA and SVD dimensionality reduction steps" rows={[
+  { steps: { title: 'Prepare features', lines: ['Centre dense data; scale unlike units'], tone: 'blue' } },
+  { steps: { title: 'Find directions', lines: ['Eigenvectors or singular vectors'], tone: 'purple' } },
+  { steps: { title: 'Keep k coordinates', lines: ['Trade storage for reconstruction error'], tone: 'orange' } },
+  { steps: { title: 'Check the task', lines: ['High variance is not always useful'], tone: 'green' } }
+]} caption="PCA compresses centred data; truncated SVD keeps sparse matrices sparse by skipping centring." />
+
+<Worksheet title="Pick components from measured variance" ariaLabel="PCA variance and reconstruction results from printed output" stages={[{ tag: 'Digits data', color: 'yellow', note: 'Each retained component reduces reconstruction error by the discarded variance.', grid: { head: ['Components k', 'Error', 'Variance kept'], rows: [{ label: '5', cells: ['547.02', '54.5%'] }, { label: '10', cells: ['314.69', '73.8%'] }, { label: '20', cells: ['127.06', '89.4%'] }, { label: '40', cells: ['14.18', '98.8%'] }] } }, { tag: 'Scaling check', color: 'blue', note: 'Wine feature units change which direction appears largest.', grid: { head: ['Input', 'First component share'], rows: [{ label: 'Raw units', cells: ['99.8%'] }, { label: 'Standardized', cells: ['36.2%'] }] } }, { tag: 'Nonlinear ring', color: 'green', note: 'A polynomial kernel exposes a separating direction linear PCA misses.', grid: { head: ['Representation', 'Best single-component accuracy'], rows: [{ label: 'Linear PCA', cells: ['0.487'] }, { label: 'Kernel PCA', cells: ['1.000'] }] } }]} />
 
 ## 1. The Direction of Greatest Variance
 
@@ -138,7 +156,11 @@ PCA centres the data first. For a **sparse** matrix, such as a document-term mat
 
 **Truncated SVD** skips centring and computes the top $k$ singular vectors of the raw matrix directly, with sparse-aware randomized or iterative solvers. Without centring, the first component mostly captures the mean, and the rest are similar to PCA's. On text this is called **latent semantic analysis** (LSA; Deerwester et al., 1990): words that occur in similar documents end up with similar coordinates, so documents can be compared by topic even when they share few exact words. It's scikit-learn's `TruncatedSVD`, and the standard dimensionality reduction for TF-IDF features.
 
-## 6. Minimal Implementation
+## Worked example
+
+On the 1,797-row digits data, keeping 10 components retains 73.8% of the variance and leaves reconstruction error 314.69. At 40 components, the retained share reaches 98.8% and error falls to 14.18. The identity between error and discarded eigenvalues holds for each printed value.
+
+## Try it yourself
 
 PCA two ways on the 64-pixel digits data, the reconstruction-error identity, the effect of scaling on wine data, kernel PCA on concentric rings, and truncated SVD on a sparse matrix:
 
@@ -193,11 +215,13 @@ svd = TruncatedSVD(50, random_state=0).fit(M)
 print(f"sparse matrix: {M.nnz:,} stored values of {M.shape[0] * M.shape[1]:,}; "
       f"after centring every one of the {M.shape[0] * M.shape[1]:,} would be nonzero")
 print(f"truncated SVD to 50 components: transformed shape {svd.transform(M).shape}")
+
+# Try it: change the component loop to include k = 10 and k = 30; compare retained variance with reconstruction error.
 ```
 
 Output (scikit-learn 1.7):
 
-```
+```output
 top 3 variances, eigenvalues:       [179.01 163.72 141.79]
 top 3 variances, sigma^2/(n-1):     [179.01 163.72 141.79]
 top 3 variances, scikit-learn:      [179.01 163.72 141.79]
@@ -219,7 +243,16 @@ truncated SVD to 50 components: transformed shape (20000, 50)
 - **Variance isn't usefulness (Section 5).** The ring-separating kernel component is the third, not the first.
 - **Truncated SVD keeps sparse data sparse**, reducing 5,000 columns to 50 without ever forming the dense matrix.
 
-## 7. When *Not* to Use PCA
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Scaling features without considering units | A large numeric range can dominate the components; wine raw PC1 explains 99.8% | Standardize when feature units differ and compare both results |
+| Choosing k only by variance | A high-variance direction may not help the target; the ring signal is kernel component 3 | Validate downstream performance or use a task-aware method |
+| Centring sparse matrices | Subtracting means makes every zero nonzero | Use truncated SVD for sparse input |
+| Reading component signs as meaningful | Eigenvectors can flip sign without changing the subspace | Compare directions up to sign |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

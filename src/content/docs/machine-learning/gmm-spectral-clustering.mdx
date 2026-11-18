@@ -7,6 +7,9 @@ description: "Gaussian mixtures derived: the model, the EM algorithm step by ste
 import GmmSoftAssignmentDiagram from '../../../viz/diagrams/GmmSoftAssignmentDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Gaussian Mixture Models & Spectral Clustering
 
@@ -19,6 +22,20 @@ Imagine you hear a recording of several people talking at once in a room, and yo
 Spectral clustering is like mapping friendships at a school. Draw a line between every pair of students who are friends. Groups appear as clumps with many lines inside and few lines between them, whatever shape they have on the playground. The method finds where to cut the fewest friendships to split the school into groups. Everything below is those two ideas made exact.
 
 </ELI5>
+
+## Why it exists
+
+k-means forces round clusters and one hard label per point. A Gaussian mixture models stretched overlapping groups and reports membership probabilities; spectral clustering can separate curved groups when nearby points form a graph with weak links between groups.
+
+## The big picture
+
+<PenFlow title="Fit distributions or cut a neighbour graph" ariaLabel="Gaussian mixture and spectral clustering overview" rows={[
+  { steps: [{ title: 'Represent ambiguity', lines: ['Gaussian components give soft memberships'], tone: 'blue' }, { title: 'Build local links', lines: ['A graph preserves curved neighbourhoods'], tone: 'purple' }] },
+  { steps: [{ title: 'Update or embed', lines: ['EM alternates; Laplacian eigenvectors reshape points'], tone: 'orange' }] },
+  { steps: [{ title: 'Choose groups', lines: ['BIC helps choose mixture size; k-means labels the embedding'], tone: 'green' }] }
+]} caption="Mixtures fit probability bumps; spectral clustering moves connected neighbours into a space k-means can split." />
+
+<Worksheet title="Compare clusters on the printed examples" ariaLabel="GMM and spectral clustering measured results" stages={[{ tag: 'Elliptical groups', color: 'yellow', note: 'The three-component full-covariance mixture improves on round k-means clusters.', grid: { head: ['Method', 'ARI'], rows: [{ label: 'Gaussian mixture', cells: ['0.871'] }, { label: 'k-means', cells: ['0.808'] }] } }, { tag: 'Choose component count', color: 'purple', note: 'The smallest BIC among the tested values is at k = 3.', grid: { head: ['k', 'BIC'], rows: [{ label: '2', cells: ['6814.5'] }, { label: '3', cells: ['6631.1'] }, { label: '4', cells: ['6677.3'] }] } }, { tag: 'Two moons', color: 'green', note: 'Touching neighbourhood graphs weaken the spectral separation.', grid: { head: ['Noise', '2nd eigenvalue', 'ARI ours'], rows: [{ label: '0.06', cells: ['0.0000', '1.000'] }, { label: '0.10', cells: ['0.0012', '0.592'] }] } }]} />
 
 ## 1. The Mixture Model
 
@@ -162,7 +179,11 @@ Spectral methods connect to much of this section. The first few Laplacian eigenv
 | Scales to large $n$ | Best | Good with an index in low dimensions | Moderate | Worst without sparse approximations |
 | Gives a density | No | No | Yes | No |
 
-## 6. Minimal Implementation
+## Worked example
+
+On the sheared three-cluster data, the full-covariance mixture reaches ARI 0.871 versus 0.808 for k-means, and BIC is lowest at three components (6631.1). On clean moons spectral ARI is 1.000; when noise makes the graph nearly connected, the second eigenvalue rises to 0.0012 and ARI falls to 0.592.
+
+## Try it yourself
 
 EM for a full-covariance Gaussian mixture, written from the E- and M-step formulas of Section 2 and started from k-means as scikit-learn does; BIC for $k = 1$ to 6; then spectral clustering from the normalized Laplacian on two half-moons, cleanly separated and touching:
 
@@ -229,11 +250,13 @@ for noise in [0.06, 0.1]:
     km = KMeans(2, n_init=10, random_state=0).fit_predict(Xm)
     print(f"noise {noise}: smallest eigenvalues {np.round(vals[:3], 4)}   ARI spectral ours {adjusted_rand_score(ym, ours):.3f}, "
           f"scikit-learn {adjusted_rand_score(ym, sk):.3f}, k-means {adjusted_rand_score(ym, km):.3f}")
+
+# Try it: change the second moons noise value from 0.1 to 0.06; compare the second eigenvalue and ARI.
 ```
 
 Output (scikit-learn 1.7, SciPy 1.16):
 
-```
+```output
 EM iterations 42, log-likelihood never decreased: True
 mean log-likelihood per point: ours -3.6196, scikit-learn -3.6196
 ARI vs truth: GMM 0.871, k-means 0.808
@@ -252,7 +275,16 @@ noise 0.1: smallest eigenvalues [-0.      0.0012  0.0034]   ARI spectral ours 0.
 - **BIC finds $k$.** Its minimum is at $k = 3$, the number of clusters the data was generated with.
 - **The zero eigenvalues count the components.** With cleanly separated moons, the graph has two pieces, two eigenvalues are zero (printed as $-0$ and $0$ from rounding), and spectral clustering is perfect. With touching moons the second eigenvalue lifts to 0.0012 and accuracy drops: ours 0.592, scikit-learn's 0.408 (it uses a different eigensolver and label-assignment step), both still better than k-means.
 
-## 7. When *Not* to Use These
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Treating GMM assignments as certain labels | Responsibilities may split probability across overlapping components | Keep the probabilities when ambiguity matters |
+| Selecting k by training fit alone | More components can improve likelihood while overfitting | Compare BIC or held-out likelihood |
+| Ignoring covariance singularities | A component can collapse around one point | Regularize covariance and use multiple starts |
+| Assuming spectral clustering always separates curved groups | A few bridge edges can connect the graph | Check graph connectivity and the small eigenvalues |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

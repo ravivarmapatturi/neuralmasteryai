@@ -7,6 +7,9 @@ description: "Association rules derived: support, confidence and lift and what e
 import AssociationRulesDiagram from '../../../viz/diagrams/AssociationRulesDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Association Rule Mining: Apriori & FP-Growth
 
@@ -19,6 +22,23 @@ A shop owner looks through a pile of till receipts and notices that people who b
 Association rule mining finds the first kind of pattern and filters out the second. It counts how often things appear together, compares that with how often they'd appear together by coincidence, and keeps only the combinations that clearly beat coincidence. Everything below is that idea made exact, plus the tricks that make counting fast when a shop sells thousands of things.
 
 </ELI5>
+
+## Why it exists
+
+Stores and services need to find combinations that appear together, but raw frequency can make ordinary popular items look meaningful. In this example, bread appears in about 60% of baskets, so eggs ⇒ bread has confidence 0.614 even though its lift is only 1.02. Lift compares the observed pairing with the rate expected if the two items were independent.
+
+## The big picture
+
+<PenFlow title="From baskets to candidate rules" ariaLabel="Association rule mining from baskets to checked rules" rows={[
+  { steps: { title: 'Count baskets', lines: ['Measure support for itemsets'], tone: 'blue' } },
+  { steps: { title: 'Prune rare sets', lines: ['A rare subset makes every superset rare'], tone: 'purple' } },
+  { steps: { title: 'Generate rules', lines: ['Compute confidence and lift'], tone: 'orange' } },
+  { steps: { title: 'Check on fresh data', lines: ['Thresholds alone create false discoveries'], tone: 'green' } }
+]} caption="Downward closure cuts the search; independent data checks whether the surviving rules mean anything." />
+
+<Worksheet title="Read a rule beyond confidence" ariaLabel="Association rule results from the printed example" stages={[{ tag: 'Measured rules', color: 'yellow', note: 'Confidence alone hides the difference between a planted pattern and a popular item.', grid: { head: ['Rule', 'Support', 'Confidence', 'Lift'], rows: [{ label: 'pasta + sauce ⇒ cheese', cells: ['0.072', '0.761', '4.68'] }, { label: 'eggs ⇒ bread', cells: ['0.178', '0.614', '1.02'] }, { label: 'coffee ⇒ sugar', cells: ['0.058', '0.392', '2.76'] }] } }, { tag: 'Search check', color: 'green', note: 'Both algorithms find the same frequent sets; a null dataset still produces threshold-passing rules.', grid: { head: ['Result', 'Printed value'], rows: [{ label: 'Apriori and FP-Growth itemsets', cells: ['87 each'] }, { label: 'Independent-data false rules', cells: ['40'] }] } }]} />
+
+The pasta rule has lift 4.68, while eggs ⇒ bread has lift 1.02 because bread is already common. In the independent 500-basket check, 40 rules still pass the thresholds by chance.
 
 ## 1. Support, Confidence and Lift
 
@@ -134,7 +154,11 @@ Algorithms such as CHARM and FPMax mine these directly. When order matters (page
 
 </GoDeeper>
 
-## 6. Minimal Implementation
+## Worked example
+
+Use the three measured rules above: pasta and sauce occur with cheese in 7.2% of baskets, and 76.1% of pasta-and-sauce baskets contain cheese. Their lift is 4.68. Eggs ⇒ bread has a similar confidence, 0.614, but lift 1.02, so it adds almost no information beyond bread's popularity.
+
+## Try it yourself
 
 5,000 synthetic baskets over 20 items, with bread in about 60% of baskets, two planted patterns (pasta night: pasta, sauce and usually cheese; and coffee with sugar), and everything else independent. Apriori and FP-Growth from scratch, the rule measures, and the independent-data experiment of Section 5:
 
@@ -230,11 +254,13 @@ for s in freq:
             if freq[s] / sx >= 0.3 and freq[s] / sx / sy >= 1.5:
                 spurious += 1
 print(f"independent data, 500 baskets: {spurious} rules with confidence >= 0.3 and lift >= 1.5")
+
+# Try it: change `min_sup` from 0.03 to 0.05 in both algorithm calls; compare the number of frequent itemsets and whether the rules remain.
 ```
 
 Output:
 
-```
+```output
 Apriori   87 frequent itemsets at support >= 3%  (0.08 s)
 FP-Growth 87 frequent itemsets at support >= 3%  (0.04 s)
 same itemsets: True   same supports: True
@@ -251,7 +277,16 @@ independent data, 500 baskets: 40 rules with confidence >= 0.3 and lift >= 1.5
 - **Directional confidence, symmetric lift.** Coffee ⇒ sugar has confidence only 0.39 (most coffee buyers in this data don't buy sugar), yet lift 2.76: sugar is nearly three times as likely in a basket with coffee.
 - **Thresholds alone don't stop false discoveries (Section 5).** 40 rules clear confidence 0.3 and lift 1.5 in 500 baskets where nothing is associated with anything.
 
-## 7. When *Not* to Use Association Rules
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Ranking rules by confidence alone | A popular consequent inflates confidence; eggs ⇒ bread is 0.614 but lift 1.02 | Compare lift with the consequent's baseline rate |
+| Treating a rule as causal | Co-occurrence does not show that promoting one item changes the other | Use a controlled experiment for interventions |
+| Trusting low-support rules | A few baskets can swing estimated lift sharply | Raise support and validate on held-out transactions |
+| Ignoring the number of rules tested | Searching many combinations creates chance winners; this run found 40 in independent data | Correct for multiple tests and replicate rules |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

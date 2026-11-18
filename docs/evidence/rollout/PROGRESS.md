@@ -169,3 +169,9 @@ Available RAM before build decision:
 ```
 
 See `ml-2/scorecard.md` and `ml-2/browser-results.json` for detailed checks, outputs, and capture paths.
+
+## Machine Learning batch 4 — four pages
+
+Standardized Association Rule Mining, PCA/Kernel PCA/Truncated SVD, GMM/Spectral Clustering, and Recommender Systems. Added a page-specific PenFlow and Worksheet using locally executed outputs, inserted Worked example and Try it yourself sections, added # Try it prompts, Common mistakes tables, and normalized When not to use it headings. Existing printed outputs remain in named `output` fences. Local examples matched the checked-in results; runtime timings varied as expected.
+
+Static checks pass: notebook (4/0), math (1,991 pages), MDX (2,019/2,019), links (2,147 routes; no broken links/anchors), typecheck, tracker, and diff check. Browser screenshots, browser widget execution, and SVG overlap checks are deferred because `free -g` reported 0 GiB available, below the repository's 5 GiB heavy-work threshold. See `ml-4/scorecard.md`. No push.

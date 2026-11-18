@@ -7,6 +7,9 @@ description: "Recommendation derived: the sparse user-item matrix, baselines wit
 import MatrixFactorizationDiagram from '../../../viz/diagrams/MatrixFactorizationDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Recommender Systems
 
@@ -19,6 +22,21 @@ A good bookshop owner recommends books in two ways. One is by the book itself: "
 Recommender systems do both, at a scale no shop owner could. The second way works by noticing that tastes cluster: there turn out to be a few hidden "taste dimensions", and once the system has placed every customer and every book along them, it can guess how anyone would feel about anything. Everything below is that idea made exact, plus the engineering needed when the shop has millions of customers and books.
 
 </ELI5>
+
+## Why it exists
+
+Most users have interacted with only a tiny fraction of a catalogue, so a system must rank unseen items from sparse evidence. User and item biases explain broad rating habits; factorization adds hidden taste dimensions, while retrieval and ranking stages make recommendations fast enough for large catalogues.
+
+## The big picture
+
+<PenFlow title="Turn sparse interactions into a ranked list" ariaLabel="Recommender pipeline from interactions to ranked recommendations" rows={[
+  { steps: { title: 'Start with baselines', lines: ['Global mean, user and item bias, popularity'], tone: 'blue' } },
+  { steps: { title: 'Learn taste signals', lines: ['Factorize observed ratings or train two towers'], tone: 'purple' } },
+  { steps: { title: 'Retrieve candidates', lines: ['Find a manageable set from a large catalogue'], tone: 'orange' } },
+  { steps: { title: 'Rank and re-rank', lines: ['Optimize top-list quality, freshness and diversity'], tone: 'green' } }
+]} caption="Rating accuracy and top-list quality measure different goals, so test the complete ranked list." />
+
+<Worksheet title="Rating error and top-10 hits" ariaLabel="Recommender results from the printed ratings experiment" stages={[{ tag: 'Held-out rating error', color: 'yellow', note: 'The true simulated taste rank is six; the matching factorization rank gives the lowest RMSE.', grid: { head: ['Model', 'RMSE'], rows: [{ label: 'Global mean', cells: ['1.1174'] }, { label: 'User and item biases', cells: ['0.9148'] }, { label: 'ALS k = 2', cells: ['0.8633'] }, { label: 'ALS k = 6', cells: ['0.7501'] }, { label: 'ALS k = 20', cells: ['0.7834'] }] } }, { tag: 'Top-10 hit rate', color: 'green', note: 'The baseline with weaker RMSE places more held-out favourites in the top ten.', grid: { head: ['Method', 'Hit rate'], rows: [{ label: 'Most popular', cells: ['0.245'] }, { label: 'Factorization', cells: ['0.166'] }] } }]} />
 
 ## 1. The Problem
 
@@ -146,7 +164,11 @@ Several tools address it. **Exploration**: show some items the model is uncertai
 
 Section 8 shows the first point directly. Factorization cuts rating error from 0.915 (biases only) to 0.750, yet at recommending each user's best held-out item in the top 10, "most popular" scores a hit rate of 0.245 and factorization 0.166. Users rate popular items more often, so held-out favourites are disproportionately popular, and a model trained to predict every rating precisely isn't trained to put those at the top. Training for ranking (BPR, sampled softmax) and evaluating with top-$N$ metrics fixes the mismatch.
 
-## 8. Minimal Implementation
+## Worked example
+
+The ratings matrix has 37,419 observations out of 600,000 possible user-item pairs, or 6.2%. ALS with six factors reaches RMSE 0.7501, improving on biases alone at 0.9148. Yet for the top-10 task, most popular has hit rate 0.245 against factorization's 0.166, showing why the metric must match the list the system serves.
+
+## Try it yourself
 
 Ratings generated from a latent-factor model with 6 true taste dimensions, user and item biases, and popularity-skewed exposure; then the baselines of Section 2, matrix factorization by ALS (Section 3) at three ranks, and a top-10 comparison against the popularity baseline (Section 7):
 
@@ -220,11 +242,13 @@ for u in range(m):
     hits_pop += target in [i for i in pop_rank if i not in seen[u]][:10]
     users += 1
 print(f"hit rate at 10 over {users} users: most popular {hits_pop / users:.3f}, factorization {hits_mf / users:.3f}")
+
+# Try it: replace the ALS ranks `[2, 6, 20]` with `[2, 10, 20]`; compare held-out RMSE.
 ```
 
 Output:
 
-```
+```output
 37419 ratings, 6.2% of the matrix observed
 global mean                          RMSE 1.1174
 mean + user and item biases          RMSE 0.9148
@@ -238,7 +262,16 @@ hit rate at 10 over 649 users: most popular 0.245, factorization 0.166
 - **Factorization captures taste (Section 3)**, best at the true rank $k = 6$ (0.750), worse when too small (0.863) or too large (0.783).
 - **Lower error doesn't mean better recommendations (Section 7).** The popularity baseline beats factorization at top-10 hit rate, 0.245 against 0.166, on data where factorization's rating predictions are far better.
 
-## 9. When *Not* to Use These Methods
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Using rating RMSE as the only recommender score | Average rating error does not measure the top of each list | Add hit rate, recall@k, or NDCG@k |
+| Treating every missing interaction as dislike | The user may never have seen the item | Model exposure or use implicit-feedback objectives |
+| Starting with factorization before baselines | Biases and popularity explain much of the signal | Report mean, bias, and popularity baselines |
+| Ignoring new users and items | ID-based factors have no learned vector for them | Add content features or a cold-start path |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
