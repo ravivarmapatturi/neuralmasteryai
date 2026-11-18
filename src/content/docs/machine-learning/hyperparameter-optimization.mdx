@@ -8,6 +8,8 @@ import HyperparamSearchDiagram from '../../../viz/diagrams/HyperparamSearchDiagr
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Hyperparameter Optimization
 
@@ -20,6 +22,15 @@ Imagine tuning an old radio with two knobs. One changes the station; the other, 
 Better still, after a few tries you could notice which direction the music gets clearer and try there next, instead of choosing blindly. And if you can tell within a second that a setting is just static, you can move on without listening for a whole minute. Those three ideas, random search, guided search and stopping early, are what this page makes exact.
 
 </ELI5>
+
+## Why it exists
+
+Most models have settings that are not learned from the data, like tree depth or the penalty strength, and the right values change from dataset to dataset. Trying them by hand is slow and biased; searching them systematically finds better settings with fewer runs.
+
+## The big picture
+
+<PenFlow ariaLabel="Hyperparameter Optimization: the method in steps" rows={[{ steps: { title: 'Define the search space', lines: ['ranges, log scale for rates'], tone: 'blue' } }, { steps: { title: 'Propose settings', lines: ['grid, random, or Bayesian'], tone: 'purple' } }, { steps: { title: 'Score with cross-validation', lines: ['or stop weak ones early (successive halving)'], tone: 'orange' } }, { steps: { title: 'Keep the best, test once', lines: ['on data the search never saw'], tone: 'green' } }]} caption="Search wide, stop losers early, and keep a clean test set." />
+
 
 ## 1. The Problem
 
@@ -179,8 +190,13 @@ Tuning is learning. The search fits hyperparameters to the validation data, and 
 - **Small validation sets amplify the problem.** Use cross-validation for the score being maximized, or a larger validation split.
 - **Report the final number from untouched data**, as in the box above.
 
-## 7. Minimal Implementation
+## Worked example
 
+The numbers below are printed by the code in the next section.
+
+<Worksheet title="Best 5-fold CV accuracy after n tries" ariaLabel="Best 5-fold CV accuracy after n tries" stages={[{ tag: 'Results', color: 'green', note: "Grid search in row order wastes its first tries; random and Bayesian find good settings fast.", grid: { head: ['', 'grid', 'random', 'Bayesian'], rows: [{ label: 'n = 5', cells: ['0.1581', '0.9628', '0.9628'] }, { label: 'n = 10', cells: ['0.9572', '0.9682', '0.9649'] }, { label: 'n = 25', cells: ['0.9727', '0.9737', '0.9743'] }] } }]} />
+
+## Try it yourself
 All four strategies tuning the same black box: the 5-fold cross-validated accuracy of an RBF SVM on the handwritten-digits data, as a function of $\log_{10}C \in [-2, 4]$ and $\log_{10}\gamma \in [-5, 1]$. Grid search uses a 5 × 5 grid; random search and Bayesian optimization (a Gaussian process with the Expected Improvement formula from Section 3, written out) get the same 25 evaluations and are averaged over five seeds; then random search and successive halving each get 64 candidates:
 
 ```python
@@ -242,11 +258,13 @@ for name, search in [("random search, 64 candidates on all data", RandomizedSear
                                                                                 resource="n_samples", cv=5, random_state=0))]:
     t = time.perf_counter(); search.fit(X, y)
     print(f"{name:42s} best CV accuracy {search.best_score_:.4f}   time {time.perf_counter() - t:.1f} s")
+
+# Try it: give successive halving 128 candidates instead of 64; it stays far cheaper than full random search (11.5 s vs 50.6 s for 64).
 ```
 
 Output (scikit-learn 1.7; times from one run on a shared machine; the Gaussian process also prints convergence warnings about its noise term, which go to stderr and aren't shown):
 
-```
+```output
 best 5-fold CV accuracy after n evaluations (random and Bayesian: mean of 5 seeds)
 n     grid (row order)   random   Bayesian (GP + EI)
 5     0.1581             0.9628   0.9628
@@ -262,7 +280,15 @@ successive halving, 64 candidates          best CV accuracy 0.9721   time 11.5 s
 - **Successive halving trades a little score for a lot of time (Section 4)**: 4.4 times faster, 0.003 lower.
 - **The differences between the best results are tiny.** With 1,797 examples, the standard error of a cross-validated accuracy near 0.97 is about 0.004, so the top results here are statistically indistinguishable, which is Section 6's point in practice.
 
-## 8. When *Not* to Tune Extensively
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Reporting the best CV score as the final score | Picking the max over many tries overfits the validation folds | Test once on a held-out set |
+| Grid search on many settings | Most grid points vary unimportant settings | Use random or Bayesian search |
+| Linear ranges for learning rates | Good values span orders of magnitude | Search on a log scale |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

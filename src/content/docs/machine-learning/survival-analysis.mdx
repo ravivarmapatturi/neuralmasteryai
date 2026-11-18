@@ -9,6 +9,8 @@ import kmDark from './img/survival-curve.png';
 import KaplanMeierDiagram from '../../../viz/diagrams/KaplanMeierDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Survival Analysis: Kaplan-Meier & Cox Proportional Hazards
 
@@ -21,6 +23,15 @@ A phone company wants to know how long customers usually stay. It looks at every
 Ignoring the people still here makes customers look short-lived, because only the leavers are counted. Pretending the people still here left today is wrong too. Survival analysis uses everyone correctly: someone who's stayed two years and is still here tells you that people do make it past two years, without claiming to know when they'll leave. Everything below is that idea made exact.
 
 </ELI5>
+
+## Why it exists
+
+Many questions are about how long until something happens: a machine fails, a patient relapses, a customer leaves. Some subjects haven't had the event yet when the study ends, so their time is only known to be at least so long. Ordinary regression either drops them or treats them as events, and both are wrong.
+
+## The big picture
+
+<PenFlow ariaLabel="Survival Analysis: Kaplan-Meier & Cox Proportional Hazards: the method in steps" rows={[{ steps: { title: 'Times, some censored', lines: ['we only know "at least this long" for some subjects'], tone: 'blue' } }, { steps: { title: 'Kaplan-Meier curve', lines: ['share still event-free at each time'], tone: 'purple' } }, { steps: { title: 'Compare groups', lines: ['log-rank test'], tone: 'orange' } }, { steps: { title: 'Explain with features', lines: ['Cox model: hazard ratio per feature'], tone: 'green' } }]} caption="Use every subject, including the ones whose story isn't finished yet." />
+
 
 ## 1. Censoring, and Why Naive Methods Fail
 
@@ -150,8 +161,13 @@ When the assumption fails, options include stratifying on that variable (separat
 
 </GoDeeper>
 
-## 7. Minimal Implementation
+## Worked example
 
+The numbers below are printed by the code in the next section.
+
+<Worksheet title="Simulated lifetimes, true median 6.93" ariaLabel="Simulated lifetimes, true median 6.93" stages={[{ tag: 'Results', color: 'green', note: "Only Kaplan-Meier, which handles censoring, lands near the true median.", grid: { head: ['', 'median lifetime'], rows: [{ label: 'censored treated as events', cells: ['5.33'] }, { label: 'censored dropped', cells: ['3.23'] }, { label: 'Kaplan-Meier', cells: ['7.11'] }] } }]} />
+
+## Try it yourself
 Kaplan-Meier from the product formula; the censoring-bias comparison on simulated lifetimes with a known median; the log-rank test on the Rossi data; and the Cox model fitted by Newton's method on the partial likelihood, with the gradient and Hessian of Section 5, compared with lifelines:
 
 ```python
@@ -217,11 +233,13 @@ print("\n           ours      lifelines   hazard ratio")
 for c, b, r in zip(cols, beta, cph.params_[cols]):
     print(f"{c:6s}  {b:+.4f}   {r:+.4f}     {np.exp(b):.3f}")
 print(f"C-index (higher risk score should mean earlier arrest): {concordance_index(T, -(X @ beta), E):.3f}")
+
+# Try it: raise the censoring rate in the simulation and compare again; the two naive medians drift further from 6.93 while Kaplan-Meier stays close.
 ```
 
 Output (lifelines 0.30):
 
-```
+```output
 54% of subjects had the event; the rest are censored
 true median lifetime                        6.93
 median of observed times, censored as events 5.33
@@ -248,7 +266,15 @@ C-index (higher risk score should mean earlier arrest): 0.640
 - **The partial likelihood gives the Cox fit (Section 5).** Twenty Newton steps reproduce lifelines' coefficients to about three decimals, with the small differences from tie handling. Hazard ratios read directly off the exponentials: aid 0.685, each prior conviction 1.095.
 - **Ranking is modest (Section 6)**: C-index 0.640.
 
-## 8. When *Not* to Use Survival Methods
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Dropping censored subjects | Those subjects lasted longest, so survival looks too short | Use Kaplan-Meier or a Cox model |
+| Treating censoring as the event | A subject who left the study is counted as failing | Mark censored times separately |
+| Reading a hazard ratio as a probability | 0.685 means 31% lower hazard at each moment, not a 31% lower chance overall | Report survival curves too |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

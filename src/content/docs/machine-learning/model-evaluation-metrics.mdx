@@ -9,6 +9,8 @@ import RocPrCurveDiagram from '../../../viz/diagrams/RocPrCurveDiagram';
 import CalibrationDiagram from '../../../viz/diagrams/CalibrationDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Model Evaluation & Metrics
 
@@ -21,6 +23,15 @@ A school wants to know which of two teachers is better. "Average exam score" sou
 Measuring a model has the same problems. Different metrics reward different things, the right one depends on what mistakes cost, and a difference between two models only counts if it's bigger than the luck of which examples happened to be tested. Everything below is those ideas made exact.
 
 </ELI5>
+
+## Why it exists
+
+A single number like accuracy can say a model is excellent when it is useless: on data where only 5.5% of cases are positive, always answering “no” scores 94.5%. Choosing the metric that matches the real cost of mistakes is part of building the model.
+
+## The big picture
+
+<PenFlow ariaLabel="Model Evaluation & Metrics: the method in steps" rows={[{ steps: { title: 'What does a mistake cost?', lines: ['false alarms vs misses'], tone: 'blue' } }, { steps: { title: 'Pick metrics that see it', lines: ['precision, recall, PR-AUC for rare positives'], tone: 'purple' } }, { steps: { title: 'Check probabilities', lines: ['calibration: ECE, Brier, log loss'], tone: 'orange' } }, { steps: { title: 'Choose the threshold', lines: ['by expected cost, not 0.5 by habit'], tone: 'green' } }]} caption="The metric is a decision about which mistakes matter." />
+
 
 ## 1. Why Models Fail: Bias and Variance
 
@@ -68,7 +79,7 @@ For predictions $\hat{y}_i$ of targets $y_i$:
 | RMSE | $\sqrt{\text{MSE}}$ | Same as MSE | In the target's units |
 | MAE | $\frac1n\sum\lvert y_i - \hat{y}_i\rvert$ | Predicting the conditional **median** | Robust to outliers |
 | MAPE | $\frac1n\sum\lvert y_i - \hat{y}_i\rvert/\lvert y_i\rvert$ | Relative accuracy | Undefined at $y = 0$; favours under-prediction |
-| $R^2$ | $1 - \frac{\sum(y_i - \hat{y}_i)^2}{\sum(y_i - \bar{y})^2}$ | Beating the constant mean | Can be negative on test data |
+| $R^2$ | $1 - \sum(y_i - \hat{y}_i)^2 / \sum(y_i - \bar{y})^2$ | Beating the constant mean | Can be negative on test data |
 
 The "rewards" column follows from the [optimal predictions derived on the Supervised Learning page](/docs/machine-learning/supervised-learning): a model tuned for MSE estimates the mean, one tuned for MAE the median, and on skewed targets they differ. **$R^2$** is the fraction of the variance around the mean that the model explains. On training data with an intercept it lies between 0 and 1; on *test* data it can be negative, which means the model predicts worse than simply predicting the training mean. Report it together with an error in the target's own units (RMSE or MAE), which says how wrong a typical prediction is.
 
@@ -186,7 +197,15 @@ Metrics aren't neutral measurements; whatever you optimize and select by is what
 | Curse of dimensionality | Distance-based models fail with many features | Feature selection, PCA, regularization |
 | Unexplained predictions | Stakeholders can't see why | Simpler models, or SHAP and permutation importance ([interpretability](/docs/interpretability/classical-interpretability)) |
 
-## 8. When *Not* to Trust a Single Metric
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Reporting accuracy on rare positives | Predicting the majority class already scores high | Report precision, recall and PR-AUC |
+| Comparing models by ROC-AUC alone | ROC-AUC hides poor precision when positives are rare | Add PR-AUC |
+| Using 0.5 as the threshold by default | The best threshold depends on the cost of each mistake | Pick it from the cost curve |
+
+## When not to use it
 
 | Situation | What to do instead |
 |---|---|
@@ -197,8 +216,13 @@ Metrics aren't neutral measurements; whatever you optimize and select by is what
 | Fairness or subgroup performance matters | Report the metric per group, not only overall |
 | The real goal is a business outcome | Treat offline metrics as a filter and confirm with an online experiment |
 
-## 9. Minimal Implementation
+## Worked example
 
+The numbers below are printed by the code in the next section.
+
+<Worksheet title="Rare positives (prevalence 0.055)" ariaLabel="Rare positives (prevalence 0.055)" stages={[{ tag: 'Results', color: 'green', note: "Accuracy barely separates the models; recall and PR-AUC show the real gap.", grid: { head: ['', 'accuracy', 'recall', 'PR-AUC'], rows: [{ label: 'always “negative”', cells: ['0.945', '0', '—'] }, { label: 'logistic regression', cells: ['0.955', '0.326', '0.564'] }, { label: 'gradient boosting', cells: ['0.973', '0.599', '0.801'] }] } }]} />
+
+## Try it yourself
 Five experiments, one per section: the bias-variance decomposition measured by Monte Carlo; classification metrics on a dataset with 5.5% positives; calibration before and after isotonic recalibration; the cost-optimal threshold; and paired significance tests between two models:
 
 ```python
@@ -273,11 +297,13 @@ print(f"ROC-AUC difference (boosting - logistic): {roc_auc_score(y_te, p_gb) - r
 a, b = (p_gb >= 0.5) == y_te, (p_lr >= 0.5) == y_te
 n01, n10 = np.sum(a & ~b), np.sum(~a & b)
 print(f"McNemar: boosting right & logistic wrong {n01}, the reverse {n10}, p = {binomtest(n01, n01 + n10, 0.5).pvalue:.2g}")
+
+# Try it: move the decision threshold from 0.5 and print the cost for each; the cheapest threshold is rarely 0.5.
 ```
 
 Output (scikit-learn 1.7, SciPy 1.16):
 
-```
+```output
 degree   bias^2   variance   noise   sum     measured test MSE
      1   0.4172   0.0384     0.090   0.5456  0.5468
      3   0.0372   0.0264     0.090   0.1536  0.1542

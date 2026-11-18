@@ -7,6 +7,8 @@ description: "Linear regression, ridge, lasso, logistic regression and linear SV
 import SgdLossPenaltyDiagram from '../../../viz/diagrams/SgdLossPenaltyDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # SGD Classifier & Regressor
 
@@ -19,6 +21,15 @@ You're cooking a large pot of soup and want to know if it needs salt. You could 
 Stochastic gradient descent is the spoonful method. Instead of measuring the model's error on every example before each correction, it measures the error on one example (or a small handful), corrects a little, and moves on. Everything below is that idea made exact: why one spoonful is an honest sample, how big each correction should be, and why the corrections have to get smaller over time.
 
 </ELI5>
+
+## Why it exists
+
+Fitting a linear model on all data at once gets slow or impossible when the data is huge or keeps arriving. Stochastic gradient descent updates the model one example (or a small batch) at a time, so it scales to any size and can keep learning as new data streams in.
+
+## The big picture
+
+<PenFlow ariaLabel="SGD Classifier & Regressor: the method in steps" rows={[{ steps: { title: 'Pick one example', lines: ['or a small batch'], tone: 'blue' } }, { steps: { title: 'Compute the loss gradient', lines: ['hinge, log, squared … plus the penalty'], tone: 'purple' } }, { steps: { title: 'Step against it', lines: ['with a step size that shrinks over time'], tone: 'orange' } }, { steps: { title: 'Repeat', lines: ['until the error stops improving'], tone: 'green' } }]} caption="One small step per example: cheap, and it never needs all the data in memory." />
+
 
 ## 1. One Model, Many Losses
 
@@ -244,8 +255,13 @@ Three practical details matter with `partial_fit`:
 - **The scaler has to be online too**, or fit on an early representative sample. `StandardScaler` also has a `partial_fit`.
 - **Shuffle when you can.** SGD's unbiasedness argument in Section 2 assumes examples arrive in random order. If a stream arrives sorted (all of Monday, then all of Tuesday), each stretch of updates pulls the weights toward that stretch. For a fixed dataset, `fit` reshuffles every epoch by default (`shuffle=True`).
 
-## 8. Minimal Implementation
+## Worked example
 
+The numbers below are printed by the code in the next section.
+
+<Worksheet title="Same data, same model: only the feature scaling changes" ariaLabel="Same data, same model: only the feature scaling changes" stages={[{ tag: 'Results', color: 'green', note: "Standardizing features took SGD from 0.807 to 0.913, level with the full-batch solver.", grid: { head: ['', 'test accuracy'], rows: [{ label: 'SGD, raw features', cells: ['0.807'] }, { label: 'SGD, standardized', cells: ['0.913'] }, { label: 'LogisticRegression', cells: ['0.911'] }] } }]} />
+
+## Try it yourself
 Here is the whole loop in plain NumPy: one function per loss's scalar gradient $g$ from Section 3, L2 weight decay from Section 4, and a decaying step size from Section 5. Labels are in $\{-1, +1\}$ for classification.
 
 ```python
@@ -291,11 +307,13 @@ Xr = rng.normal(size=(1000, 3))
 yr = Xr @ np.array([2.0, -1.0, 0.5]) + 3.0 + rng.normal(0, 0.1, 1000)
 w, b = sgd_fit(Xr, yr, "squared_error", epochs=10)
 print(f"squared   w={np.round(w, 3)} b={b:+.3f}  (true w=[2, -1, 0.5], b=3)")
+
+# Try it: change eta0 or set learning_rate='constant' and watch the raw-feature accuracy; an unshrinking step keeps bouncing around the optimum.
 ```
 
 Output:
 
-```
+```output
 log_loss  w=[3.509 2.429] b=-0.048 train accuracy=0.940
 hinge     w=[2.348 1.627] b=-0.059 train accuracy=0.940
 squared   w=[ 2.005 -0.999  0.49 ] b=+3.007  (true w=[2, -1, 0.5], b=3)
@@ -335,7 +353,7 @@ for start in range(0, 15000, 1000):
 
 Output (scikit-learn 1.7):
 
-```
+```output
 SGD, raw features:    0.807
 SGD, standardized:    0.913
 LogisticRegression:   0.911
@@ -347,7 +365,15 @@ after 15000 examples: test accuracy 0.908
 
 Standardized SGD matches the dedicated `LogisticRegression` solver; the same model on unscaled features loses ten points of accuracy. The online model, which never held more than 1,000 rows in memory, gets within half a point of both.
 
-## 9. When *Not* to Use SGD
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Skipping feature scaling | One step size has to suit every feature; large-scale features dominate | Standardize features first (0.807 → 0.913 here) |
+| Using a constant step size | The updates keep jumping around the optimum instead of settling | Let the step size decay, or average the weights |
+| Reading one run's accuracy as final | Shuffling order changes the result | Fix the seed, or average several runs |
+
+## When not to use it
 
 SGD is the right tool when the data is large or arriving continuously. On small and medium problems it adds tuning (step size, schedule, epochs, scaling) that a dedicated solver doesn't need.
 

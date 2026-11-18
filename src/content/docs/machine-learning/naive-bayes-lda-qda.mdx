@@ -7,6 +7,8 @@ description: "Generative classifiers derived: the Bayes classifier and why it's 
 import LdaQdaBoundaryDiagram from '../../../viz/diagrams/LdaQdaBoundaryDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Naive Bayes, LDA & QDA
 
@@ -19,6 +21,15 @@ A doctor can learn to diagnose two illnesses in two ways. One way is to memorize
 The second way is the generative approach. It builds a picture of each class, then asks which picture best explains the new example. Everything below is that idea made exact, with different choices of how detailed each class's picture is.
 
 </ELI5>
+
+## Why it exists
+
+Discriminative models learn a boundary directly, which needs a lot of data. When data is scarce, it helps to model what each class looks like instead and let Bayes' rule pick the class. Naive Bayes, LDA and QDA are three ways to do that, from the fewest parameters to the most.
+
+## The big picture
+
+<PenFlow ariaLabel="Naive Bayes, LDA & QDA: the method in steps" rows={[{ steps: { title: 'Each class: prior and shape', lines: ['how common it is, mean and covariance'], tone: 'blue' } }, { steps: { title: 'New example', lines: ['score log p(x | class) + log prior for every class'], tone: 'purple' } }, { steps: { title: 'Pick the highest score', lines: ['Bayes classifier: the smallest possible error if the shapes are right'], tone: 'green' } }]} caption="Model each class, then ask which one most likely produced the new example." />
+
 
 ## 1. Classifying With Bayes' Rule
 
@@ -175,8 +186,13 @@ Generative models make stronger assumptions and use them to learn faster; discri
 
 Generative models have two more practical advantages. They handle **missing features** naturally: drop the missing feature's term from the sum, since the model describes each feature's distribution. And they can **generate** data and detect outliers, because they model $p(\mathbf{x})$, not only the boundary. The price is that a wrong density model gives wrong, usually overconfident, probabilities.
 
-## 7. Minimal Implementation
+## Worked example
 
+The numbers below are printed by the code in the next section.
+
+<Worksheet title="Wine test set: one formula, three covariance choices" ariaLabel="Wine test set: one formula, three covariance choices" stages={[{ tag: 'Results', color: 'green', note: "LDA's single pooled covariance beat QDA's three separate ones on about 30–40 wines per class.", grid: { head: ['', 'naive Bayes', 'LDA', 'QDA'], rows: [{ label: 'test accuracy', cells: ['0.972', '0.986', '0.958'] }] } }]} />
+
+## Try it yourself
 All three models from one function: estimate per-class means, priors and covariances (shared for LDA, diagonal for naive Bayes), then apply Bayes' rule in log space with `logsumexp` for numerical stability. Then the generative-versus-discriminative learning curves of Section 6:
 
 ```python
@@ -249,11 +265,13 @@ experiment("independent features (naive Bayes' assumption holds), 50 features:",
 A = rng.normal(size=(20, 20)) / np.sqrt(20)
 experiment("correlated features (the assumption is wrong), 20 features:",
            20, A @ A.T + 0.5 * np.eye(20), rng.normal(0, 0.35, 20))
+
+# Try it: set reg_param=0.1 on QuadraticDiscriminantAnalysis and rerun; regularizing QDA's covariances usually narrows its gap to LDA.
 ```
 
 Output (scikit-learn 1.7):
 
-```
+```output
 naive Bayes  test accuracy 0.972   largest probability gap vs scikit-learn 3.6e-15
 LDA          test accuracy 0.986   largest probability gap vs scikit-learn 4.0e-15
 QDA          test accuracy 0.958   largest probability gap vs scikit-learn 4.8e-14
@@ -277,7 +295,15 @@ correlated features (the assumption is wrong), 20 features:
 - **Fewer parameters won on wine.** LDA (0.986) beats QDA (0.958) with 29 to 43 training wines per class: QDA's three separate 13×13 covariances are noisier than LDA's one pooled matrix.
 - **The learning curves are Section 6.** When independence holds, naive Bayes catches up with logistic regression by 300 examples and they end level. When it fails, naive Bayes never catches up. Shrinkage LDA, whose Gaussian assumption matches both simulations, leads or ties throughout, which is the generative advantage when the model is right.
 
-## 8. When *Not* to Use These
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Trusting naive Bayes probabilities | Correlated features are counted as independent evidence, so it is overconfident | Use its ranking, or calibrate the probabilities |
+| Using QDA with few examples per class | Each class needs its own full covariance matrix, which is noisy | Use LDA with shrinkage, or regularized QDA |
+| Applying Gaussian models to skewed or bounded features | The assumed class shape is wrong | Transform features toward normal, or use a discriminative model |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

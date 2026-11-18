@@ -8,6 +8,8 @@ import ConformalPredictionDiagram from '../../../viz/diagrams/ConformalPredictio
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
 import RunnableCode from '../../../components/content/RunnableCode';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Uncertainty Estimation & Conformal Prediction
 
@@ -20,6 +22,15 @@ A weather forecaster who says "about 20 degrees tomorrow" is giving a point pred
 Conformal prediction is a way to earn it for any model. Before using the model, test it on examples it hasn't seen and look at how far off it was. If 90% of its misses were within 3 degrees, put a 3-degree margin on every future forecast. That simple rule comes with a real guarantee, as long as tomorrow's examples are like the ones it was tested on. Everything below is that idea made exact, and improved so the margin can be narrow on calm days and wide on stormy ones.
 
 </ELI5>
+
+## Why it exists
+
+A prediction without an error bar can't tell you when to trust it. Conformal prediction wraps any model and turns its errors on a held-out calibration set into intervals that contain the true value a chosen share of the time, with no assumptions about the model.
+
+## The big picture
+
+<PenFlow ariaLabel="Uncertainty Estimation & Conformal Prediction: the method in steps" rows={[{ steps: { title: 'Train any model', lines: ['on the training set'], tone: 'blue' } }, { steps: { title: 'Measure errors', lines: ['on a separate calibration set'], tone: 'purple' } }, { steps: { title: 'Take the 90% error quantile', lines: ['that becomes the interval half-width'], tone: 'orange' } }, { steps: { title: 'Predict with an interval', lines: ['covers the truth about 90% of the time'], tone: 'green' } }]} caption="Errors you have measured become the width of future intervals." />
+
 
 ## 1. Two Kinds of Uncertainty
 
@@ -134,8 +145,13 @@ The guarantee is exactly as strong, and as weak, as the exchangeability assumpti
 | Drifting data, time series | Adaptive conformal inference, plus coverage monitoring |
 | Can't spare a calibration set | Jackknife+ or cross-conformal |
 
-## 7. Minimal Implementation
+## Worked example
 
+The numbers below are printed by the code in the next section.
+
+<Worksheet title="Target coverage 0.90, noise that grows with x" ariaLabel="Target coverage 0.90, noise that grows with x" stages={[{ tag: 'Results', color: 'green', note: "Plain split conformal is right on average but fails where noise is large; conformalized quantile regression adapts.", grid: { head: ['', 'coverage', 'coverage for x > 7', 'mean width'], rows: [{ label: 'split conformal', cells: ['0.917', '0.796', '9.00'] }, { label: 'conformalized quantile regression', cells: ['0.904', '0.911', '7.69'] }] } }]} />
+
+## Try it yourself
 Data with noise that grows with $x$ (standard deviation 0.2 at $x = 0$, 4.2 at $x = 10$). Five interval methods at a 90% target, each scored on 20,000 fresh test points for coverage and width overall and in the quiet ($x \lt  3$) and noisy ($x \gt  7$) regions; then the distribution-shift failure, and coverage across 300 independent calibration sets:
 
 ```python
@@ -193,11 +209,13 @@ for _ in range(300):
     covs.append((np.abs(y_te - bad(X_te)) <= qb).mean())
 print(f"constant model, 300 fresh calibration sets: mean coverage {np.mean(covs):.3f}, "
       f"middle 90% of runs {np.percentile(covs, 5):.3f} to {np.percentile(covs, 95):.3f}")
+
+# Try it: shift the test x range to 8..14 and rerun; coverage falls to about 0.68 because the guarantee assumes calibration and test data look alike.
 ```
 
 Output (scikit-learn 1.7):
 
-```
+```output
 split conformal, |residual|        coverage 0.917   (x<3: 1.000, x>7: 0.796)   mean width 9.00  (x<3: 9.00, x>7: 9.00)
 quantile regression (uncalibrated) coverage 0.890   (x<3: 0.871, x>7: 0.906)   mean width 7.48  (x<3: 2.61, x>7: 12.16)
 conformalized quantile regression  coverage 0.904   (x<3: 0.901, x>7: 0.911)   mean width 7.69  (x<3: 2.82, x>7: 12.37)
@@ -282,7 +300,15 @@ assert conformal_quantile([42], 0.5) == 42
 assert conformal_quantile(list(range(1, 20)), 0.05) == 19`}
 />
 
-## 8. When *Not* to Rely on These Intervals
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Calibrating on the training data | Training errors are too small, so intervals are too narrow | Use a separate calibration set |
+| Expecting coverage for every subgroup | The guarantee is on average over all points | Use conformalized quantile regression or group-wise calibration |
+| Using it after a distribution shift | Calibration errors no longer match test errors | Recalibrate on recent data (coverage 0.68 under shift here) |
+
+## When not to use it
 
 | Situation | What to do instead or as well |
 |---|---|

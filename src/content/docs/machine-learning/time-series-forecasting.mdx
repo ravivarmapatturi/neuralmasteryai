@@ -11,6 +11,8 @@ import forecastDark from './img/time-series-forecast.png';
 import ArimaDifferencingDiagram from '../../../viz/diagrams/ArimaDifferencingDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # Time Series Forecasting: ARIMA, SARIMA & Prophet
 
@@ -23,6 +25,15 @@ To guess tomorrow's temperature, the most useful facts are today's temperature (
 Time series models make that combination exact. And there's one rule you can't break: when you test a forecaster, you may only use what was known at the time. Testing a weather forecaster with tomorrow's newspaper in their pocket proves nothing. Everything below is those ideas made exact.
 
 </ELI5>
+
+## Why it exists
+
+In a time series, the order of the points carries the information: what happened last month predicts this month. Methods that shuffle the data, or validate on random folds, quietly use the future to predict the past and look far better than they are.
+
+## The big picture
+
+<PenFlow ariaLabel="Time Series Forecasting: ARIMA, SARIMA & Prophet: the method in steps" rows={[{ steps: { title: 'Look at trend and seasons', lines: ['plot, then make the series stationary by differencing'], tone: 'blue' } }, { steps: { title: 'Fit a model', lines: ['SARIMA, Prophet, or boosting on lag features'], tone: 'purple' } }, { steps: { title: 'Validate forward in time', lines: ['train on the past, test on the next 12 months'], tone: 'orange' } }, { steps: { title: 'Compare with seasonal naive', lines: ['MASE below 1 means you beat it'], tone: 'green' } }]} caption="Always test on the future, never on shuffled months." />
+
 
 ## 1. What Changes When Order Matters
 
@@ -161,8 +172,13 @@ For a stationary AR(1), $y_t = \phi y_{t-1} + \epsilon_t$ with $\lvert\phi\rvert
 
 </GoDeeper>
 
-## 9. Minimal Implementation
+## Worked example
 
+The numbers below are printed by the code in the next section.
+
+<Worksheet title="Mauna Loa CO₂: 12-month forecasts from 5 origins" ariaLabel="Mauna Loa CO₂: 12-month forecasts from 5 origins" stages={[{ tag: 'Results', color: 'green', note: "MASE below 1 beats simply repeating last year's month. Only the seasonal models do.", grid: { head: ['', 'mean MASE'], rows: [{ label: 'seasonal naive', cells: ['1.355'] }, { label: 'ARIMA(1,1,1)', cells: ['1.497'] }, { label: 'SARIMA(1,1,1)(0,1,1,12)', cells: ['0.420'] }, { label: 'boosting on lags', cells: ['0.426'] }] } }]} />
+
+## Try it yourself
 Monthly CO2: a stationarity test before and after differencing; an AR(3) fitted by hand as regression on lags and checked against statsmodels; four forecasters (seasonal naive, ARIMA, SARIMA, and gradient boosting on lagged changes) compared over 12-month horizons from five rolling origins, scored by MASE; and the leakage comparison of shuffled and time-ordered folds:
 
 ```python
@@ -227,11 +243,13 @@ for case, (X, target) in cases.items():
     for name, cv in [("shuffled 5-fold", KFold(5, shuffle=True, random_state=0)), ("time-ordered 5-fold", TimeSeriesSplit(5))]:
         mae = -cross_val_score(HistGradientBoostingRegressor(random_state=0), X, target, cv=cv, scoring="neg_mean_absolute_error").mean()
         print(f"{case:32s} {name:20s} MAE {mae:.3f}")
+
+# Try it: swap the time-ordered folds for shuffled 5-fold; the MAE drops from 6.557 to 0.436, which is the leak, not a better model.
 ```
 
 Output (statsmodels 0.15, scikit-learn 1.9):
 
-```
+```output
 526 months, from 316.1 to 371.0 ppm
 ADF p-value, raw series                         0.999
 ADF p-value, first difference                   0.000
@@ -255,7 +273,15 @@ monthly change from its lags     time-ordered 5-fold  MAE 0.295
 - **ML on lags works when it predicts changes (Section 7).** Boosting on lagged changes, forecasting recursively, reaches 0.43, essentially tied with SARIMA.
 - **Shuffled folds can be wildly optimistic (Section 8)**: 0.44 against 6.56 ppm for a model of levels, while a model of stationary changes barely notices the difference.
 
-## 10. When *Not* to Use These Methods
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Shuffled cross-validation | Future months leak into training | Use time-ordered splits (MAE 0.436 shuffled vs 6.557 honest) |
+| No seasonal baseline | A complex model can lose to repeating last year | Always report seasonal naive and MASE |
+| Modelling a trending series as is | AR models assume a stationary series | Difference first and check with the ADF test |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|

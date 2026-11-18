@@ -11,6 +11,8 @@ import dendroDark from './img/dendrogram.png';
 import DecisionBoundaryPlayground from '../../../viz/DecisionBoundaryPlayground';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import PenFlow from '../../../components/notebook/PenFlow';
+import Worksheet from '../../../components/notebook/Worksheet';
 
 # K-Means & Hierarchical Clustering
 
@@ -23,6 +25,15 @@ Imagine placing $k$ ice-cream stands on a beach so that, on average, people walk
 Hierarchical clustering is more like a family tree for the beachgoers. Start with everyone as their own group, then keep joining the two groups that are most alike, until everyone is in one big group. The record of every joining step is a tree, and you can cut it at whatever level gives you the number of groups you want. Everything below is those two ideas made exact.
 
 </ELI5>
+
+## Why it exists
+
+Often there are no labels, only a question like “which customers behave alike?”. Clustering groups similar points without being told the groups, so you can explore the data, compress it or start a labelling effort.
+
+## The big picture
+
+<PenFlow ariaLabel="K-Means & Hierarchical Clustering: the method in steps" rows={[{ steps: { title: 'Choose k and starting centres', lines: ['k-means++ spreads them out'], tone: 'blue' } }, { steps: { title: 'Assign points', lines: ['each point to its nearest centre'], tone: 'purple' } }, { steps: { title: 'Move centres', lines: ['to the mean of their points'], tone: 'orange' } }, { steps: { title: 'Repeat until nothing changes', lines: ['then compare k with the silhouette score'], tone: 'green' } }]} caption="Assign, move, repeat: k-means in four steps." />
+
 
 ## 1. What k-Means Minimizes
 
@@ -162,8 +173,13 @@ The distance between the means, weighted by a factor that's largest when both cl
 
 A common combination uses both: run k-means with a large $k$ (say 100) to compress millions of points into 100 centroids, then build a dendrogram of the centroids to see how they group.
 
-## 7. Minimal Implementation
+## Worked example
 
+The numbers below are printed by the code in the next section.
+
+<Worksheet title="Choosing k on the same data" ariaLabel="Choosing k on the same data" stages={[{ tag: 'Results', color: 'green', note: "Inertia always falls as k grows; the silhouette score peaks, here at k = 6.", grid: { head: ['', 'inertia', 'silhouette'], rows: [{ label: 'k = 4', cells: ['10718', '0.635'] }, { label: 'k = 6', cells: ['3490', '0.675'] }, { label: 'k = 8', cells: ['2160', '0.574'] }, { label: 'k = 10', cells: ['1953', '0.510'] }] } }]} />
+
+## Try it yourself
 Lloyd's algorithm with k-means++ seeding, traced iteration by iteration and compared with scikit-learn; 200 random-start and k-means++ runs; the elbow and silhouette for choosing $k$; then Ward's merge-cost formula and each linkage's cophenetic correlation:
 
 ```python
@@ -223,11 +239,13 @@ print(f"Ward merge cost: formula {ward_cost:.3f}   increase in within-cluster SS
 D = pdist(X)
 for method in ["single", "complete", "average", "ward"]:
     print(f"{method:9s} cophenetic correlation {cophenet(linkage(X, method), D)[0]:.3f}")
+
+# Try it: switch init from k-means++ to random and compare the worst run; random starts land far worse (10037 vs 5486 inertia).
 ```
 
 Output (scikit-learn 1.7, SciPy 1.16):
 
-```
+```output
 inertia by iteration: [7295, 3333, 3164, 3154, 3149, 3147, 3146, 3146, 3145, 3145, 3145, 3145, 3145]
 ours: one run 3145.4, best of 10 runs 2159.9   scikit-learn (best of 10) 2159.6
 random init  worst 10037   median 3173   runs within 1% of the best 9%
@@ -252,7 +270,15 @@ ward      cophenetic correlation 0.802
 - **Choosing $k$ is a judgment (Section 4).** Inertia bends around 7 to 8; silhouette prefers 6.
 - **Ward's formula is exact (Section 5)**, and average linkage preserves this data's distances best.
 
-## 8. When *Not* to Use These
+## Common mistakes
+
+| Mistake | Why it happens | Fix |
+| :--- | :--- | :--- |
+| Picking k by inertia alone | Inertia always drops as k grows | Use the silhouette score or a stability check |
+| One run of k-means | Bad starting centres give a poor local optimum | Use k-means++ and several runs |
+| Clustering unscaled features | Large-range features decide the distances | Standardize features first |
+
+## When not to use it
 
 | Situation | Better choice |
 |---|---|
@@ -277,7 +303,7 @@ ward      cophenetic correlation 0.802
 | Hidden assumptions | Round, similar-sized clusters; it's hard EM for identical spherical Gaussians |
 | Agglomerative | Merge the closest pair repeatedly; the record is a dendrogram |
 | Linkage | Single chains, complete and Ward compact, average in between |
-| Ward's cost | $\frac{n_A n_B}{n_A + n_B}\lVert\bar{\mathbf{a}} - \bar{\mathbf{b}}\rVert^2$ |
+| Ward's cost | $n_A n_B / (n_A + n_B) \cdot \lVert\bar{\mathbf{a}} - \bar{\mathbf{b}}\rVert^2$ |
 | Cost | k-means $O(nkd)$ per iteration; hierarchical $O(n^2)$ memory |
 
 ---
