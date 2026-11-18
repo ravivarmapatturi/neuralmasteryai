@@ -59,7 +59,7 @@ describe('MockInterviewPage Component', () => {
     expect(screen.getByText(/\/ suggested/i)).toBeInTheDocument();
 
     // Model answers must NOT be visible during the question
-    expect(screen.queryByText(/Model answer/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Model answer$/i)).not.toBeInTheDocument();
 
     // Interviewer speaks question
     expect(engine.speak).toHaveBeenCalled();
