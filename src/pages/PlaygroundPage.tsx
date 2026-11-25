@@ -168,41 +168,60 @@ export default function PlaygroundPage() {
               No playground tools match that filter. Clear the search box or switch back to All tracks.
             </p>
           ) : (
-            grouped.map(({ section, tools, comingSoon }) => (
-              <section key={section.id} className="playground__section" aria-labelledby={`pg-sec-${section.id}`}>
+            grouped.map(({ section, tools, comingSoon }) => {
+              const pen = (PLAYGROUND_SECTIONS.findIndex((s) => s.id === section.id) % 5) + 1;
+              let n = 0;
+              return (
+              <section
+                key={section.id}
+                className="playground__section"
+                aria-labelledby={`pg-sec-${section.id}`}
+                style={{ ['--pg-hl' as string]: `var(--nm-hl-${pen})`, ['--pg-ink' as string]: `var(--nm-hl-${pen}-ink)` }}
+              >
                 <div className="playground__section-head">
-                  <h2 id={`pg-sec-${section.id}`}>{section.label}</h2>
+                  <h2 id={`pg-sec-${section.id}`}><span className="playground__hl">{section.label}</span></h2>
                   <span className="playground__section-track">{section.track}</span>
                 </div>
 
-                <ul className="playground__grid">
-                  {tools.map((tool) => (
-                    <li key={tool.slug} className="playground__card playground__card--live">
-                      <div>
-                        <p className="playground__card-section">{tool.sectionLabel}</p>
-                        <h3>
-                          <Link to={`/playground/${tool.slug}`} className="playground__card-link">
-                            {tool.title}
-                          </Link>
-                        </h3>
-                        <p className="playground__card-try">{tool.whatYouTry}</p>
-                      </div>
-                    </li>
-                  ))}
+                <ol className="playground__index">
+                  {tools.map((tool) => {
+                    n += 1;
+                    return (
+                      <li key={tool.slug} className="playground__entry">
+                        <Link to={`/playground/${tool.slug}`} className="playground__entry-link">
+                          <span className="playground__num" aria-hidden="true">{n}</span>
+                          <span className="playground__entry-body">
+                            <span className="playground__entry-line">
+                              <span className="playground__entry-title">{tool.title}</span>
+                              <span className="playground__leader" aria-hidden="true" />
+                              <span className="playground__go">try it →</span>
+                            </span>
+                            <span className="playground__entry-note">{tool.whatYouTry}</span>
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
 
                   {comingSoon.map((item) => (
-                    <li key={item.title} className="playground__card playground__card--soon">
-                      <div>
-                        <p className="playground__card-section">{item.sectionLabel}</p>
-                        <h3>{item.title}</h3>
-                        <p className="playground__card-try">{item.whatYouTry}</p>
-                      </div>
-                      <span className="playground__soon-tag">Coming soon</span>
+                    <li key={item.title} className="playground__entry playground__entry--soon">
+                      <span className="playground__entry-link">
+                        <span className="playground__num" aria-hidden="true">·</span>
+                        <span className="playground__entry-body">
+                          <span className="playground__entry-line">
+                            <span className="playground__entry-title">{item.title}</span>
+                            <span className="playground__leader" aria-hidden="true" />
+                            <span className="playground__go">Coming soon</span>
+                          </span>
+                          <span className="playground__entry-note">{item.whatYouTry}</span>
+                        </span>
+                      </span>
                     </li>
                   ))}
-                </ul>
+                </ol>
               </section>
-            ))
+              );
+            })
           )}
         </div>
       </main>

@@ -37,7 +37,7 @@ describe('PlaygroundPage hub', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Interactive Playground' })).toBeInTheDocument();
 
-    const cardLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('.playground__card--live a.playground__card-link'));
+    const cardLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a.playground__entry-link'));
     expect(cardLinks.length).toBe(PLAYGROUND_TOOLS.length);
 
     for (const link of cardLinks) {
@@ -51,7 +51,7 @@ describe('PlaygroundPage hub', () => {
   it('lists NEW tools only as plain Coming soon cards with no clickable links or buttons', () => {
     renderPlayground();
 
-    const soonCards = Array.from(document.querySelectorAll<HTMLLIElement>('.playground__card--soon'));
+    const soonCards = Array.from(document.querySelectorAll<HTMLLIElement>('.playground__entry--soon'));
     expect(soonCards.length).toBe(COMING_SOON_TOOLS.length);
 
     for (const card of soonCards) {
@@ -67,7 +67,7 @@ describe('PlaygroundPage hub', () => {
     const search = screen.getByRole('searchbox', { name: /Search tools/i });
     fireEvent.change(search, { target: { value: 'Roofline' } });
 
-    const filteredLinks = document.querySelectorAll('.playground__card--live a.playground__card-link');
+    const filteredLinks = document.querySelectorAll('a.playground__entry-link');
     expect(filteredLinks.length).toBe(1);
     expect(filteredLinks[0]).toHaveTextContent('GPU Roofline Model Visualizer');
 
@@ -76,7 +76,7 @@ describe('PlaygroundPage hub', () => {
     const sectionSelect = screen.getByRole('combobox', { name: /Filter by section/i });
     fireEvent.change(sectionSelect, { target: { value: 'harness-engineering' } });
 
-    const harnessLinks = document.querySelectorAll('.playground__card--live a.playground__card-link');
+    const harnessLinks = document.querySelectorAll('a.playground__entry-link');
     expect(harnessLinks.length).toBe(4);
   });
 });
