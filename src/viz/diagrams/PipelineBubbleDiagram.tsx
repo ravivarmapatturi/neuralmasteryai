@@ -1,54 +1,169 @@
-import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, Slider, useAutoCycle } from '../primitives';
-import { DIAGRAM_TYPE, getConceptColor } from './diagramSystem';
+import { useMemo, useState } from 'react';
+import { FONT_FAMILY, RADIUS, useVizTokens } from '../../theme/vizTokens';
+import { StickyNote, StickyRow, VisualizationContainer, VizButton } from '../primitives';
+import { buildPipelineSchedule, explainPipelineStep } from '../lib/pipelineBubble';
+import { PredictChallenge } from './playgroundPrimitives';
+import { useStepPlayback } from './useStepPlayback';
 
-const BATCH_STEPS = [2, 4, 8, 12, 16];
+const PREDICT_OPTIONS = [
+  'The bubble fraction falls because more useful work shares the same fill and drain',
+  'The bubble fraction doubles',
+  'Nothing changes',
+] as const;
 
-/** More micro-batches per pipeline fill/drain cycle means a smaller
- * fraction of total time is spent in the "bubble" -- drag micro-batch
- * count and watch the idle (bubble) fraction actually shrink. */
-export default function PipelineBubbleDiagram() {
+function NumberControl({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
   const t = useVizTokens();
-  const { value: stepIdx, pick } = useAutoCycle(BATCH_STEPS.length, 2500, 1);
-  const microBatches = BATCH_STEPS[stepIdx];
-  const STAGES = 4;
-  const color = getConceptColor(t, 'attention');
-  const bubbleColor = t.textMuted;
+  return (
+    <label style={{ flex: '1 1 135px', minWidth: 0, fontSize: 15 }}>
+      <span style={{ display: 'block', marginBottom: 4, fontWeight: 700 }}>{label}</span>
+      <input aria-label={label} type="number" value={value} min={min} max={max} step={1} onChange={(event) => onChange(Math.max(min, Math.min(max, Math.round(Number(event.target.value) || min))))} style={{ width: '100%', boxSizing: 'border-box', minHeight: 38, padding: '6px 8px', border: `1.5px solid ${t.border}`, borderRadius: RADIUS.sm, background: t.background, color: t.textPrimary, fontFamily: FONT_FAMILY, fontSize: 15, fontVariantNumeric: 'tabular-nums' }} />
+    </label>
+  );
+}
 
-  const totalSteps = STAGES - 1 + microBatches;
-  const bubblePct = Math.round(((STAGES - 1) / totalSteps) * 100);
+function PipelineBubblePlayground({ compact }: { compact: boolean }) {
+  const t = useVizTokens();
+  const [stageCount, setStageCount] = useState(4);
+  const [microBatchCount, setMicroBatchCount] = useState(4);
+  const [slowStageIndex, setSlowStageIndex] = useState(1);
+  const [slowStageTicks, setSlowStageTicks] = useState(1);
+  const [prediction, setPrediction] = useState<number | null>(null);
+  const schedule = useMemo(() => buildPipelineSchedule({ stageCount, microBatchCount, slowStageIndex, slowStageTicks }), [stageCount, microBatchCount, slowStageIndex, slowStageTicks]);
+  const playback = useStepPlayback(schedule.makespan, 850, schedule.makespan - 1);
+  const tick = Math.min(playback.step, schedule.makespan - 1);
+  const caption = explainPipelineStep(schedule, tick);
 
-  const width = 560;
-  const cellW = Math.min(30, (width - 80) / totalSteps);
+  const workColor = t.accentSecondary;
+  const bottleneckColor = t.accentDanger;
+  const idleColor = t.textMuted;
+  const markerColor = t.accentPurple;
+  const gridLeft = 108;
+  const gridRight = 746;
+  const gridWidth = gridRight - gridLeft;
+  const cellWidth = gridWidth / schedule.makespan;
+  const rowHeight = 42;
+  const svgHeight = 78 + schedule.stageDurations.length * rowHeight + 44;
+  const setCount = (setter: (value: number) => void, value: number) => {
+    setter(value);
+    setPrediction(null);
+    playback.setStep(0);
+  };
 
   return (
-    <VisualizationContainer footer={`Bubble (idle) time: ${bubblePct}% of total. More micro-batches per cycle means the fixed fill/drain cost (${STAGES - 1} steps) is amortized over more useful work.`}>
-      <Slider
-        label={`Micro-batches: ${microBatches}`}
-        min={1}
-        max={16}
-        step={1}
-        value={microBatches}
-        onChange={(val) => {
-          const closest = BATCH_STEPS.reduce((prev, curr, idx) => Math.abs(curr - val) < Math.abs(BATCH_STEPS[prev] - val) ? idx : prev, 0);
-          pick(closest);
-        }}
-      />
-      <svg width="100%" viewBox={`0 0 ${width} ${STAGES * 26 + 20}`} style={{ display: 'block', marginTop: 8 }}>
-        {Array.from({ length: STAGES }, (_, stage) => (
-          <g key={stage}>
-            <text x={4} y={20 + stage * 26} fontSize={8} fill={t.textMuted}>stage {stage + 1}</text>
-            {Array.from({ length: totalSteps }, (_, step) => {
-              const isBusy = step >= stage && step < stage + microBatches;
-              return <rect key={step} x={60 + step * cellW} y={10 + stage * 26} width={cellW - 2} height={18} rx={2} fill={isBusy ? color : 'none'} stroke={isBusy ? color : bubbleColor} strokeWidth={1} opacity={isBusy ? 0.85 : 0.25} style={{ transition: 'all 200ms ease' }} />;
-            })}
-          </g>
-        ))}
+    <>
+      {!compact && (
+        <>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>Pipeline bubble playground</div>
+            <p style={{ margin: '2px 0 0', fontSize: 15, lineHeight: 1.5, color: t.textSecondary }}>
+              Pipeline parallelism splits a model across devices, but a device sits idle until a micro-batch reaches its stage; those empty time slots are the bubble.
+            </p>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <NumberControl label="Pipeline stages (model pieces)" value={stageCount} min={2} max={8} onChange={(value) => { setCount(setStageCount, value); setSlowStageIndex((current) => Math.min(current, value - 1)); }} />
+            <NumberControl label="Micro-batches per training batch" value={microBatchCount} min={1} max={16} onChange={(value) => setCount(setMicroBatchCount, value)} />
+            <NumberControl label="Slower stage number" value={slowStageIndex + 1} min={1} max={stageCount} onChange={(value) => setCount((next) => setSlowStageIndex(next - 1), value)} />
+            <NumberControl label="Time for slower stage" value={slowStageTicks} min={1} max={4} onChange={(value) => setCount(setSlowStageTicks, value)} />
+          </div>
+        </>
+      )}
+
+      <svg width="100%" viewBox={`0 0 760 ${svgHeight}`} role="img" aria-label={`${stageCount}-stage pipeline uses ${microBatchCount} micro-batches with ${(schedule.bubbleFraction * 100).toFixed(1)} percent idle bubble time`} style={{ display: 'block', fontFamily: FONT_FAMILY }}>
+        <defs><clipPath id="pipeline-grid-clip"><rect x={gridLeft} y="54" width={gridWidth} height={schedule.stageDurations.length * rowHeight} /></clipPath></defs>
+        <text x="14" y="24" fontSize="15" fontWeight="700" fill={t.textPrimary}>Standard pipeline schedule: each diagonal band is one micro-batch moving through model stages</text>
+        <text x={gridLeft} y="46" fontSize="14" fill={t.textSecondary}>time →</text>
+        {Array.from({ length: schedule.makespan }, (_, tickIndex) => {
+          const show = cellWidth >= 30 || tickIndex % Math.max(1, Math.ceil(30 / cellWidth)) === 0;
+          return show ? <text key={`tick-${tickIndex}`} x={gridLeft + tickIndex * cellWidth + cellWidth / 2} y="46" textAnchor="middle" fontSize="14" fill={t.textMuted}>{tickIndex + 1}</text> : null;
+        })}
+
+        {schedule.cells.map((row, stageIndex) => {
+          const y = 58 + stageIndex * rowHeight;
+          const isSlow = stageIndex === slowStageIndex && schedule.stageDurations[stageIndex] > 1;
+          return (
+            <g key={`stage-${stageIndex}`}>
+              <text x="14" y={y + 17} fontSize="15" fontWeight={isSlow ? 700 : 400} fill={isSlow ? bottleneckColor : t.textPrimary}>Stage {stageIndex + 1}</text>
+              <text x="14" y={y + 35} fontSize="14" fill={t.textSecondary}>{schedule.stageDurations[stageIndex]} time unit{schedule.stageDurations[stageIndex] === 1 ? '' : 's'}</text>
+              <g clipPath="url(#pipeline-grid-clip)">
+                {row.map((cell) => {
+                  const busy = cell.microBatchIndex !== null;
+                  const color = isSlow && busy ? bottleneckColor : workColor;
+                  const revealed = cell.tick <= tick;
+                  return (
+                    <g key={`${stageIndex}-${cell.tick}`} opacity={revealed ? 1 : 0.2}>
+                      <rect x={gridLeft + cell.tick * cellWidth + 1} y={y} width={Math.max(1, cellWidth - 2)} height={32} rx={3} fill={busy ? color : t.background} fillOpacity={busy ? 0.8 : 1} stroke={busy ? color : idleColor} strokeWidth={1.2} strokeDasharray={busy ? undefined : '4 3'} />
+                      {busy && cellWidth >= 31 && <text x={gridLeft + cell.tick * cellWidth + cellWidth / 2} y={y + 21} textAnchor="middle" fontSize="14" fontWeight={700} fill={t.background}>M{(cell.microBatchIndex ?? 0) + 1}</text>}
+                    </g>
+                  );
+                })}
+              </g>
+            </g>
+          );
+        })}
+
+        <line x1={gridLeft + (tick + 1) * cellWidth} y1="52" x2={gridLeft + (tick + 1) * cellWidth} y2={58 + schedule.stageDurations.length * rowHeight - 10} stroke={markerColor} strokeWidth={2.2} />
+        <text x={gridLeft + (tick + 1) * cellWidth - 5} y={70 + schedule.stageDurations.length * rowHeight} textAnchor="end" fontSize="14" fontWeight="700" fill={markerColor}>now: time {tick + 1}</text>
+        <text x="14" y={svgHeight - 12} fontSize="14" fill={workColor}>■ useful stage work</text>
+        <text x="218" y={svgHeight - 12} fontSize="14" fill={idleColor}>□ bubble (idle)</text>
+        <text x="404" y={svgHeight - 12} fontSize="14" fill={bottleneckColor}>■ slower-stage work</text>
+        <text x="624" y={svgHeight - 12} fontSize="14" fill={markerColor}>│ current time</text>
       </svg>
-      <div style={{ display: 'flex', gap: 16, justifyContent: 'center', fontSize: DIAGRAM_TYPE.caption.size, marginTop: 4 }}>
-        <span style={{ color, fontWeight: 600 }}>■ doing useful work</span>
-        <span style={{ color: t.textMuted }}>□ bubble (idle, waiting: {bubblePct}%)</span>
-      </div>
+
+      {compact ? (
+        <StickyRow>
+          <StickyNote title="Bubble fraction" latex={String.raw`B=1-\frac{\text{busy stage-time}}{S\,T}`} color="yellow" tilt={-1}>
+            <p>{schedule.idleStageTicks}/{stageCount * schedule.makespan} = <strong>{(schedule.bubbleFraction * 100).toFixed(1)}% idle</strong>.</p>
+          </StickyNote>
+          <StickyNote title={`What just happened · time ${tick + 1}/${schedule.makespan}`} color="blue" tilt={1} live><p>{caption}</p></StickyNote>
+        </StickyRow>
+      ) : (
+        <>
+          <StickyRow>
+            <StickyNote title="Stage utilization" latex={String.raw`U=\frac{\text{busy stage-time}}{S\,T}`} color="green" tilt={-1}>
+              <p>S means stages and T means total time. {schedule.busyStageTicks}/({stageCount} × {schedule.makespan}) = <strong>{(schedule.utilization * 100).toFixed(1)}%</strong>.</p>
+            </StickyNote>
+            <StickyNote title="Bubble fraction" latex={String.raw`B=1-U`} color="yellow" tilt={1}>
+              <p>1 − {schedule.utilization.toFixed(3)} = <strong>{(schedule.bubbleFraction * 100).toFixed(1)}%</strong> of stage slots idle.</p>
+            </StickyNote>
+            <StickyNote title="Micro-batch throughput" latex={String.raw`\text{throughput}=\frac{m}{T}`} color="pink" tilt={-1}>
+              <p>m means micro-batches and T means total time. {microBatchCount}/{schedule.makespan} = <strong>{schedule.throughput.toFixed(3)} per time unit</strong>.</p>
+            </StickyNote>
+          </StickyRow>
+          <StickyRow>
+            <StickyNote title="Worked numbers" color="orange" tilt={1}>
+              <p>S = {stageCount} stages, m = {microBatchCount} micro-batches, T = {schedule.makespan} time units.</p>
+              <p><strong>{schedule.busyStageTicks} busy + {schedule.idleStageTicks} idle = {stageCount * schedule.makespan} stage-time slots.</strong></p>
+            </StickyNote>
+            <StickyNote title={`What just happened · time ${tick + 1}/${schedule.makespan}`} color="blue" tilt={-1} live><p>{caption}</p></StickyNote>
+          </StickyRow>
+
+          <PredictChallenge
+            prompt="Keep four equal stages, then double micro-batches from 4 to 8. What happens to the bubble fraction?"
+            options={PREDICT_OPTIONS}
+            correctIndex={0}
+            selected={prediction}
+            onSelect={setPrediction}
+            explanation="The opening and closing diagonals still cost three slots, but eight useful micro-batches now share that fixed cost."
+            actionLabel="Run 4 stages × 8 micro-batches"
+            onAction={() => { setStageCount(4); setMicroBatchCount(8); setSlowStageIndex(1); setSlowStageTicks(1); playback.playFromStart(); }}
+          />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            <VizButton onClick={playback.toggle}>{playback.playing ? 'Pause' : 'Play'}</VizButton>
+            <VizButton variant="secondary" onClick={playback.next}>Step →</VizButton>
+            <VizButton variant="secondary" onClick={playback.reset}>Reset</VizButton>
+            <span style={{ marginLeft: 'auto', fontSize: 15, color: t.textSecondary }}>M1 means micro-batch 1; each row is one model stage on one device.</span>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+export default function PipelineBubbleDiagram({ compact = false }: { compact?: boolean } = {}) {
+  return (
+    <VisualizationContainer title="Pipeline bubble playground" footer="The schedule uses real dependency timing: a stage starts a micro-batch only after that micro-batch leaves the prior stage and this stage finishes its prior micro-batch. Timing units are illustrative, not GPU benchmark measurements.">
+      <PipelineBubblePlayground compact={compact} />
     </VisualizationContainer>
   );
 }
