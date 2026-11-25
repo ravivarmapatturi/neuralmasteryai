@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analogy, CATEGORIES, cosineSim, nearestNeighbors, pca2D, VOCAB } from './embeddings'
+import { analogy, CATEGORIES, combineWordVectors, cosineSim, fitPca2D, nearestNeighbors, pca2D, projectVector2D, rankVector, VOCAB } from './embeddings'
 
 describe('cosineSim', () => {
   it('is 1 for identical vectors', () => {
@@ -109,5 +109,54 @@ describe('pca2D', () => {
     const weatherMean = weatherX.reduce((a, b) => a + b, 0) / weatherX.length
     // The two category clusters should sit on opposite sides of the projection's mean.
     expect(Math.sign(royaltyMean)).not.toBe(Math.sign(weatherMean))
+  })
+
+  it('gives every category equal fitting weight so category centres remain spread in 2D', () => {
+    const points = pca2D(VOCAB)
+    const centres = CATEGORIES.map((category) => {
+      const categoryPoints = VOCAB.flatMap((entry, index) => entry.category === category ? [points[index]] : [])
+      return [
+        categoryPoints.reduce((sum, point) => sum + point[0], 0) / categoryPoints.length,
+        categoryPoints.reduce((sum, point) => sum + point[1], 0) / categoryPoints.length,
+      ]
+    })
+    const closestPair = Math.min(...centres.flatMap((centre, index) => centres.slice(index + 1).map((other) => (
+      Math.hypot(centre[0] - other[0], centre[1] - other[1])
+    ))))
+    expect(closestPair).toBeGreaterThan(0.35)
+  })
+})
+
+describe('editable vector explorer calculations', () => {
+  it('combines word vectors with the visible coefficients', () => {
+    const king = VOCAB.find((entry) => entry.word === 'king')!.vector
+    const man = VOCAB.find((entry) => entry.word === 'man')!.vector
+    const woman = VOCAB.find((entry) => entry.word === 'woman')!.vector
+    const combined = combineWordVectors([
+      { word: 'king', coefficient: 1 },
+      { word: 'man', coefficient: -1 },
+      { word: 'woman', coefficient: 1 },
+    ])
+    combined.forEach((value, index) => {
+      expect(value).toBeCloseTo(king[index] - man[index] + woman[index], 12)
+    })
+  })
+
+  it('ranks hand-checked vectors correctly for cosine and L2', () => {
+    const toy = [
+      { word: 'same direction', category: 'toy', vector: [2, 0] },
+      { word: 'nearby', category: 'toy', vector: [1, 0.5] },
+      { word: 'orthogonal', category: 'toy', vector: [0, 1] },
+    ]
+    expect(rankVector([1, 0], 'cosine', 3, [], toy)[0].word).toBe('same direction')
+    expect(rankVector([1, 0], 'cosine', 3, [], toy)[0].score).toBe(1)
+    expect(rankVector([1, 0], 'euclidean', 3, [], toy)[0].word).toBe('nearby')
+    expect(rankVector([1, 0], 'euclidean', 3, [], toy)[0].score).toBeCloseTo(0.5, 12)
+  })
+
+  it('projects a fitted vocabulary row to the same PCA point shown by pca2D', () => {
+    const sample = VOCAB.slice(0, 12)
+    const model = fitPca2D(sample)
+    expect(projectVector2D(sample[3].vector, model)).toEqual(pca2D(sample)[3])
   })
 })

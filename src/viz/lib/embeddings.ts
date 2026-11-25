@@ -93,6 +93,13 @@ export interface VocabEntry {
   vector: number[];
 }
 
+export type EmbeddingMetric = 'cosine' | 'euclidean' | 'dot';
+
+export interface RankedEmbedding extends VocabEntry {
+  score: number;
+  rank: number;
+}
+
 export const VOCAB: VocabEntry[] = WORDS.map(([word, category, gender]) => ({
   word,
   category,
@@ -110,6 +117,41 @@ export function cosineSim(a: number[], b: number[]): number {
   }
   if (na === 0 || nb === 0) return 0;
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+export function combineWordVectors(terms: { word: string; coefficient: number }[]): number[] {
+  const rows = terms.map((term) => ({
+    coefficient: Number.isFinite(term.coefficient) ? term.coefficient : 0,
+    vector: VOCAB.find((entry) => entry.word === term.word)?.vector,
+  }));
+  if (rows.some((row) => !row.vector)) return [];
+  return rows[0].vector!.map((_, dimension) => rows.reduce(
+    (sum, row) => sum + row.coefficient * row.vector![dimension],
+    0,
+  ));
+}
+
+export function embeddingScore(a: number[], b: number[], metric: EmbeddingMetric): number {
+  if (metric === 'cosine') return cosineSim(a, b);
+  if (metric === 'dot') return a.reduce((sum, value, index) => sum + value * (b[index] ?? 0), 0);
+  return Math.sqrt(a.reduce((sum, value, index) => sum + (value - (b[index] ?? 0)) ** 2, 0));
+}
+
+export function rankVector(
+  query: number[],
+  metric: EmbeddingMetric,
+  k = 5,
+  excludedWords: string[] = [],
+  vocabulary: VocabEntry[] = VOCAB,
+): RankedEmbedding[] {
+  if (query.length === 0) return [];
+  const excluded = new Set(excludedWords);
+  return vocabulary
+    .filter((entry) => !excluded.has(entry.word))
+    .map((entry) => ({ ...entry, score: embeddingScore(query, entry.vector, metric) }))
+    .sort((a, b) => metric === 'euclidean' ? a.score - b.score : b.score - a.score)
+    .slice(0, Math.max(1, Math.round(k)))
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
 }
 
 export interface SimResult {
@@ -141,20 +183,22 @@ export function analogy(a: string, b: string, c: string, k = 3): SimResult[] {
 
 // --- Real PCA (power iteration + deflation) down to 2D, for the scatter plot ---
 
-function mean(vectors: number[][]): number[] {
+function mean(vectors: number[][], weights: number[]): number[] {
   const d = vectors[0].length;
   const m = new Array(d).fill(0);
-  vectors.forEach((v) => v.forEach((x, i) => { m[i] += x / vectors.length; }));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  vectors.forEach((v, row) => v.forEach((x, i) => { m[i] += (x * weights[row]) / totalWeight; }));
   return m;
 }
 
-function covarianceMatrix(centered: number[][]): number[][] {
+function covarianceMatrix(centered: number[][], weights: number[]): number[][] {
   const d = centered[0].length;
   const cov: number[][] = Array.from({ length: d }, () => new Array(d).fill(0));
-  centered.forEach((v) => {
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  centered.forEach((v, row) => {
     for (let i = 0; i < d; i++) {
       for (let j = 0; j < d; j++) {
-        cov[i][j] += (v[i] * v[j]) / centered.length;
+        cov[i][j] += (weights[row] * v[i] * v[j]) / totalWeight;
       }
     }
   });
@@ -194,16 +238,35 @@ function deflate(M: number[][], v: number[], eigenvalue: number): number[][] {
   return out;
 }
 
-export function pca2D(vocab: VocabEntry[]): [number, number][] {
-  const vectors = vocab.map((v) => v.vector);
-  const m = mean(vectors);
-  const centered = vectors.map((v) => v.map((x, i) => x - m[i]));
-  const cov = covarianceMatrix(centered);
+export interface Pca2DModel {
+  mean: number[];
+  axes: [number[], number[]];
+}
 
+export function fitPca2D(vocab: VocabEntry[]): Pca2DModel {
+  const vectors = vocab.map((v) => v.vector);
+  // Give every semantic category the same total mass. Without this weighting,
+  // the larger "people" group dominates the first component and compresses
+  // nearly every other category against one edge of the 2D plot.
+  const categoryCounts = new Map<string, number>();
+  vocab.forEach((entry) => categoryCounts.set(entry.category, (categoryCounts.get(entry.category) ?? 0) + 1));
+  const weights = vocab.map((entry) => 1 / (categoryCounts.get(entry.category) ?? 1));
+  const m = mean(vectors, weights);
+  const centered = vectors.map((v) => v.map((x, i) => x - m[i]));
+  const cov = covarianceMatrix(centered, weights);
   const v1 = powerIteration(cov, 60, 1);
   const eigenvalue1 = dot(matVec(cov, v1), v1);
   const covDeflated = deflate(cov, v1, eigenvalue1);
   const v2 = powerIteration(covDeflated, 60, 2);
+  return { mean: m, axes: [v1, v2] };
+}
 
-  return centered.map((c) => [dot(c, v1), dot(c, v2)]);
+export function projectVector2D(vector: number[], model: Pca2DModel): [number, number] {
+  const centered = vector.map((value, index) => value - (model.mean[index] ?? 0));
+  return [dot(centered, model.axes[0]), dot(centered, model.axes[1])];
+}
+
+export function pca2D(vocab: VocabEntry[]): [number, number][] {
+  const model = fitPca2D(vocab);
+  return vocab.map((entry) => projectVector2D(entry.vector, model));
 }

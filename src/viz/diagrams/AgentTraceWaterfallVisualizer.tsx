@@ -1,120 +1,181 @@
+import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle, FlowDots } from '../primitives';
+import { StickyNote, StickyRow, VisualizationContainer, VisualizationHeader, VizButton } from '../primitives';
+import { buildAgentTrace, type AgentSpanKind, type AgentTraceConfig } from '../lib/agentTrace';
+import { usePlaygroundPlayback } from './usePlaygroundPlayback';
 
-type ViewMode = 'trace_spans' | 'cost_attribution';
-const VIEWS: ViewMode[] = ['trace_spans', 'cost_attribution'];
+const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
+const DEFAULT_CONFIG: AgentTraceConfig = {
+  task: 'Fix the login timeout',
+  planInputTokens: 600,
+  planOutputTokens: 420,
+  patchInputTokens: 1_200,
+  patchOutputTokens: 850,
+  tokensPerSecond: 80,
+  toolLatencyMs: 220,
+  verificationMs: 900,
+  retries: 1,
+  inputPricePerMillion: 3,
+  outputPricePerMillion: 15,
+};
 
-export default function AgentTraceWaterfallVisualizer() {
+const money = (value: number) => `$${value.toFixed(value >= 0.01 ? 3 : 5)}`;
+const elapsed = (value: number) => value >= 1_000 ? `${(value / 1_000).toFixed(2)} s` : `${Math.round(value)} ms`;
+const shortLabel = (value: string) => value.length > 22 ? `${value.slice(0, 21)}…` : value;
+
+function NumberControl({ label, value, min, max, step = 1, onChange }: {
+  label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void;
+}) {
   const t = useVizTokens();
-  const { value: viewIdx, pick, stop } = useAutoCycle(VIEWS.length, 3500, 0);
-  const view = VIEWS[viewIdx];
+  return <label style={{ display: 'block', minWidth: 0, fontSize: 15 }}>
+    <span style={{ display: 'block', marginBottom: 3, fontWeight: 700 }}>{label}</span>
+    <input aria-label={label} type="number" value={value} min={min} max={max} step={step}
+      onChange={(event) => {
+        const next = Number(event.target.value);
+        if (Number.isFinite(next)) onChange(Math.max(min, Math.min(max, next)));
+      }}
+      style={{ width: '100%', boxSizing: 'border-box', minHeight: 34, padding: '4px 7px', border: `1.5px solid ${t.border}`, borderRadius: 6, background: t.background, color: t.textPrimary, font: 'inherit', fontVariantNumeric: 'tabular-nums' }} />
+  </label>;
+}
 
-  return (
-    <VisualizationContainer
-      title="Agent OpenTelemetry Trace Waterfall & Cost Attribution"
-      footer={
-        view === 'trace_spans'
-          ? 'OpenTelemetry Spans for Agents trace the parent task span into model reasoning turns, tool dispatch spans, and child verification runs with sub-millisecond timestamps.'
-          : 'Cost Attribution maps input/output token usage per turn, identifying that Turn 3 tool error recovery accounted for 64% of total turn spend.'
-      }
-    >
-      <VisualizationHeader
-        eyebrow="OBSERVABILITY RUNTIME"
-        title="Distributed Span Trees & Execution Telemetry"
-        description="Inspect how OpenTelemetry span hierarchies capture tool invocations, token velocity, and failure points in multi-step agent runs."
-      />
+export default function AgentTraceWaterfallVisualizer({ compact = false }: { compact?: boolean }) {
+  const t = useVizTokens();
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const trace = useMemo(() => buildAgentTrace(config), [config]);
+  const childSpans = trace.spans.slice(1);
+  const playback = usePlaygroundPlayback(childSpans.length, 1500);
+  const current = childSpans[playback.step] ?? childSpans[0];
+  const modelSpans = childSpans.filter((span) => span.kind === 'model' || span.kind === 'retry');
+  const mostExpensive = [...modelSpans].sort((a, b) => b.costUsd - a.costUsd)[0];
+  const [prediction, setPrediction] = useState('patch');
+  const [predictionResult, setPredictionResult] = useState<boolean | null>(null);
+  const update = <K extends keyof AgentTraceConfig>(key: K, value: AgentTraceConfig[K]) => {
+    setConfig((previous) => ({ ...previous, [key]: value }));
+    setPredictionResult(null);
+  };
 
-      <div style={{ margin: '0.75rem 0' }}>
-        <PillSelect<ViewMode>
-          label="Telemetry Lens"
-          value={view}
-          onChange={(val) => {
-            const next = typeof val === 'function' ? val(view) : val;
-            const idx = VIEWS.indexOf(next);
-            if (idx >= 0) pick(idx);
-            stop();
-          }}
-          options={[
-            { value: 'trace_spans', label: '1. OpenTelemetry Span Hierarchy' },
-            { value: 'cost_attribution', label: '2. Step Token & Cost Attribution' },
-          ]}
-        />
+  const colors: Record<AgentSpanKind, string> = {
+    session: t.accentPrimary, model: t.accentSecondary, tool: t.accentTeal, retry: t.accentWarn, verify: t.accentDanger,
+  };
+  const legend = [['model', 'Model writes'], ['tool', 'Tools run'], ['retry', 'Repair attempt'], ['verify', 'Verification']] as const;
+  const width = 760;
+  const labelWidth = 190;
+  const plotWidth = width - labelWidth - 24;
+  const rowHeight = 40;
+  const waterfallHeight = 76 + trace.spans.length * rowHeight;
+  const safeTotal = Math.max(1, trace.totalDurationMs);
+  const x = (ms: number) => labelWidth + (ms / safeTotal) * plotWidth;
+  const maxCost = Math.max(0.000001, ...modelSpans.map((span) => span.costUsd));
+  const costHeight = 54 + modelSpans.length * 42;
+  const currentText = `${current.label} starts at ${elapsed(current.startMs)}, lasts ${elapsed(current.durationMs)}, and ${current.costUsd > 0 ? `costs ${money(current.costUsd)}` : 'has no token charge in this model'}.`;
+
+  return <VisualizationContainer title="Agent trace waterfall playground"
+    footer="Every bar, timestamp, token total, and cost is calculated from the editable inputs. The timing model adds 120 ms of model overhead and generated tokens divided by tokens per second; it is an illustrative trace, not a production benchmark.">
+    {!compact && <>
+      <VisualizationHeader eyebrow="Live playground" title="Find the slow or expensive step in an agent run"
+        description="This solves a common debugging problem: an agent feels slow or costly, but a trace shows exactly which model call, tool, repair, or check used the time and money." />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+        <label style={{ display: 'block', gridColumn: '1 / -1', fontSize: 15 }}>
+          <span style={{ display: 'block', marginBottom: 3, fontWeight: 700 }}>Task name (the root trace)</span>
+          <input aria-label="Task name (the root trace)" value={config.task} maxLength={42}
+            onChange={(event) => update('task', event.target.value)}
+            style={{ width: '100%', boxSizing: 'border-box', minHeight: 34, padding: '4px 7px', border: `1.5px solid ${t.border}`, borderRadius: 6, background: t.background, color: t.textPrimary, font: 'inherit' }} />
+        </label>
+        <NumberControl label="Model speed (output tokens/second)" value={config.tokensPerSecond} min={1} max={500} onChange={(value) => update('tokensPerSecond', value)} />
+        <NumberControl label="Planning output tokens" value={config.planOutputTokens} min={1} max={8_000} onChange={(value) => update('planOutputTokens', value)} />
+        <NumberControl label="Patch output tokens" value={config.patchOutputTokens} min={1} max={12_000} onChange={(value) => update('patchOutputTokens', value)} />
+        <NumberControl label="Tool time (milliseconds)" value={config.toolLatencyMs} min={0} max={10_000} onChange={(value) => update('toolLatencyMs', value)} />
+        <NumberControl label="Verification time (milliseconds)" value={config.verificationMs} min={0} max={30_000} onChange={(value) => update('verificationMs', value)} />
+        <NumberControl label="Repair attempts after a failed check" value={config.retries} min={0} max={4} onChange={(value) => update('retries', Math.round(value))} />
+        <NumberControl label="Input price (dollars/million tokens)" value={config.inputPricePerMillion} min={0} max={200} step={0.5} onChange={(value) => update('inputPricePerMillion', value)} />
+        <NumberControl label="Output price (dollars/million tokens)" value={config.outputPricePerMillion} min={0} max={400} step={0.5} onChange={(value) => update('outputPricePerMillion', value)} />
       </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 15 }}>
+        <strong style={{ color: t.accentWarn }}>Predict first:</strong><span>Which model-writing span costs the most?</span>
+        <select aria-label="Predicted most expensive span" value={prediction}
+          onChange={(event) => { setPrediction(event.target.value); setPredictionResult(null); }}
+          style={{ minHeight: 34, border: `1.5px solid ${t.border}`, borderRadius: 6, background: t.background, color: t.textPrimary, font: 'inherit' }}>
+          {modelSpans.map((span) => <option key={span.id} value={span.id}>{span.label}</option>)}
+        </select>
+        <VizButton onClick={() => setPredictionResult(prediction === mostExpensive.id)}>Run prediction</VizButton>
+        {predictionResult !== null && <span role="status" style={{ color: predictionResult ? t.accentPrimary : t.accentDanger, fontWeight: 700 }}>
+          {predictionResult ? 'Correct.' : `The largest token bill is ${mostExpensive.label}: ${money(mostExpensive.costUsd)}.`}
+        </span>}
+      </div>
+    </>}
 
-      {view === 'trace_spans' ? (
-        <svg viewBox="0 0 680 250" width="100%" role="img" aria-label="OpenTelemetry Span Waterfall">
-          <FlowDots d="M 40 215 H 640" color={t.accentPrimary} dur={3} />
-          {/* Root Span */}
-          <rect x={40} y={25} width={600} height={26} rx={4} fill={t.accentPrimary} />
-          <text x={50} y={43} fontSize={11} fontWeight={700} fill={t.background}>
-            Root: agent.session.solve_issue (3,420ms) · trace_id: 8a4f91b
-          </text>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 18px', fontSize: 15, marginTop: compact ? 0 : 10 }} aria-label="Span colour legend">
+      {legend.map(([kind, label]) => <span key={kind}><span style={{ display: 'inline-block', width: 20, height: 5, marginRight: 6, verticalAlign: 'middle', background: colors[kind] }} />{label}</span>)}
+    </div>
 
-          {/* Child 1: LLM Reasoning */}
-          <rect x={70} y={65} width={280} height={24} rx={4} fill={t.accentSecondary} />
-          <text x={80} y={81} fontSize={11} fontWeight={600} fill={t.background}>
-            llm.generate.plan (1,240ms · 840 tok)
-          </text>
+    <svg width="100%" viewBox={`0 0 ${width} ${waterfallHeight}`} role="img"
+      aria-label={`Trace for ${config.task}: ${childSpans.length} child spans take ${elapsed(trace.totalDurationMs)} and cost ${money(trace.totalCostUsd)}`}
+      style={{ display: 'block', fontFamily: HAND_FONT }}>
+      <defs><clipPath id="agent-trace-plot"><rect x={labelWidth} y={34} width={plotWidth} height={waterfallHeight - 70} /></clipPath></defs>
+      <text x={14} y={22} fontSize={16} fontWeight={700} fill={t.textPrimary}>Span</text>
+      <text x={labelWidth} y={22} fontSize={16} fontWeight={700} fill={t.textPrimary}>Elapsed from trace start →</text>
+      <g clipPath="url(#agent-trace-plot)">
+        {trace.spans.map((span, index) => {
+          const rowY = 38 + index * rowHeight;
+          const barWidth = Math.max(4, (span.durationMs / safeTotal) * plotWidth);
+          const revealed = index === 0 || index - 1 <= playback.step;
+          const active = span.id === current.id;
+          return <rect key={span.id} x={x(span.startMs)} y={rowY} width={barWidth} height={25} rx={5}
+            opacity={revealed ? 1 : 0.18} fill={colors[span.kind]} fillOpacity={span.kind === 'session' ? 0.42 : 0.82}
+            stroke={active ? t.textPrimary : colors[span.kind]} strokeWidth={active ? 2.5 : 1.2} />;
+        })}
+      </g>
+      {trace.spans.map((span, index) => {
+        const rowY = 38 + index * rowHeight;
+        const barEnd = x(span.endMs);
+        const revealed = index === 0 || index - 1 <= playback.step;
+        return <g key={`label-${span.id}`} opacity={revealed ? 1 : 0.18}>
+          <text x={14} y={rowY + 18} fontSize={15} fontWeight={span.id === current.id ? 700 : 400} fill={span.id === current.id ? colors[span.kind] : t.textPrimary}>{shortLabel(span.label)}</text>
+          <text x={Math.min(width - 8, barEnd + 7)} y={rowY + 18} textAnchor={barEnd > width - 90 ? 'end' : 'start'} fontSize={14} fontWeight={700} fill={t.textSecondary}>{elapsed(span.durationMs)}</text>
+        </g>;
+      })}
+      {[0, 0.5, 1].map((fraction) => <g key={fraction}>
+        <line x1={labelWidth + fraction * plotWidth} y1={waterfallHeight - 34} x2={labelWidth + fraction * plotWidth} y2={waterfallHeight - 27} stroke={t.border} strokeWidth={1.5} />
+        <text x={labelWidth + fraction * plotWidth} y={waterfallHeight - 8} textAnchor={fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle'} fontSize={14} fill={t.textSecondary}>{elapsed(trace.totalDurationMs * fraction)}</text>
+      </g>)}
+    </svg>
 
-          {/* Child 2: Tool Call git_grep */}
-          <rect x={110} y={100} width={120} height={24} rx={4} fill={t.surfaceAlt} stroke={t.border} strokeWidth={1} />
-          <text x={120} y={116} fontSize={11} fill={t.textPrimary}>
-            tool.git_grep (45ms)
-          </text>
+    {!compact && <>
+      <h4 style={{ margin: '0.25rem 0 0', fontSize: 18 }}>Token cost by model call</h4>
+      <svg width="100%" viewBox={`0 0 ${width} ${costHeight}`} role="img" aria-label="Calculated token cost for every model call" style={{ display: 'block', fontFamily: HAND_FONT }}>
+        {modelSpans.map((span, index) => {
+          const y = 30 + index * 42;
+          const active = span.id === current.id;
+          return <g key={span.id}>
+            <text x={14} y={y + 17} fontSize={15} fontWeight={active ? 700 : 400} fill={active ? colors[span.kind] : t.textPrimary}>{span.label}</text>
+            <rect x={220} y={y} width={(span.costUsd / maxCost) * 430} height={22} rx={5} fill={colors[span.kind]} fillOpacity={0.82} />
+            <text x={664} y={y + 17} fontSize={15} fontWeight={700} fill={t.textSecondary}>{money(span.costUsd)}</text>
+          </g>;
+        })}
+      </svg>
+    </>}
 
-          {/* Child 3: Tool Call read_file */}
-          <rect x={240} y={100} width={140} height={24} rx={4} fill={t.surfaceAlt} stroke={t.border} strokeWidth={1} />
-          <text x={250} y={116} fontSize={11} fill={t.textPrimary}>
-            tool.read_file (18ms)
-          </text>
-
-          {/* Child 4: LLM Generation 2 */}
-          <rect x={390} y={135} width={220} height={24} rx={4} fill={t.accentSecondary} />
-          <text x={400} y={151} fontSize={11} fontWeight={600} fill={t.background}>
-            llm.generate.patch (1,520ms · 1,420 tok)
-          </text>
-
-          {/* Child 5: Verification Gate */}
-          <rect x={420} y={170} width={180} height={24} rx={4} fill={t.accentTeal} />
-          <text x={430} y={186} fontSize={11} fontWeight={600} fill={t.background}>
-            sandbox.run_pytest (420ms · exit 0)
-          </text>
-
-          {/* Timeline axis */}
-          <line x1={40} y1={215} x2={640} y2={215} stroke={t.border} strokeWidth={1} />
-          <text x={40} y={235} fontSize={10} fill={t.textSecondary}>0ms</text>
-          <text x={340} y={235} fontSize={10} textAnchor="middle" fill={t.textSecondary}>1,700ms</text>
-          <text x={640} y={235} fontSize={10} textAnchor="end" fill={t.textSecondary}>3,420ms</text>
-        </svg>
-      ) : (
-        <svg viewBox="0 0 680 250" width="100%" role="img" aria-label="Step Token & Cost Attribution">
-          {/* Step 1 */}
-          <text x={40} y={45} fontSize={12} fontWeight={700} fill={t.textPrimary}>Step 1: Planning</text>
-          <rect x={180} y={32} width={180} height={18} rx={3} fill={t.accentPrimary} />
-          <text x={370} y={46} fontSize={11} fill={t.textSecondary}>840 tokens · $0.0025 (18%)</text>
-
-          {/* Step 2 */}
-          <text x={40} y={85} fontSize={12} fontWeight={700} fill={t.textPrimary}>Step 2: Exploration</text>
-          <rect x={180} y={72} width={90} height={18} rx={3} fill={t.accentSecondary} />
-          <text x={280} y={86} fontSize={11} fill={t.textSecondary}>420 tokens · $0.0012 (9%)</text>
-
-          {/* Step 3 */}
-          <text x={40} y={125} fontSize={12} fontWeight={700} fill={t.textPrimary}>Step 3: Patch Gen</text>
-          <rect x={180} y={112} width={340} height={18} rx={3} fill={t.accentDanger} />
-          <text x={530} y={126} fontSize={11} fontWeight={600} fill={t.accentDanger}>2,850 tokens · $0.0089 (64%)</text>
-
-          {/* Step 4 */}
-          <text x={40} y={165} fontSize={12} fontWeight={700} fill={t.textPrimary}>Step 4: Verification</text>
-          <rect x={180} y={152} width={70} height={18} rx={3} fill={t.accentTeal} />
-          <text x={260} y={166} fontSize={11} fill={t.textSecondary}>310 tokens · $0.0009 (7%)</text>
-
-          {/* Summary */}
-          <line x1={40} y1={195} x2={640} y2={195} stroke={t.border} strokeWidth={1} />
-          <text x={40} y={220} fontSize={12} fontWeight={700} fill={t.textPrimary}>
-            Total Session: 4,420 tokens · Cumulative Cost: $0.0135 · Verification: PASSED
-          </text>
-        </svg>
-      )}
-    </VisualizationContainer>
-  );
+    {compact ? <StickyRow>
+      <StickyNote title="Worked total" color="green" tilt={-1}><p>{trace.totalTokens.toLocaleString()} tokens · {elapsed(trace.totalDurationMs)} · <strong>{money(trace.totalCostUsd)}</strong></p></StickyNote>
+      <StickyNote title={`Step ${playback.step + 1} of ${childSpans.length}`} color="blue" tilt={1} live><p>{currentText}</p></StickyNote>
+    </StickyRow> : <>
+      <StickyRow>
+        <StickyNote title="Model time" latex={String.raw`t_{\mathrm{model}}=120\,\mathrm{ms}+\frac{n_{\mathrm{out}}}{r}\times1000`} color="yellow" tilt={-1}>
+          <p>n_out = generated tokens; r = output tokens each second.</p>
+        </StickyNote>
+        <StickyNote title="Token cost" latex={String.raw`C=\frac{n_{\mathrm{in}}p_{\mathrm{in}}+n_{\mathrm{out}}p_{\mathrm{out}}}{1{,}000{,}000}`} color="pink" tilt={1}>
+          <p>p_in and p_out are the prices per million input and output tokens.</p>
+        </StickyNote>
+      </StickyRow>
+      <StickyRow>
+        <StickyNote title="Worked total" color="green" tilt={-1}><p>{trace.totalTokens.toLocaleString()} tokens across {childSpans.length} child spans = {elapsed(trace.totalDurationMs)} and <strong>{money(trace.totalCostUsd)}</strong>.</p></StickyNote>
+        <StickyNote title={`What just happened · step ${playback.step + 1}`} color="blue" tilt={1} live><p>{currentText}</p></StickyNote>
+      </StickyRow>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <VizButton onClick={playback.toggle}>{playback.playing ? 'Pause' : 'Play'}</VizButton>
+        <VizButton variant="secondary" onClick={playback.next}>Step →</VizButton>
+        <VizButton variant="secondary" onClick={playback.reset}>Reset</VizButton>
+      </div>
+    </>}
+  </VisualizationContainer>;
 }

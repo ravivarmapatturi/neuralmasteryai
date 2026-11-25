@@ -23,9 +23,9 @@ describe('New Track Visualizers', () => {
         <AgentTraceWaterfallVisualizer />
       </ThemeProvider>
     );
-    expect(screen.getByText('Distributed Span Trees & Execution Telemetry')).toBeDefined();
-    const costBtn = screen.getByRole('button', { name: /2\. Step Token & Cost Attribution/i });
-    fireEvent.click(costBtn);
-    expect(screen.getByText(/Step 3: Patch Gen/i)).toBeDefined();
+    expect(screen.getByText('Find the slow or expensive step in an agent run')).toBeDefined();
+    const stepButton = screen.getByRole('button', { name: /Step →/i });
+    fireEvent.click(stepButton);
+    expect(screen.getByText(/What just happened · step 2/i)).toBeDefined();
   });
 });
