@@ -111,7 +111,7 @@ function AdaptiveBatchingPlayground({
         </defs>
 
         <text x={plotX} y={50} fontSize={14} fontWeight={700} fill={setupColor}>
-          1. Without batching: pays {sim.config.fixedOverheadMs} ms setup {batchCount}× ({soloTotalMs.toFixed(1)} ms)
+          1. Without batching: {soloTotalMs.toFixed(1)} ms total
         </text>
         <g clipPath={`url(#${clipTimelineId}-${offsetX})`}>
           {Array.from({ length: batchCount }, (_, i) => {
@@ -128,7 +128,7 @@ function AdaptiveBatchingPlayground({
         </g>
 
         <text x={plotX} y={126} fontSize={14} fontWeight={700} fill={batchedColor}>
-          2. Dynamic batching: wait {waitMs.toFixed(1)} ms + 1 setup + {batchCount} item{batchCount === 1 ? '' : 's'} ({groupedTotalMs.toFixed(1)} ms)
+          2. Dynamic batching: {groupedTotalMs.toFixed(1)} ms total
         </text>
         <g clipPath={`url(#${clipTimelineId}-${offsetX})`}>
           {waitMs > 0.1 && (

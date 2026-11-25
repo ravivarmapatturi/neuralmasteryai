@@ -71,7 +71,7 @@ function PipelineBubblePlayground({ compact }: { compact: boolean }) {
       <svg width="100%" viewBox={`0 0 760 ${svgHeight}`} role="img" aria-label={`${stageCount}-stage pipeline uses ${microBatchCount} micro-batches with ${(schedule.bubbleFraction * 100).toFixed(1)} percent idle bubble time`} style={{ display: 'block', fontFamily: FONT_FAMILY }}>
         <defs><clipPath id="pipeline-grid-clip"><rect x={gridLeft} y="54" width={gridWidth} height={schedule.stageDurations.length * rowHeight} /></clipPath></defs>
         <text x="14" y="24" fontSize="15" fontWeight="700" fill={t.textPrimary}>Standard pipeline schedule: each diagonal band is one micro-batch moving through model stages</text>
-        <text x={gridLeft} y="46" fontSize="14" fill={t.textSecondary}>time →</text>
+        <text x="14" y="46" fontSize="14" fill={t.textSecondary}>time →</text>
         {Array.from({ length: schedule.makespan }, (_, tickIndex) => {
           const show = cellWidth >= 30 || tickIndex % Math.max(1, Math.ceil(30 / cellWidth)) === 0;
           return show ? <text key={`tick-${tickIndex}`} x={gridLeft + tickIndex * cellWidth + cellWidth / 2} y="46" textAnchor="middle" fontSize="14" fill={t.textMuted}>{tickIndex + 1}</text> : null;
