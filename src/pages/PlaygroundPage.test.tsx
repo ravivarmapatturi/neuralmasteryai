@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { AuthProvider } from '../contexts/AuthContext';
@@ -48,17 +48,12 @@ describe('PlaygroundPage hub', () => {
     }
   });
 
-  it('lists NEW tools only as plain Coming soon cards with no clickable links or buttons', () => {
+  it('has no remaining Coming soon cards or labels on the hub', () => {
     renderPlayground();
 
-    const soonCards = Array.from(document.querySelectorAll<HTMLLIElement>('.playground__entry--soon'));
-    expect(soonCards.length).toBe(COMING_SOON_TOOLS.length);
-
-    for (const card of soonCards) {
-      expect(within(card).getByText('Coming soon')).toBeInTheDocument();
-      expect(within(card).queryByRole('link')).toBeNull();
-      expect(within(card).queryByRole('button')).toBeNull();
-    }
+    expect(COMING_SOON_TOOLS).toHaveLength(0);
+    expect(document.querySelectorAll('.playground__entry--soon')).toHaveLength(0);
+    expect(screen.queryByText(/Coming soon/i)).toBeNull();
   });
 
   it('filters cards by search text, track buttons, and section select', () => {

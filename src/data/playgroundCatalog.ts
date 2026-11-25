@@ -44,6 +44,17 @@ export const PLAYGROUND_TOOLS: PlaygroundTool[] = rawCatalog.tools;
 export const COMING_SOON_TOOLS: ComingSoonTool[] = rawCatalog.comingSoon;
 
 export const PLAYGROUND_COMPONENTS: Record<string, PlaygroundComponentLoader> = {
+  'ai-stack-map': () => import('../viz/playground/AiStackMapTour'),
+  'role-path-builder': () => import('../viz/playground/RolePathBuilder'),
+  'tokenizer-prefix-cache': () => import('../viz/playground/TokenizerPrefixCacheInspector'),
+  'anomaly-loop-alarm': () => import('../viz/playground/AnomalyLoopAlarmLab'),
+  'serving-vram-estimator': () => import('../viz/playground/ServingVramEstimator'),
+  'technique-tradeoff-radar': () => import('../viz/playground/TechniqueTradeoffComparator'),
+  'shell-pipeline-sandbox': () => import('../viz/playground/ShellPipelineSandbox'),
+  'ablation-table-auditor': () => import('../viz/playground/AblationTableAuditor'),
+  'scalar-autograd-graph': () => import('../viz/playground/ScalarAutogradGraph'),
+  'project-cost-estimator': () => import('../viz/playground/ProjectCostEstimator'),
+  'open-model-license-checker': () => import('../viz/playground/OpenModelLicenseChecker'),
   'distribution-explorer': () => import('../viz/diagrams/DistributionExplorerDiagram'),
   'bayes-update': () => import('../viz/diagrams/BayesUpdateDiagram'),
   'entropy-kl-explorer': () => import('../viz/diagrams/EntropyKlDiagram'),

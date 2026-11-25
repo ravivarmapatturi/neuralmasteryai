@@ -38,16 +38,12 @@ describe('playgroundCatalog', () => {
     expect(Object.keys(PLAYGROUND_COMPONENTS).sort()).toEqual([...slugs].sort());
   });
 
-  it('links every live and coming-soon entry to a real Learn route', () => {
+  it('links every live entry to a real Learn route and keeps comingSoon empty', () => {
+    expect(COMING_SOON_TOOLS).toHaveLength(0);
+
     for (const tool of PLAYGROUND_TOOLS) {
       const page = getPageByRoute(tool.learnPath);
       expect(page, `Missing Learn page for ${tool.slug}: ${tool.learnPath}`).toBeDefined();
-    }
-
-    for (const item of COMING_SOON_TOOLS) {
-      const page = getPageByRoute(item.learnPath);
-      expect(page, `Missing Learn page for coming soon tool ${item.title}: ${item.learnPath}`).toBeDefined();
-      expect('slug' in item).toBe(false);
     }
   });
 

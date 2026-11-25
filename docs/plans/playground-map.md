@@ -3,8 +3,8 @@
 This map pairs every Learn section under `src/content/docs/*` with 1 to 4 hands-on playground tools. Each entry records what the learner directly changes, what updates live on screen, the mechanism it teaches, whether the interactive component already exists in `src/viz/` (`EXISTS`) or stays queued as `NEW` for a later phase, and the Learn page it links back to.
 
 Summary counts across all 38 Learn directory sections (`src/content/docs/*` excluding `practice-problems/`, which already lives at `/labs` and `/practice/*`, plus root `learning-path.mdx` covered under Roadmaps):
-- **`EXISTS` (registered on `/playground` and `/playground/<slug>` in Phase 1):** 91 tools across 30 sections
-- **`NEW` (listed as "Coming soon" on `/playground`, deferred from Phase 1):** 12 tools covering the remaining 8 sections plus 4 priority gap tools
+- **`EXISTS` (registered on `/playground` and `/playground/<slug>`):** 103 tools across all 38 sections
+- **`NEW` (listed as "Coming soon" on `/playground`):** 0 tools (`comingSoon` is empty)
 
 ---
 
@@ -14,13 +14,13 @@ Summary counts across all 38 Learn directory sections (`src/content/docs/*` excl
 
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| AI Stack Map Interactive Tour | Focus layer selector (hardware, runtimes, frameworks, agents, evals) | Highlighted dependency graph showing how layers connect in a single request | How a production AI request traverses storage, models, routers, and evaluators | `NEW` | [How to Use This Site](/docs/getting-started/intro) |
+| AI Stack Map Interactive Tour | Focus layer selector (hardware, runtimes, frameworks, agents, evals) | Highlighted dependency graph showing how layers connect in a single request | How a production AI request traverses storage, models, routers, and evaluators | `EXISTS` (`src/viz/playground/AiStackMapTour.tsx`) | [How to Use This Site](/docs/getting-started/intro) |
 
 ### Roadmaps & Learning Path (`src/content/docs/roadmaps` + `src/content/docs/learning-path.mdx`)
 
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Role-Based Skill Gap & Path Builder | Target role preset, weekly study hours, already-known prerequisites | Pruned dependency DAG of Learn sections and estimated completion weeks | Prerequisite ordering saves wasted study when switching between ML, LLM, and infra tracks | `NEW` | [AI Engineering Track](/docs/roadmaps/ai-engineering-track) · [Learning Path](/docs/learning-path) |
+| Role-Based Skill Gap & Path Builder | Target role preset, weekly study hours, already-known prerequisites | Pruned dependency DAG of Learn sections and estimated completion weeks | Prerequisite ordering saves wasted study when switching between ML, LLM, and infra tracks | `EXISTS` (`src/viz/playground/RolePathBuilder.tsx`) | [AI Engineering Track](/docs/roadmaps/ai-engineering-track) · [Learning Path](/docs/learning-path) |
 
 ### Mathematics for AI (`src/content/docs/mathematics-for-ai`)
 
@@ -100,7 +100,7 @@ Summary counts across all 38 Learn directory sections (`src/content/docs/*` excl
 | LLM Inference Flow Visualizer | Decoding step, temperature $\tau$, and prompt preset | Prefill vs. decode phases, logit bars before/after softmax, and sampled token trace | Higher temperature flattens next-token probability while prefill differs fundamentally from decode | `EXISTS` (`src/viz/InferenceFlowVisualizer.tsx`) | [Foundation Model & Transformer Internals](/docs/llms-genai/foundation-model-internals) |
 | RAG Pipeline Simulator | Query wording, chunk size, overlap, top-$k$, and similarity metric | Chunked corpus highlights, retrieved score list, assembled context window, and failure diagnostics | Retrieval errors come from chunk splits, lost context, or metric mismatches before generation runs | `EXISTS` (`src/viz/RagPipelineSimulator.tsx`) | [RAG](/docs/llms-genai/rag) |
 | KV Cache Computation Counter | Mode (`Naive` vs. `KV cache`) and generated token count $t \in [1, 5]$ | Step-by-step cell grid marking recomputed vs. cached $K/V$ projections and total compute count | Caching past keys and values drops per-step projection growth from quadratic $O(T^2)$ to linear $O(T)$ | `EXISTS` (`src/viz/diagrams/KvCacheDiagram.tsx`) | [Foundation Model & Transformer Internals](/docs/llms-genai/foundation-model-internals) |
-| In-Browser Small LM Generator (GPT-2) | Prompt prefix, temperature, top-$k$, top-$p$, repetition penalty | Next-token probability table, live token stream, and token probability inspection | Decoding parameters reshape real token entropy rather than just randomness | `NEW` | [Calling the LLM API in Practice](/docs/llms-genai/calling-the-llm-api) |
+| In-Browser Small LM Generator (GPT-2) | Prompt prefix, temperature, top-$k$, top-$p$, repetition penalty | Next-token probability table, live token stream, and token probability inspection | Decoding parameters reshape real token entropy rather than just randomness | `EXISTS` (`src/viz/playground/BrowserLmLab.tsx`) | [Calling the LLM API in Practice](/docs/llms-genai/calling-the-llm-api) |
 
 ### Search, Ranking & Recommendations (`src/content/docs/search-ranking-recommendations`)
 
@@ -153,7 +153,7 @@ Summary counts across all 38 Learn directory sections (`src/content/docs/*` excl
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | Context Budget Waterfall Visualizer | Turn depth and allocation sliders (system, tools, RAG, history, output reserve) | Stacked token waterfall hitting soft warning (around 70% full) vs. hard overflow | Reserving output tokens and bounding history prevents sudden tool truncation | `EXISTS` (`src/viz/diagrams/ContextBudgetWaterfallVisualizer.tsx`) | [Token Budgeting, Sliding Windows & Compaction Strategies](/docs/context-engineering/token-budgeting-and-compaction) |
-| Tokenizer & Prefix-Cache Boundary Inspector | Raw prompt text, system prompt edits, dynamic timestamp insertion, BPE tokenizer | Colorized token boundaries, token count, and prefix-cache invalidation point | Placing volatile timestamps before static tools destroys KV prefix cache hits on every turn | `NEW` | [External Memory, Hierarchical Recall & KV Cache Optimization](/docs/context-engineering/external-memory-and-persistence) |
+| Tokenizer & Prefix-Cache Boundary Inspector | Raw prompt text, system prompt edits, dynamic timestamp insertion, BPE tokenizer | Colorized token boundaries, token count, and prefix-cache invalidation point | Placing volatile timestamps before static tools destroys KV prefix cache hits on every turn | `EXISTS` (`src/viz/playground/TokenizerPrefixCacheInspector.tsx`) | [External Memory, Hierarchical Recall & KV Cache Optimization](/docs/context-engineering/external-memory-and-persistence) |
 
 ### Software System Design (`src/content/docs/software-system-design`)
 
@@ -222,7 +222,7 @@ Summary counts across all 38 Learn directory sections (`src/content/docs/*` excl
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | Agent Span & Trace Waterfall | Active span selection (`LLM`, `Tool`, `Retry`) | Nested OpenTelemetry waterfall showing sequential bottlenecks, errors, and token attribution | Trace trees pinpoint whether latency sits in upstream tool calls, retries, or long decodes | `EXISTS` (`src/viz/diagrams/AgentTraceWaterfallVisualizer.tsx`) | [Agent Observability Architecture](/docs/agent-observability/overview) |
-| Anomaly & Loop Alarm Threshold Lab | Max repeat tool calls, cost-spike z-score, and trace window | Simulated precision/recall on synthetic looping vs. normal production runs | Tight loop bounds stop runaway bills early without killing valid multi-file refactors | `NEW` | [Agent Failure Taxonomy & Anomaly Detection](/docs/agent-observability/failure-taxonomy-and-anomaly-detection) |
+| Anomaly & Loop Alarm Threshold Lab | Max repeat tool calls, cost-spike z-score, and trace window | Simulated precision/recall on synthetic looping vs. normal production runs | Tight loop bounds stop runaway bills early without killing valid multi-file refactors | `EXISTS` (`src/viz/playground/AnomalyLoopAlarmLab.tsx`) | [Agent Failure Taxonomy & Anomaly Detection](/docs/agent-observability/failure-taxonomy-and-anomaly-detection) |
 
 ### AI Security (`src/content/docs/ai-security`)
 
@@ -281,43 +281,43 @@ Summary counts across all 38 Learn directory sections (`src/content/docs/*` excl
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | Hash Map vs. Array Lookup Scale | Collection size (`100` to `200,000` entries) | Animated bar height for worst-case linear scan $O(n)$ next to constant $O(1)$ hash map ops | Hash tables stay flat across token vocabularies and caches where linear scans collapse | `EXISTS` (`src/viz/diagrams/HashMapVsArrayDiagram.tsx`) | [General Coding (DSA)](/docs/interview-prep/dsa-coding) |
-| Serving & VRAM Sizing Estimator | Parameters, precision (`BF16`/`INT8`/`INT4`), context length, batch size, GPU SKU | Weight + KV cache VRAM split, minimum GPU count, and theoretical token throughput ceiling | Capacity math turns vague system-design answers into defensible hardware estimates | `NEW` | [LLM Serving and Fine-Tuning Questions](/docs/interview-prep/llm-serving-and-fine-tuning-questions) |
+| Serving & VRAM Sizing Estimator | Parameters, precision (`BF16`/`INT8`/`INT4`), context length, batch size, GPU SKU | Weight + KV cache VRAM split, minimum GPU count, and theoretical token throughput ceiling | Capacity math turns vague system-design answers into defensible hardware estimates | `EXISTS` (`src/viz/playground/ServingVramEstimator.tsx`) | [LLM Serving and Fine-Tuning Questions](/docs/interview-prep/llm-serving-and-fine-tuning-questions) |
 
 ### Atlas (`src/content/docs/atlas`)
 
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Technique Trade-Off Radar & Comparator | Multi-select techniques from Inference, Training, or Agent Atlases | Parallel trade-off profile comparing memory, complexity, throughput, and reliability | Every optimization adds operational complexity or quality risk alongside its headline speedup | `NEW` | [Inference Technique Atlas](/docs/atlas/inference) |
+| Technique Trade-Off Radar & Comparator | Multi-select techniques from Inference, Training, or Agent Atlases | Parallel trade-off profile comparing memory, complexity, throughput, and reliability | Every optimization adds operational complexity or quality risk alongside its headline speedup | `EXISTS` (`src/viz/playground/TechniqueTradeoffComparator.tsx`) | [Inference Technique Atlas](/docs/atlas/inference) |
 
 ### CLI Reference (`src/content/docs/cli-reference`)
 
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Shell Pipeline & Flag Sandbox | Command flags across `grep`, `jq`, `awk`, `docker`, and `kubectl` presets | Live step-by-step stdin/stdout transformation per pipe stage with exit-code trace | Understanding streams, filters, and exit codes turns fragile one-liners into composable scripts | `NEW` | [Linux & Shell Commands](/docs/cli-reference/linux-and-shell-commands) |
+| Shell Pipeline & Flag Sandbox | Command flags across `grep`, `jq`, `awk`, `docker`, and `kubectl` presets | Live step-by-step stdin/stdout transformation per pipe stage with exit-code trace | Understanding streams, filters, and exit codes turns fragile one-liners into composable scripts | `EXISTS` (`src/viz/playground/ShellPipelineSandbox.tsx`) | [Linux & Shell Commands](/docs/cli-reference/linux-and-shell-commands) |
 
 ### Research Engineering (`src/content/docs/research-engineering`)
 
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Paper Reading & Ablation Table Auditor | Paper preset, baseline control checks, confidence-interval overlap toggle | Annotated method/baseline matrix flagging missing compute normalization or leaky evals | Strong ablation tables isolate each component's actual delta on equal compute budgets | `NEW` | [How to Read AI Papers](/docs/research-engineering/how-to-read-ai-papers) |
+| Paper Reading & Ablation Table Auditor | Paper preset, baseline control checks, confidence-interval overlap toggle | Annotated method/baseline matrix flagging missing compute normalization or leaky evals | Strong ablation tables isolate each component's actual delta on equal compute budgets | `EXISTS` (`src/viz/playground/AblationTableAuditor.tsx`) | [How to Read AI Papers](/docs/research-engineering/how-to-read-ai-papers) |
 
 ### Build From Scratch (`src/content/docs/build-from-scratch`)
 
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Scalar Autograd Expression Graph | Node inputs/operations (`+`, `*`, `tanh`, `pow`) and Loss Backward trigger | Interactive DAG showing forward `value` and topological reverse-mode `grad` propagation | Reverse-mode autodiff is literally applying the chain rule backwards over a recorded scalar graph | `NEW` | [The Build List](/docs/build-from-scratch/the-build-list) |
+| Scalar Autograd Expression Graph | Node inputs/operations (`+`, `*`, `tanh`, `pow`) and Loss Backward trigger | Interactive DAG showing forward `value` and topological reverse-mode `grad` propagation | Reverse-mode autodiff is literally applying the chain rule backwards over a recorded scalar graph | `EXISTS` (`src/viz/playground/ScalarAutogradGraph.tsx`) | [The Build List](/docs/build-from-scratch/the-build-list) |
 
 ### Projects (`src/content/docs/projects`)
 
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Project Scope & Monthly Cost Estimator | Target daily queries, average RAG/agent turns, model tier, caching hit rate | Estimated monthly API spend, latency tier, and recommended milestone scope | Counting agent turns and context growth before coding prevents runaway toy-project costs | `NEW` | [The Project Ladder](/docs/projects/the-project-ladder) |
+| Project Scope & Monthly Cost Estimator | Target daily queries, average RAG/agent turns, model tier, caching hit rate | Estimated monthly API spend, latency tier, and recommended milestone scope | Counting agent turns and context growth before coding prevents runaway toy-project costs | `EXISTS` (`src/viz/playground/ProjectCostEstimator.tsx`) | [The Project Ladder](/docs/projects/the-project-ladder) |
 
 ### Resources (`src/content/docs/resources`)
 
 | Tool | What the learner changes | What they see | Idea it teaches | Status | Learn page |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Open-Source Model & License Checker | Target use case (`Commercial`, `Modification`, `SaaS`, `Fine-tune weights`) | Filtered compatibility verdict across `Apache-2.0`, `MIT`, `Llama Community`, and `CC-BY-NC` | Checking attribution, MAU caps, and share-alike clauses early prevents legal rework before shipping | `NEW` | [Open Source AI Resources](/docs/resources/open-source-ai-resources) |
+| Open-Source Model & License Checker | Target use case (`Commercial`, `Modification`, `SaaS`, `Fine-tune weights`) | Filtered compatibility verdict across `Apache-2.0`, `MIT`, `Llama Community`, and `CC-BY-NC` | Checking attribution, MAU caps, and share-alike clauses early prevents legal rework before shipping | `EXISTS` (`src/viz/playground/OpenModelLicenseChecker.tsx`) | [Open Source AI Resources](/docs/resources/open-source-ai-resources) |
 
 ### Practice Problems (`src/content/docs/practice-problems`)
 

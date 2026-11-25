@@ -1695,96 +1695,205 @@
         { "prompt": "Remember why tiny 10-element arrays can still beat hash maps in micro-benchmarks.", "check": "Sequential cache-line scanning avoids hash computation overhead below ~20 elements." },
         { "prompt": "Recall the classic Two Sum optimization enabled by this trade-off.", "check": "Replacing inner linear search with a hash lookup cuts nested O(n^2) brute force straight to O(n)." }
       ]
-    }
-  ],
-  "comingSoon": [
+    },
     {
+      "slug": "ai-stack-map",
       "title": "AI Stack Map Interactive Tour",
       "section": "getting-started",
       "sectionLabel": "Getting Started",
       "whatYouTry": "Click hardware, runtime, orchestration, and eval layers to trace one live AI request end to end.",
+      "whatYouChange": "Request path mode, KV prefix cache toggle, eval gate toggle, and selected stack layer",
+      "whatYouSee": "Highlighted dependency graph, per-layer illustrative latency share, and failure impact when omitted",
+      "ideaTaught": "A production AI request spans retrieval, orchestration, serving runtimes, GPU hardware, and eval gates—skipping any layer shifts failures elsewhere.",
+      "component": "playground/AiStackMapTour.tsx",
       "learnPath": "/docs/getting-started/intro",
-      "learnTitle": "How to Use This Site"
+      "learnTitle": "How to Use This Site",
+      "tryThis": [
+        { "prompt": "Switch from Single-turn chat to Tool-using agent loop with KV prefix cache off. Guess whether model calls or latency grows faster.", "check": "Model calls rise from 1 to 4 and cumulative un-cached prefill tokens multiply across tool turns." },
+        { "prompt": "Toggle KV prefix cache from Off to On in Grounded RAG query mode and inspect the Runtimes and Hardware nodes.", "check": "Prefix reuse drops computed prefill tokens from 4,200 to 1,470 and cuts runtime/hardware latency share." },
+        { "prompt": "Turn Eval & guardrail gate Off and inspect the Evals node warning.", "check": "The request still runs faster on paper, but prompt regressions and policy breaks pass unchecked to callers." }
+      ]
     },
     {
+      "slug": "role-path-builder",
       "title": "Role-Based Skill Gap & Path Builder",
       "section": "roadmaps",
       "sectionLabel": "Roadmaps & Learning Path",
       "whatYouTry": "Choose an AI Engineering target role and mark known topics to prune your study roadmap.",
+      "whatYouChange": "Target role preset, weekly study hours slider, and known prerequisite module chips",
+      "whatYouSee": "Pruned prerequisite DAG highlighting Ready vs. Blocked modules, saved hours, and estimated completion weeks",
+      "ideaTaught": "Checking prerequisites first prunes completed foundations without leaving hidden gaps under downstream systems tracks.",
+      "component": "playground/RolePathBuilder.tsx",
       "learnPath": "/docs/roadmaps/ai-engineering-track",
-      "learnTitle": "AI Engineering Track"
+      "learnTitle": "AI Engineering Track",
+      "tryThis": [
+        { "prompt": "Select AI Engineer (RAG & Agents) with only CS & Systems and Python marked known. Which intermediate node is blocked?", "check": "Deep Learning stays blocked until Math for AI is checked, so LLMs & RAG and Agents stay queued behind it." },
+        { "prompt": "Mark Math for AI as known and inspect Deep Learning and Classical ML.", "check": "Both move to Ready immediately once their Math and Python prerequisites are satisfied." },
+        { "prompt": "Switch to Inference & Serving Engineer at 10 hours/week and count how many hours remain when Deep Learning is unchecked.", "check": "Even with CS and Python checked, Math (7h), Deep Learning (10h), LLMs (9h), and Inference (9h) remain." }
+      ]
     },
     {
+      "slug": "tokenizer-prefix-cache",
       "title": "Tokenizer & Prefix-Cache Boundary Inspector",
       "section": "context-engineering",
       "sectionLabel": "Context Engineering",
       "whatYouTry": "Edit prompt sections and timestamps to watch subword splits and KV prefix cache misses shift.",
+      "whatYouChange": "Prompt layout preset, KV block size (1, 16, 32 tokens), Turn 1 and Turn 2 text, and real GPT-2 BPE loader",
+      "whatYouSee": "Token-by-token prefix hit status, exact break index, reusable KV tokens, and recomputed tail tokens",
+      "ideaTaught": "KV prefix caches match strictly from token 0 forward, so placing volatile text before static tools invalidates the entire prompt.",
+      "component": "playground/TokenizerPrefixCacheInspector.tsx",
       "learnPath": "/docs/context-engineering/external-memory-and-persistence",
-      "learnTitle": "External Memory, Hierarchical Recall & KV Cache Optimization"
+      "learnTitle": "External Memory, Hierarchical Recall & KV Cache Optimization",
+      "tryThis": [
+        { "prompt": "Keep 'Timestamp at top' selected and note the Prefix hit rate.", "check": "Because the date digits differ near token index 4, prefix cache hits drop to 0% under 16-token blocks." },
+        { "prompt": "Switch to 'Static prefix first' and compare reusable cached tokens.", "check": "Moving the timestamp after System and Tools turns the shared prefix green and keeps the hit rate high." },
+        { "prompt": "In 'Static prefix first', toggle KV block size from 1 token to 32 tokens.", "check": "Larger paged blocks discard the trailing partial block before the break index, slightly lowering reusable tokens." }
+      ]
     },
     {
+      "slug": "anomaly-loop-alarm",
       "title": "Anomaly & Loop Alarm Threshold Lab",
       "section": "agent-observability",
       "sectionLabel": "Agent Observability",
       "whatYouTry": "Tune repeat-tool limits and spike z-scores to catch infinite billing loops early.",
+      "whatYouChange": "Consecutive failure limit K, ping-pong toggle, cost-spike z-score threshold, and baseline window size",
+      "whatYouSee": "Precision/Recall across 12 agent traces, tokens saved vs. lost, and turn-by-turn sorted hashes and z-scores",
+      "ideaTaught": "Order-sorted tool-argument hashing plus calibrated loop and z-score bounds catch runaway spirals without halting healthy retries.",
+      "component": "playground/AnomalyLoopAlarmLab.tsx",
       "learnPath": "/docs/agent-observability/failure-taxonomy-and-anomaly-detection",
-      "learnTitle": "Agent Failure Taxonomy, Loop Detection & Anomaly Alarms"
+      "learnTitle": "Agent Failure Taxonomy, Loop Detection & Anomaly Alarms",
+      "tryThis": [
+        { "prompt": "Lower consecutive failure limit K from 3 to 2 and check Precision on the 12 benchmark traces.", "check": "K = 2 flags the healthy 2-retry network flake as a false positive, dropping Precision." },
+        { "prompt": "Inspect 'Permission-denied edit spiral' and look at turns 2 and 3 in the table.", "check": "Even though JSON keys switched order, key-sorted serialization hashes both calls to the identical signature." },
+        { "prompt": "Push cost-spike z-score up to 4.0 and check Recall on 'Raw 15 MB log stdout spike'.", "check": "At z = 4.0 the spike threshold misses the runaway stdout dump, dropping Recall." }
+      ]
     },
     {
+      "slug": "serving-vram-estimator",
       "title": "Serving & VRAM Sizing Estimator",
       "section": "interview-prep",
       "sectionLabel": "Interview Prep",
       "whatYouTry": "Pick model size, weight bits, context length, and GPU count to size KV cache and throughput.",
+      "whatYouChange": "Model preset, parameter count, KV heads, context length, batch size, weight/KV precision, GPU SKU, and GPU count",
+      "whatYouSee": "Exact weights and KV cache formulas, stacked GPU memory bar, min GPUs needed, max concurrent sequences, and decode ceilings",
+      "ideaTaught": "At long contexts and high concurrency, KV cache dominates VRAM while weight precision sets single-stream decode bandwidth ceilings.",
+      "component": "playground/ServingVramEstimator.tsx",
       "learnPath": "/docs/interview-prep/llm-serving-and-fine-tuning-questions",
-      "learnTitle": "LLM Serving and Fine-Tuning Interview Questions"
+      "learnTitle": "LLM Serving and Fine-Tuning Interview Questions",
+      "tryThis": [
+        { "prompt": "Keep 8.03B BF16 on A100 80GB and increase batch size from 16 to 64 at 8,192 context. Predict if 1 GPU still fits.", "check": "64 × 1 GiB = 64 GiB of KV cache plus 15 GiB weights + 2 GiB overhead exceeds 80 GiB, triggering OOM." },
+        { "prompt": "Switch KV cache precision from BF16 to FP8 at 64 sequences.", "check": "Halving KV bytes cuts KV cache from 64 GiB to 32 GiB so the batch fits comfortably on 1 GPU." },
+        { "prompt": "Switch from 8 KV heads (GQA) to 32 KV heads (MHA) at 8,192 context.", "check": "KV per token jumps 4x from 128 KiB to 512 KiB, shrinking max concurrent sequences by roughly fourfold." }
+      ]
     },
     {
+      "slug": "technique-tradeoff-radar",
       "title": "Technique Trade-Off Radar & Comparator",
       "section": "atlas",
       "sectionLabel": "Technique Atlas",
       "whatYouTry": "Select quantization, batching, or agent patterns side by side across memory, latency, and risk.",
+      "whatYouChange": "Atlas domain (Inference, Training, Agents) and 1 to 3 overlaid technique selections",
+      "whatYouSee": "5-axis radar chart and comparison table detailing mechanisms, watch-outs, and direct Learn links",
+      "ideaTaught": "Every ML optimization trades off throughput, memory, simplicity, fidelity, and operational safety—never free lunch.",
+      "component": "playground/TechniqueTradeoffComparator.tsx",
       "learnPath": "/docs/atlas/inference",
-      "learnTitle": "Inference Technique Atlas"
+      "learnTitle": "Inference Technique Atlas",
+      "tryThis": [
+        { "prompt": "Compare Paged KV cache, Speculative decoding, and AWQ on the Inference radar.", "check": "Paged KV cache keeps full output fidelity while adding scheduler complexity; AWQ cuts memory sharply with slight fidelity trade-off." },
+        { "prompt": "Switch to Training Atlas and compare LoRA, QLoRA, and RLHF with PPO.", "check": "RLHF with PPO trades simplicity and memory efficiency for alignment flexibility; QLoRA maximizes memory savings." },
+        { "prompt": "Switch to Agent Architecture Atlas and compare Routing workflows against Tree of Thoughts.", "check": "Routing achieves peak throughput and safety for known branches; Tree of Thoughts spends many calls to raise reasoning fidelity." }
+      ]
     },
     {
+      "slug": "shell-pipeline-sandbox",
       "title": "Shell Pipeline & Flag Sandbox",
       "section": "cli-reference",
       "sectionLabel": "CLI Reference",
       "whatYouTry": "Toggle grep, jq, docker, and kubectl flags and read live stage-by-stage stdout output.",
+      "whatYouChange": "Command preset family (grep, jq, docker, kubectl), CLI flags, search pattern, or custom safe pipe string",
+      "whatYouSee": "Stage-by-stage stdin/stdout transformations, exit codes, and read-only sample workspace files",
+      "ideaTaught": "Understanding pipe streams, quoting flags, and exit codes turns fragile shell one-liners into inspectable debugging pipelines.",
+      "component": "playground/ShellPipelineSandbox.tsx",
       "learnPath": "/docs/cli-reference/linux-and-shell-commands",
-      "learnTitle": "Linux & Shell Commands"
+      "learnTitle": "Linux & Shell Commands",
+      "tryThis": [
+        { "prompt": "On grep log triage with pattern ERROR, toggle -i (ignore case) Off vs. On against api.log.", "check": "Without -i, grep matches 3 uppercase ERROR lines; toggling -i On catches the lowercase 'info' or mixed-case patterns when searching 'info'." },
+        { "prompt": "Switch to jq JSON stream on metrics.jsonl and toggle -r (raw unquoted string) On vs. Off.", "check": "Without -r, strings keep JSON double quotes (\"/v1/chat\"); -r strips quotes so downstream shell tools receive clean paths." },
+        { "prompt": "In custom pipeline mode, enter a command that matches zero lines like 'cat api.log | grep NO_MATCH'.", "check": "grep returns exit code 1 with empty stdout so shell scripts can branch on zero matches without parsing text." }
+      ]
     },
     {
+      "slug": "ablation-table-auditor",
       "title": "Paper Reading & Ablation Table Auditor",
       "section": "research-engineering",
       "sectionLabel": "Research Engineering",
       "whatYouTry": "Audit sample paper ablation tables for compute parity gaps and confounded baseline gains.",
+      "whatYouChange": "Illustrative paper scenario, equal-compute toggle, 95% confidence-interval toggle, baseline tuning toggle, leakage deduplication, and active ablation rows",
+      "whatYouSee": "Adjusted accuracy interval plot, audited vs. reported scores, net delta, and reviewer verdict",
+      "ideaTaught": "Headline gains only isolate a proposed method once compute, tuning effort, dataset overlap, and variance bars are equalized.",
+      "component": "playground/AblationTableAuditor.tsx",
       "learnPath": "/docs/research-engineering/how-to-read-ai-papers",
-      "learnTitle": "How to Read AI Papers"
+      "learnTitle": "How to Read AI Papers",
+      "tryThis": [
+        { "prompt": "On Sparse-Route Transformer (+3.4% claimed), toggle 'Normalize compute to 1.0×' On.", "check": "Removing the uncredited 2.0× FLOP advantage shrinks the audited delta to +0.6 pts inside combined confidence bars." },
+        { "prompt": "Switch to Graph-Filter Reranker (+1.1% claimed) and inspect its 95% confidence interval against the baseline.", "check": "Baseline [67.2, 69.8] overlaps the variant interval [68.2, 71.0], making the +1.1% slice inconclusive." },
+        { "prompt": "Switch to Memory-Augmented Agent and enable both 'Match baseline LR tuning' and 'Deduplicate eval leakage'.", "check": "Equalizing baseline tuning (+3.1) and removing overlap (-1.2) drops the remaining gain below 1 pt." }
+      ]
     },
     {
+      "slug": "scalar-autograd-graph",
       "title": "Scalar Autograd Expression Graph",
       "section": "build-from-scratch",
       "sectionLabel": "Build From Scratch",
       "whatYouTry": "Wire scalar add/multiply/tanh operations and step backward gradients from output loss to leaves.",
+      "whatYouChange": "Expression string (or preset), numeric leaf variable values, and reverse topological backward step buttons",
+      "whatYouSee": "Topological DAG with forward data and backward grad values plus finite-difference gradient verification table",
+      "ideaTaught": "Reverse-mode autodiff walks the recorded computation DAG backwards once, summing local chain-rule products at fan-out nodes.",
+      "component": "playground/ScalarAutogradGraph.tsx",
       "learnPath": "/docs/build-from-scratch/the-build-list",
-      "learnTitle": "The Build List"
+      "learnTitle": "The Build List",
+      "tryThis": [
+        { "prompt": "Select the tanh(w * x + b) preset, click Reset gradients, then click Step backward one node at a time.", "check": "Gradients start at output grad = 1.0 and flow backward through tanh's local derivative (1 - tanh^2) into w and x." },
+        { "prompt": "Switch to 'x * x + tanh(x * w)' and compare Autograd ∂out/∂x against Finite diff.", "check": "Because x feeds two branches, reverse-mode sums both incoming gradient paths to match the numerical derivative." },
+        { "prompt": "Type your own expression such as '(w * x - y) ** 2' and adjust x to see ∂out/∂w update live.", "check": "Autograd matches central finite differences (h = 1e-5) to within floating-point precision across arbitrary expressions." }
+      ]
     },
     {
+      "slug": "project-cost-estimator",
       "title": "Project Scope & Monthly Cost Estimator",
       "section": "projects",
       "sectionLabel": "Projects",
       "whatYouTry": "Estimate monthly LLM API bills and latency bounds from daily users, agent loops, and cache hit rate.",
+      "whatYouChange": "Project ladder preset, DAU, requests/day, turns per request, static/fresh/growth tokens, cache hit rate, and pricing tier",
+      "whatYouSee": "Exact multi-turn token formula, per-request cost split bar, monthly spend, and cache savings",
+      "ideaTaught": "Multi-turn agent loops multiply input cost quadratically with turn count unless context growth is bounded and prefixes hit cache.",
+      "component": "playground/ProjectCostEstimator.tsx",
       "learnPath": "/docs/projects/the-project-ladder",
-      "learnTitle": "The Project Ladder"
+      "learnTitle": "The Project Ladder",
+      "tryThis": [
+        { "prompt": "Select Level 2: RAG Assistant (3M req/mo) and drag Prefix cache hit rate from 100% down to 0%.", "check": "Losing prefix cache reuse lifts cost per request from $0.0252 to $0.0333 and monthly spend from $75,600 to $99,900." },
+        { "prompt": "Select Level 3: Multi-Turn Tool Agent and double Turns per request from 6 to 12 with history growth = 900.", "check": "Input tokens per request more than triple because earlier conversation turns are re-sent at every added step." },
+        { "prompt": "Drop from Frontier ($15/$75) to Small ($0.25/$1.00) pricing on the multi-turn agent.", "check": "Routing simple turns to a smaller tier slashes monthly cost by roughly 60x at the same token shape." }
+      ]
     },
     {
+      "slug": "open-model-license-checker",
       "title": "Open-Source Model & License Checker",
       "section": "resources",
       "sectionLabel": "Resources",
       "whatYouTry": "Filter weight licenses by commercial use, SaaS hosting, and fine-tune redistribution constraints.",
+      "whatYouChange": "Deployment requirement toggles (commercial, SaaS, redistribute weights, no MAU cap, OSI-only), license family, and search filter",
+      "whatYouSee": "Per-model compatibility verdicts, concrete license blockers/conditions, and verified license source links",
+      "ideaTaught": "Open weights vary widely from permissive MIT/Apache-2.0 to MAU-capped community terms and strict non-commercial research licenses.",
+      "component": "playground/OpenModelLicenseChecker.tsx",
       "learnPath": "/docs/resources/open-source-ai-resources",
-      "learnTitle": "Open Source AI Resources"
+      "learnTitle": "Open Source AI Resources",
+      "tryThis": [
+        { "prompt": "Compare Qwen/Qwen2.5-7B-Instruct against Qwen/Qwen2.5-72B-Instruct with 'No MAU user cap' toggled On.", "check": "The 7B model uses permissive Apache-2.0 while the 72B checkpoint sits under the custom Qwen License Agreement with a 100M MAU threshold." },
+        { "prompt": "Toggle 'OSI-approved license only' On and check meta-llama/Llama-3.1-8B-Instruct and google/gemma-2-9b-it.", "check": "Both allow commercial serving under custom community/terms agreements, so strict OSI-only filters mark them Blocked." },
+        { "prompt": "Compare black-forest-labs/FLUX.1-schnell vs. FLUX.1-dev under Commercial product use.", "check": "FLUX.1-schnell is Apache-2.0 compatible while FLUX.1-dev carries a Non-Commercial license blocking production serving." }
+      ]
     }
-  ]
+  ],
+  "comingSoon": []
 }
