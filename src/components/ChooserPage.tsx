@@ -172,8 +172,7 @@ export default function ChooserPage() {
         {/* Closing call to action */}
         <section className="nm-home-band nm-home-end" aria-labelledby="home-end">
           <div className="nm-landing-shell" data-reveal>
-            <h2 id="home-end" className="nb-heading nm-home-h2">Start with one page today.</h2>
-            <p className="nb-body nm-home-p">Free to read. Pick up where you left off any time.</p>
+            <h2 id="home-end" className="nb-heading nm-home-h2">Start your journey today.</h2>
             <div className="nm-hero-actions" style={{ justifyContent: 'center' }}>
               <Link className="nm-button nm-button-primary" to="/learn" style={{ background: 'var(--nb-cobalt)' }}>Start learning <Arrow /></Link>
               <Link className="nm-button nm-button-secondary nm-home-ghost" to="/study-plans">Pick a study plan <Arrow /></Link>
