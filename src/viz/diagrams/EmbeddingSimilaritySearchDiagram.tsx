@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
-import { SketchArrow, SketchEllipse } from '../../components/notebook/RoughShape';
-import { PillSelect, VisualizationContainer, VisualizationHeader, VizButton } from '../primitives';
+import { SketchArrow } from '../../components/notebook/RoughShape';
+import { PillSelect, VisualizationContainer, VisualizationHeader, VizButton, StickyNote, StickyRow } from '../primitives';
 import {
   DEFAULT_EMBEDDING_DOCUMENTS,
   METRIC_EXPLANATIONS,
@@ -12,7 +12,7 @@ import {
 import { usePlaygroundPlayback } from './usePlaygroundPlayback';
 
 const HAND_FONT = "'Kalam', 'Comic Sans MS', cursive";
-const PLOT = { left: 50, top: 18, width: 390, height: 184 } as const;
+const PLOT = { left: 44, top: 22, width: 420, height: 380 } as const;
 const DOMAIN_MIN = -2;
 const DOMAIN_MAX = 2;
 
@@ -39,6 +39,12 @@ function format(value: number): string {
   return Number.isFinite(value) ? value.toFixed(3) : '0.000';
 }
 
+const METRIC_NOTES: { id: SimilarityMetric; title: string; latex: string; color: 'yellow' | 'pink' | 'orange' }[] = [
+  { id: 'cosine', title: 'Cosine similarity', latex: '\\cos(q,d)=\\frac{q\\cdot d}{\\lVert q\\rVert\\,\\lVert d\\rVert}', color: 'yellow' },
+  { id: 'euclidean', title: 'Euclidean distance (L2)', latex: '\\mathrm{L2}(q,d)=\\sqrt{\\textstyle\\sum_i (q_i-d_i)^2}', color: 'pink' },
+  { id: 'dot', title: 'Dot product', latex: 'q\\cdot d=\\textstyle\\sum_i q_i\\,d_i', color: 'orange' },
+];
+
 function workedFormula(metric: SimilarityMetric, query: Vector2, document: Vector2, score: number): string {
   const q = query.map((value) => value.toFixed(2));
   const d = document.map((value) => value.toFixed(2));
@@ -53,7 +59,7 @@ function workedFormula(metric: SimilarityMetric, query: Vector2, document: Vecto
   return `= ${q[0]}×${d[0]} + ${q[1]}×${d[1]} = ${format(score)}`;
 }
 
-function EmbeddingSimilaritySearchPlayground() {
+function EmbeddingSimilaritySearchPlayground({ compact = false }: { compact?: boolean }) {
   const t = useVizTokens();
   const [metric, setMetric] = useState<SimilarityMetric>('cosine');
   const [queryLabel, setQueryLabel] = useState('cat');
@@ -65,7 +71,6 @@ function EmbeddingSimilaritySearchPlayground() {
   const ranked = useMemo(() => rankEmbeddings(query, DEFAULT_EMBEDDING_DOCUMENTS, metric), [query, metric]);
   const playback = usePlaygroundPlayback(ranked.length, 1250);
   const selected = ranked[playback.step] ?? ranked[0];
-  const metricInfo = METRIC_EXPLANATIONS[metric];
 
   const queryColor = t.accentPurple;
   const selectedColor = t.accentPrimary;
@@ -94,6 +99,7 @@ function EmbeddingSimilaritySearchPlayground() {
 
   return (
     <>
+      {!compact && (<>
       <VisualizationHeader
         eyebrow="Live playground"
         title="Which vector is actually closest?"
@@ -139,16 +145,18 @@ function EmbeddingSimilaritySearchPlayground() {
         )}
       </div>
 
+      </>)}
+
       <svg
         width="100%"
-        viewBox="0 0 760 224"
+        viewBox="0 0 760 440"
         role="img"
         aria-label={`${metric} search ranks ${ranked[0].label} closest to query ${queryLabel} with score ${format(ranked[0].calculation.score)}`}
         style={{ display: 'block', fontFamily: HAND_FONT }}
       >
         <SketchArrow points={[[PLOT.left, zeroY], [PLOT.left + PLOT.width + 8, zeroY]]} color={t.textSecondary} strokeWidth={1.2} id="embedding-axis-x" />
         <SketchArrow points={[[zeroX, PLOT.top + PLOT.height], [zeroX, PLOT.top - 6]]} color={t.textSecondary} strokeWidth={1.2} id="embedding-axis-y" />
-        <text x={PLOT.left + PLOT.width} y={219} textAnchor="end" fontSize={14} fill={t.textSecondary}>embedding dimension 1 →</text>
+        <text x={PLOT.left + PLOT.width} y={PLOT.top + PLOT.height + 30} textAnchor="end" fontSize={14} fill={t.textSecondary}>embedding dimension 1 →</text>
         <text x={zeroX + 9} y={PLOT.top + 10} fontSize={14} fill={t.textSecondary}>embedding dimension 2 ↑</text>
         {[-2, -1, 0, 1, 2].map((tick) => (
           <g key={tick}>
@@ -158,9 +166,8 @@ function EmbeddingSimilaritySearchPlayground() {
         ))}
 
         <SketchArrow points={[[zeroX, zeroY], [mapX(queryX), mapY(queryY)]]} color={queryColor} strokeWidth={2.2} id="embedding-query-vector" />
-        <circle cx={mapX(queryX)} cy={mapY(queryY)} r={8} fill={`${queryColor}24`} stroke="none" />
-        <SketchEllipse cx={mapX(queryX)} cy={mapY(queryY)} width={16} height={16} color={queryColor} strokeWidth={2} id="embedding-query-point" />
-        <text x={mapX(queryX)} y={mapY(queryY) + 26} textAnchor="middle" fontSize={14} fontWeight={700} fill={queryColor}>
+        <path d={`M${mapX(queryX)} ${mapY(queryY) - 9} L${mapX(queryX) + 9} ${mapY(queryY)} L${mapX(queryX)} ${mapY(queryY) + 9} L${mapX(queryX) - 9} ${mapY(queryY)} Z`} fill={queryColor} fillOpacity={0.85} stroke={t.surface} strokeWidth={1.5} />
+        <text x={mapX(queryX) + 14} y={mapY(queryY) + 5} textAnchor="start" fontSize={15} fontWeight={700} fill={queryColor}>
           query “{queryLabel}”
         </text>
 
@@ -171,8 +178,8 @@ function EmbeddingSimilaritySearchPlayground() {
           return (
             <g key={document.id} onClick={() => playback.setStep(ranked.findIndex((row) => row.id === document.id))} style={{ cursor: 'pointer' }}>
               {isSelected && <line x1={mapX(queryX)} y1={mapY(queryY)} x2={x} y2={y} stroke={selectedColor} strokeWidth={2} strokeDasharray="5 4" />}
-              <circle cx={x} cy={y} r={isSelected ? 8 : 6} fill={isSelected ? `${selectedColor}24` : `${documentColor}1A`} stroke="none" />
-              <SketchEllipse cx={x} cy={y} width={isSelected ? 16 : 12} height={isSelected ? 16 : 12} color={isSelected ? selectedColor : documentColor} strokeWidth={isSelected ? 2.2 : 1.4} id={`embedding-document-${document.id}`} />
+              {isSelected && <circle cx={x} cy={y} r={10} fill="none" stroke={selectedColor} strokeWidth={2} />}
+              <circle cx={x} cy={y} r={isSelected ? 6 : 5} fill={isSelected ? selectedColor : documentColor} />
               {(() => {
                 // If another document sits close by on its right, put this label on the left so they never overlap.
                 const crowded = DEFAULT_EMBEDDING_DOCUMENTS.some((o) => o.id !== document.id && o.vector[0] > document.vector[0] && Math.hypot(o.vector[0] - document.vector[0], o.vector[1] - document.vector[1]) < 0.45);
@@ -182,32 +189,53 @@ function EmbeddingSimilaritySearchPlayground() {
           );
         })}
 
-        <text x={482} y={20} fontSize={15} fontWeight={700} fill={t.textPrimary}>Live ranking ({metric === 'euclidean' ? 'lower is closer' : 'higher is closer'})</text>
+        <text x={500} y={40} fontSize={16} fontWeight={700} fill={t.textPrimary}>Live ranking ({metric === 'euclidean' ? 'lower is closer' : 'higher is closer'})</text>
         {ranked.map((document, index) => {
-          const y = 47 + index * 31;
+          const y = 84 + index * 46;
           const revealed = index <= playback.step;
           const active = index === playback.step;
           return (
             <g key={document.id} opacity={revealed ? 1 : 0.24} onClick={() => playback.setStep(index)} style={{ cursor: 'pointer' }}>
               {active && <rect x={476} y={y - 18} width={266} height={26} rx={6} fill={`${selectedColor}18`} stroke="none" />}
-              <text x={485} y={y} fontSize={14} fontWeight={active ? 700 : 400} fill={active ? selectedColor : t.textPrimary}>{document.rank}. {document.label} [{document.vector[0].toFixed(2)}, {document.vector[1].toFixed(2)}]</text>
-              <text x={735} y={y} textAnchor="end" fontSize={14} fontFamily="monospace" fill={active ? selectedColor : t.textSecondary}>{format(document.calculation.score)}</text>
+              <text x={508} y={y} fontSize={15} fontWeight={active ? 700 : 400} fill={active ? selectedColor : t.textPrimary}>{document.rank}. {document.label} [{document.vector[0].toFixed(2)}, {document.vector[1].toFixed(2)}]</text>
+              <text x={752} y={y} textAnchor="end" fontSize={15} fontFamily="monospace" fill={active ? selectedColor : t.textSecondary}>{format(document.calculation.score)}</text>
             </g>
           );
         })}
-        <text x={482} y={215} fontSize={14} fill={queryColor}>Purple = query</text>
-        <text x={600} y={215} fontSize={14} fill={selectedColor}>Green = selected</text>
+        <text x={500} y={340} fontSize={14} fill={queryColor}>◆ purple = your query</text>
+        <text x={500} y={364} fontSize={14} fill={selectedColor}>○ green = document being scored</text>
       </svg>
 
-      <div style={{ background: t.surfaceAlt, padding: '5px 9px', borderRadius: 7, fontSize: 16, lineHeight: 1.5 }}>
-        <strong>{metricInfo.formula}</strong> · {metricInfo.closerMeans}<br />
-        <span style={{ fontFamily: 'monospace' }}>{workedFormula(metric, query, selected.vector, selected.calculation.score)}</span>
-      </div>
+      {compact ? (
+        <StickyRow>
+          {METRIC_NOTES.filter((n) => n.id === metric).map((n) => (
+            <StickyNote key={n.id} title={n.title} latex={n.latex} color={n.color} tilt={-1}>
+              <p className="nm-sticky__mono" style={{ textAlign: 'center' }}>{workedFormula(metric, query, selected.vector, selected.calculation.score)}</p>
+            </StickyNote>
+          ))}
+          <StickyNote title={`Step ${playback.step + 1} of ${ranked.length}`} color="blue" tilt={1} live>
+            <p>“{selected.label}” ranks #{selected.rank} for “{queryLabel}” because {reason}.</p>
+          </StickyNote>
+        </StickyRow>
+      ) : (<>
+      <StickyRow>
+        {METRIC_NOTES.map((n, i) => (
+          <StickyNote key={n.id} title={n.title} latex={n.latex} color={n.color} tilt={i % 2 ? 1 : -1} active={metric === n.id} onSelect={() => changeMetric(n.id)}>
+            <p style={{ textAlign: 'center' }}>{METRIC_EXPLANATIONS[n.id].closerMeans}</p>
+          </StickyNote>
+        ))}
+      </StickyRow>
+      <StickyRow>
+        <StickyNote title={`Worked out for “${selected.label}”`} color="green" tilt={1}>
+          <p className="nm-sticky__mono">{workedFormula(metric, query, selected.vector, selected.calculation.score)}</p>
+        </StickyNote>
+        <StickyNote title={`Step ${playback.step + 1} of ${ranked.length}`} color="blue" tilt={-1} live>
+          <p>“{selected.label}” ranks #{selected.rank} for “{queryLabel}” because {reason}; {metric} = <strong>{format(selected.calculation.score)}</strong>.</p>
+        </StickyNote>
+      </StickyRow>
+      </>)}
 
-      <div style={{ marginTop: 5, fontSize: 14, color: t.textSecondary, lineHeight: 1.35 }} aria-live="polite">
-        Step {playback.step + 1}/{ranked.length}: “{selected.label}” ranks #{selected.rank} for “{queryLabel}” because {reason}; {metric} = <strong style={{ color: selectedColor }}>{format(selected.calculation.score)}</strong>.
-      </div>
-
+      {!compact && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 5 }}>
         <VizButton onClick={playback.toggle}>{playback.playing ? 'Pause' : 'Play'}</VizButton>
         <VizButton variant="secondary" onClick={playback.next}>Step →</VizButton>
@@ -224,17 +252,18 @@ function EmbeddingSimilaritySearchPlayground() {
           </select>
         </label>
       </div>
+      )}
     </>
   );
 }
 
-export default function EmbeddingSimilaritySearchDiagram() {
+export default function EmbeddingSimilaritySearchDiagram({ compact = false }: { compact?: boolean }) {
   return (
     <VisualizationContainer
       title="Embedding similarity search playground"
       footer="This is an exact two-dimensional calculation with vectors you can edit. Real embedding models use many more dimensions, but cosine, L2, and dot product use the same formulas shown here."
     >
-      <EmbeddingSimilaritySearchPlayground />
+      <EmbeddingSimilaritySearchPlayground compact={compact} />
     </VisualizationContainer>
   );
 }

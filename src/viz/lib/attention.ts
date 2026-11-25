@@ -306,10 +306,10 @@ export function runAttention(
 export type AttentionStage = 0 | 1 | 2 | 3;
 
 export const ATTENTION_STAGES: { id: AttentionStage; label: string; shortLabel: string }[] = [
-  { id: 0, label: '1. Query & Key match', shortLabel: '1. Q·K cosine' },
-  { id: 1, label: '2. Dot score & ÷√dₖ', shortLabel: '2. Scale ÷√dₖ' },
-  { id: 2, label: '3. Softmax weights', shortLabel: '3. Softmax %' },
-  { id: 3, label: '4. Blend Value vectors', shortLabel: '4. Mix Values' },
+  { id: 0, label: '1. Scores = Q·Kᵀ', shortLabel: '1. Q·Kᵀ scores' },
+  { id: 1, label: '2. Divide by √dₖ', shortLabel: '2. ÷ √dₖ' },
+  { id: 2, label: '3. Softmax → weights', shortLabel: '3. Softmax' },
+  { id: 3, label: '4. Output = weights × V', shortLabel: '4. × V' },
 ];
 
 /**
@@ -348,21 +348,20 @@ export function explainAttentionStep(
   }
 
   if (stage === 0) {
-    const cos = result.cosineQK[i][bestCosJ];
+    const raw = result.rawScores[i][bestCosJ];
     if (tokens.length === 1 || bestCosJ === i) {
-      return `Query '${qTok}' projects to Q = [${result.Q[i].map((v) => v.toFixed(1)).join(', ')}] and matches itself (cosine ${cos.toFixed(2)}).`;
+      return `Q·Kᵀ: the query vector Q of '${qTok}' is multiplied (dot product) with every key vector K. Its best match is itself, score ${raw.toFixed(2)}.`;
     }
-    const relation = cos >= 0.75 ? 'their vectors point the same way' : cos >= 0.35 ? 'their features partially align' : 'their features barely overlap';
-    return `The query '${qTok}' is closest to '${tokens[bestCosJ]}' because ${relation}: cosine ${cos.toFixed(2)}.`;
+    return `Q·Kᵀ: the query vector Q of '${qTok}' is multiplied (dot product) with each word's key vector K. A bigger number means a better match; '${tokens[bestCosJ]}' scores ${raw.toFixed(2)}.`;
   }
 
   if (stage === 1) {
     const raw = result.rawScores[i][topJ];
     const scaled = result.scores[i][topJ];
     if (result.scaleFactor > 1) {
-      return `Dot product Q·Kᵀ for '${qTok}'→'${tokens[topJ]}' is ${raw.toFixed(2)}, then ÷√4 = ${scaled.toFixed(2)} so one big score does not hog 100%.`;
+      return `dₖ is the length of each key vector (here 4), so √dₖ = 2. '${qTok}'→'${tokens[topJ]}': ${raw.toFixed(2)} ÷ 2 = ${scaled.toFixed(2)}. Dividing keeps scores small, so softmax does not give one word nearly 100%.`;
     }
-    return `Scaling ÷√4 is OFF: raw score ${raw.toFixed(2)} goes straight into softmax, making peaks sharper and gradients tiny elsewhere.`;
+    return `÷√dₖ is OFF: the raw score ${raw.toFixed(2)} goes straight into softmax, so the biggest score grabs almost all the weight.`;
   }
 
   if (stage === 2) {

@@ -441,17 +441,17 @@
       "title": "Image Tensor RGB Explorer",
       "section": "computer-vision",
       "sectionLabel": "Computer Vision",
-      "whatYouTry": "Inspect how visual pixels turn into Height x Width x 3 integer grids across R, G, and B channels.",
-      "whatYouChange": "Pixel or channel view toggle",
-      "whatYouSee": "Rendered bitmap next to raw [R, G, B] matrix slices",
-      "ideaTaught": "Vision models ingest numeric H x W x C arrays where brightness and hue split per channel.",
+      "whatYouTry": "Click any pixel, type custom R, G, and B values (0–255), and inspect how RGB arrays become grayscale or normalized model inputs.",
+      "whatYouChange": "Scene preset, tensor format (RGB, Grayscale, [-1, 1], Z-score), clicked pixel, and R/G/B numbers",
+      "whatYouSee": "Live 4×4 pixel image, numeric channel matrices, tensor byte shape, and exact substituted formulas",
+      "ideaTaught": "Vision models ingest numeric H × W × C arrays where color, luminance, and normalization transform pixel values before training.",
       "component": "diagrams/ImageTensorExplorerDiagram.tsx",
       "learnPath": "/docs/computer-vision/overview",
       "learnTitle": "Computer Vision — Overview",
       "tryThis": [
-        { "prompt": "Inspect a pure gray or white pixel's RGB numbers.", "check": "Equal values across R, G, and B produce neutral luminance with zero color tint." },
-        { "prompt": "Check a bright warm yellow or orange patch across the three channel grids.", "check": "Red and Green channels carry high values while Blue drops near zero." },
-        { "prompt": "Count how tensor memory multiplies between single-channel grayscale and RGB.", "check": "Color images triple first-layer parameter dimensions compared with H x W x 1 grayscale." }
+        { "prompt": "Select a gray pixel or set R = G = B = 180 and inspect the three channel matrices.", "check": "Equal R, G, and B values produce neutral gray with zero colour tint." },
+        { "prompt": "Set a pixel to bright yellow (R = 255, G = 255, B = 0) and switch to Grayscale (Y).", "check": "Blue drops to 0 while Y = 0.299×255 + 0.587×255 + 0 = 225.9." },
+        { "prompt": "Compare total tensor bytes between uint8 RGB and float32 Z-score.", "check": "RGB stores 48 uint8 bytes (1 byte/value) while Z-score stores 48 float32 values (192 bytes)." }
       ]
     },
     {
@@ -621,17 +621,17 @@
       "title": "TF-IDF Multi-Document Search Lab",
       "section": "search-ranking-recommendations",
       "sectionLabel": "Search & Recommendations",
-      "whatYouTry": "Toggle query words and trace how collection rarity (IDF) outweighs raw term repetition (TF).",
-      "whatYouChange": "Query term checkboxes/pills and inspected document rows",
-      "whatYouSee": "Per-term IDF = ln(N/df), TF counts, and sorted document score breakdown",
-      "ideaTaught": "Words appearing in nearly every document carry near-zero IDF weight during search.",
+      "whatYouTry": "Type any search words, edit a document's text, and step through word counts, TF ÷ length, IDF rarity, and final ranking.",
+      "whatYouChange": "Free-text search query, editable document words, scoring formula (Classic, Cosine, Raw count), and inspected stage",
+      "whatYouSee": "Ranked document bars, per-word Count/TF/IDF/TF×IDF matrix, tie detection, and live substituted formulas",
+      "ideaTaught": "Dividing by document length and multiplying by ln(N/df) rewards rare, focused matches while muting filler words.",
       "component": "diagrams/TfidfSearchExplorer.tsx",
       "learnPath": "/docs/search-ranking-recommendations/tf-idf",
       "learnTitle": "TF-IDF",
       "tryThis": [
-        { "prompt": "Include an ultra-common word that appears in most documents alongside a rare domain keyword.", "check": "The common word contributes almost nothing while the rare word drives final document rank." },
-        { "prompt": "Inspect a term present in all N documents of the sample corpus.", "check": "With df = N, ln(N/df) = ln(1) = 0, muting stopword noise automatically." },
-        { "prompt": "Compare two matches where one has fewer hits of a rare term vs. many hits of a medium term.", "check": "Product TF * IDF lets users tune lexical salience without hard manual stopword lists." }
+        { "prompt": "Search \"machine learning\" and inspect why D1 and D3 tie at 0.1438 ahead of D2 (0.1233).", "check": "D1 and D3 spend 2/4 words on the query while 7-word D2 dilutes each mention despite saying \"learning\" twice." },
+        { "prompt": "Change the query to \"learning\" alone and watch the top rank swap.", "check": "D2 wins with TF = 2/7 = 0.2857, beating D1 and D3's 1/4 = 0.2500." },
+        { "prompt": "Switch scoring to Raw count and repeat a query word inside one document.", "check": "Without TF length division or IDF rarity, padded documents win solely by repetition." }
       ]
     },
     {
@@ -1413,17 +1413,17 @@
       "title": "Reward Hacking & Goodhart's Law Lab",
       "section": "ai-safety",
       "sectionLabel": "AI Safety & Alignment",
-      "whatYouTry": "Push RL policy optimization pressure higher against an imperfect proxy reward to trigger Goodhart collapse.",
-      "whatYouChange": "Optimization steps / KL penalty slider",
-      "whatYouSee": "Diverging proxy reward (keeps climbing) vs. true utility score (peaks then crashes)",
-      "ideaTaught": "Heavy optimization finds degenerate reward-model blind spots unless KL penalties tether policy shift.",
+      "whatYouTry": "Watch an RLHF policy optimize step by step against a length-biased reward model, then tether it with a KL penalty.",
+      "whatYouChange": "Scenario preset, length bias weight, KL tether β, and ideal response length L*",
+      "whatYouSee": "Score vs. length curves, live Goodhart divergence over RL steps 0–10, KL readout, and substituted policy math",
+      "ideaTaught": "Strong optimization exploits any gap between a proxy reward and true human quality unless KL regularization keeps the policy anchored.",
       "component": "diagrams/RewardHackingSimulationDiagram.tsx",
       "learnPath": "/docs/ai-safety/alignment-and-rlhf",
       "learnTitle": "Alignment & RLHF",
       "tryThis": [
-        { "prompt": "Inspect moderate optimization right near the KL sweet spot.", "check": "Both proxy score and true human utility climb cleanly together." },
-        { "prompt": "Push optimization far past the peak without increasing KL regularization.", "check": "Proxy score shoots upward while true alignment plummets due to weird verbosity or style hacks." },
-        { "prompt": "Raise KL penalty beta and re-examine the endpoint.", "check": "Keeping policy close to the supervised base model prevents exploiting extreme out-of-distribution loopholes." }
+        { "prompt": "Run the default Length hacker scenario through Step 10 and watch True Q vs. Proxy R.", "check": "Proxy R climbs steadily to 14.37 while True Quality peaks near Step 4 and collapses below 1/10 at 890 words." },
+        { "prompt": "Raise KL tether β from 0.25 to 2.0 while keeping length bias at +1.6/100w.", "check": "The KL penalty anchors the policy near ~200 words, holding True Quality high around 8.7/10." },
+        { "prompt": "Pick Unbiased judge (length bias = 0) and play the full trace.", "check": "When proxy equals true quality, optimization raises both curves together with zero collapse." }
       ]
     },
     {
@@ -1557,17 +1557,17 @@
       "title": "Scientific Screening Funnel Lab",
       "section": "ai-for-science",
       "sectionLabel": "AI for Science",
-      "whatYouTry": "Slide the ML property filter threshold on 200,000 candidates to balance shortlist recall vs. synthesis budget.",
-      "whatYouChange": "ML property-prediction threshold slider (0.05 to 0.95)",
-      "whatYouSee": "Three-stage funnel bars shrinking 200k library -> ML pass count -> expensive physical synthesis cap (20)",
-      "ideaTaught": "ML acts as a cheap pre-filter shrinking combinatorial spaces to fit expensive physical experiments.",
+      "whatYouTry": "Tune library size, ML property cutoff τ, wet-lab slots K, and assay cost to balance hit recall against physical synthesis budget.",
+      "whatYouChange": "ML threshold τ slider, library size N, wet-lab shortlist K, assay $/test, and funnel stage",
+      "whatYouSee": "Long-tailed score histogram with cutoff line, 4-stage funnel counts, recall %, enrichment factor, and wet-lab savings",
+      "ideaTaught": "Cheap ML pre-screening concentrates rare true hits inside a small top-K physical testing budget while exposing the recall trade-off.",
       "component": "diagrams/ScreeningFunnelDiagram.tsx",
       "learnPath": "/docs/ai-for-science/ai-for-science-fundamentals",
       "learnTitle": "AI for Science Fundamentals",
       "tryThis": [
-        { "prompt": "Set threshold = 0.30 and note how many of 200,000 molecules survive vs. synthesis capacity.", "check": "Thousands still pass, far exceeding 20 physical synthesis slots unless threshold tightens or ranking filters further." },
-        { "prompt": "Push threshold up to 0.85 and read exact percentage passing.", "check": "Only a tiny fraction (~0.1%) passes, conserving wet-lab resources at the risk of filtering borderline hits." },
-        { "prompt": "Check why this funnel requires calibrated ranking rather than 99% overall accuracy.", "check": "Because hits sit inside a tiny long tail, precision inside the top-20 synthesis slice decides lab ROI." }
+        { "prompt": "At N = 200,000 and τ = 0.70, inspect the filter recall and top-20 hit enrichment.", "check": "17,110 candidates pass (8.55%) keeping 95.3% of true hits, and top-20 tests achieve ~23× higher hit rate than random." },
+        { "prompt": "Raise τ from 0.70 to 0.93 and check how filter recall changes.", "check": "Passing candidates drop sharply, cutting follow-up compute, but filter recall falls because real hits score 0.70–0.92." },
+        { "prompt": "Lower Library N to 1,000 with τ = 0.95 and K = 30.", "check": "Fewer than 30 candidates survive the filter, leaving wet-lab synthesis slots unused." }
       ]
     },
     {
@@ -1683,17 +1683,17 @@
       "title": "Hash Map vs. Array Lookup Scale",
       "section": "interview-prep",
       "sectionLabel": "Interview Prep",
-      "whatYouTry": "Scale collection entries up to 200,000 and watch worst-case array scan dwarf flat O(1) hash lookup.",
-      "whatYouChange": "Collection size slider (100 to 200,000 entries)",
-      "whatYouSee": "Animated comparison bar for linear scan operations vs. flat 1-op hash lookup",
-      "ideaTaught": "Tokenizers, caches, and dedup pipelines rely on hash tables because array scans collapse at scale.",
+      "whatYouTry": "Search any key step by step in an array vs. a bucketed hash map, see collisions happen, and scale collection size up to 200,000.",
+      "whatYouChange": "Free-text lookup key, stored keys list, bucket count m (4, 8, 12), and collection size n (10–200,000)",
+      "whatYouSee": "Step-by-step linear array probes vs. direct hash bucket jump, exact mod-m arithmetic, and Big-O scale bars",
+      "ideaTaught": "Hashing jumps directly to a key's bucket in O(1) expected checks regardless of collection size, whereas linear scan scales O(n).",
       "component": "diagrams/HashMapVsArrayDiagram.tsx",
       "learnPath": "/docs/interview-prep/dsa-coding",
       "learnTitle": "General Coding (DSA)",
       "tryThis": [
-        { "prompt": "Slide collection size up from 5,000 to 200,000. Track array ops vs. hash map ops.", "check": "Array scan balloons 40x from 5,000 to 200,000 ops while hash map stays flat at 1 average op." },
-        { "prompt": "Remember why tiny 10-element arrays can still beat hash maps in micro-benchmarks.", "check": "Sequential cache-line scanning avoids hash computation overhead below ~20 elements." },
-        { "prompt": "Recall the classic Two Sum optimization enabled by this trade-off.", "check": "Replacing inner linear search with a hash lookup cuts nested O(n^2) brute force straight to O(n)." }
+        { "prompt": "Look up \"mat\" vs. \"sat\" with 8 buckets and watch the hash jump.", "check": "\"mat\" lands alone in bucket 3 (1 check vs. 6 array checks), while \"sat\" collides with \"cat\" in bucket 1 (2 checks)." },
+        { "prompt": "Switch buckets from 8 down to 4 without changing the stored keys.", "check": "Halving buckets raises load factor α and packs more collisions into each bucket chain." },
+        { "prompt": "Search for a missing key like \"zebra\" at n = 100,000.", "check": "The array scans all 100,000 entries to prove absence while the hash map inspects only one bucket." }
       ]
     },
     {

@@ -28,7 +28,7 @@ describe('ChooserPage', () => {
   it('introduces the product, says how a page works, and routes to both real destinations', () => {
     renderChooser()
     expect(screen.getByRole('heading', { name: /Learn AI from\s*First Principles/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /Understand it\. See it work\. Make the decision\./i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Practice interview questions/i })).toBeInTheDocument()
     const learnLink = screen.getAllByRole('link', { name: /Start learning/i })[0]
     const playgroundLink = screen.getByRole('link', { name: /Open the Playground/i })
     expect(learnLink).toHaveAttribute('href', '/learn')

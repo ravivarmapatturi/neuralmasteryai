@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ATTENTION_STAGE_EVENT } from './diagrams/TransformerBlockMap';
 import { FONT_FAMILY, RADIUS, SPACING, useVizTokens } from '../theme/vizTokens';
 import { SketchArrow, SketchRect } from '../components/notebook/RoughShape';
 import {
@@ -55,6 +56,10 @@ export default function AttentionStepThrough() {
   const [headIdx, setHeadIdx] = useState(0);
   const [focusRowManual, setFocusRowManual] = useState(1);
   const [stage, setStage] = useState<AttentionStage>(reducedMotion ? 2 : 0);
+  // Let the architecture map beside the tool follow the current step.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(ATTENTION_STAGE_EVENT, { detail: stage }));
+  }, [stage]);
   const [useScale, setUseScale] = useState(true);
   const [causalMask, setCausalMask] = useState(false);
   const [temperature, setTemperature] = useState(1.0);
@@ -151,13 +156,14 @@ export default function AttentionStepThrough() {
     const others = tokens.map((_, j) => j).filter((j) => j !== focusRow && !(causalMask && j > focusRow));
     let bestOtherJ = others[0] ?? focusRow;
     for (const j of others) {
-      if (result.cosineQK[focusRow][j] > result.cosineQK[focusRow][bestOtherJ]) bestOtherJ = j;
+      if (result.rawScores[focusRow][j] > result.rawScores[focusRow][bestOtherJ]) bestOtherJ = j;
     }
     return {
       topToken: tokens[topJ],
       topPct: Math.round(rowWeights[topJ] * 100),
       bestOtherToken: tokens[bestOtherJ],
-      bestCosine: result.cosineQK[focusRow][bestOtherJ],
+      bestCosine: result.rawScores[focusRow][bestOtherJ] / Math.max(1e-9, ...result.rawScores[focusRow].map(Math.abs)),
+      bestRaw: result.rawScores[focusRow][bestOtherJ],
       entropy: result.entropy[focusRow],
     };
   }, [result, n, focusRow, tokens, causalMask]);
@@ -168,7 +174,7 @@ export default function AttentionStepThrough() {
   const cellText = (i: number, j: number): string => {
     if (!result) return '';
     if (causalMask && j > i) return stage >= 2 ? '0%' : '−∞';
-    if (stage === 0) return result.cosineQK[i][j].toFixed(2).replace(/^0\./, '.').replace(/^-0\./, '-.');
+    if (stage === 0) return result.rawScores[i][j].toFixed(1);
     if (stage === 1) return result.scores[i][j].toFixed(1);
     return `${Math.round(result.weights[i][j] * 100)}%`;
   };
@@ -176,7 +182,10 @@ export default function AttentionStepThrough() {
   const cellIntensity = (i: number, j: number): number => {
     if (!result) return 0;
     if (causalMask && j > i) return 0;
-    if (stage === 0) return Math.max(0, result.cosineQK[i][j]);
+    if (stage === 0) {
+      const maxR = Math.max(0.5, ...result.rawScores.flat().map(Math.abs));
+      return Math.max(0, result.rawScores[i][j] / maxR);
+    }
     if (stage === 1) {
       const finite = result.scores.flat().filter(Number.isFinite);
       const maxS = Math.max(0.5, ...finite.map(Math.abs));
@@ -331,9 +340,9 @@ export default function AttentionStepThrough() {
       <g transform={`translate(${offsetX}, 0)`}>
         <text x={0} y={14} fontSize={14} fontWeight={700} fontFamily={FONT_FAMILY} fill={t.textPrimary}>
           {stage === 0 && `How "${shortTok(qTok, 9)}" matches "${shortTok(tokens[Math.max(0, bestOtherJ)], 9)}"`}
-          {stage === 1 && `Dot scores for "${shortTok(qTok, 9)}" (${useScale ? '÷ √4 = 2.0' : 'unscaled'})`}
+          {stage === 1 && `Scores for "${shortTok(qTok, 9)}" ${useScale ? 'divided by √dₖ = 2' : '(not divided)'}`}
           {stage === 2 && `Softmax attention weights for "${shortTok(qTok, 9)}"`}
-          {stage === 3 && `Blended Value output for "${shortTok(qTok, 9)}"`}
+          {stage === 3 && `Output for "${shortTok(qTok, 9)}" = Σ weight × V`}
         </text>
 
         {/* Colour legend */}
@@ -392,7 +401,7 @@ export default function AttentionStepThrough() {
 
             {/* Cosine match gauge */}
             <text x={0} y={124} fontSize={13.5} fontFamily={FONT_FAMILY} fontWeight={700} fill={t.textPrimary}>
-              Alignment (cosine similarity):
+              Match score Q·Kᵀ (dot product):
             </text>
             <rect x={0} y={134} width={panelW - 88} height={18} rx={5} fill={t.surfaceAlt} />
             <rect
@@ -404,7 +413,7 @@ export default function AttentionStepThrough() {
               fill={attnColor}
             />
             <text x={panelW - 80} y={148} fontSize={14} fontWeight={700} fontFamily="monospace" fill={attnColor}>
-              {(summaryStats?.bestCosine ?? 0).toFixed(2)}
+              {(summaryStats?.bestRaw ?? 0).toFixed(2)}
             </text>
           </g>
         )}

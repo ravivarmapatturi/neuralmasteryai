@@ -12,13 +12,14 @@ describe('home-page real playgrounds', () => {
   it('switches vector metrics and replaces both the general and worked formula', () => {
     render(<EmbeddingSimilaritySearchDiagram />);
 
-    expect(screen.getByText('cos(q,d) = (q·d)/(|q||d|)')).toBeInTheDocument();
+    // All three formulas are on sticky notes; the one in use is pressed.
+    expect(screen.getByRole('button', { name: /Cosine similarity/ })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'L2' }));
-    expect(screen.getByText('L2(q,d) = sqrt(Σ(qᵢ−dᵢ)²)')).toBeInTheDocument();
-    expect(screen.getByText(/= sqrt\(\(0\.80−0\.72\)²/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Euclidean distance/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/= sqrt\(\(0\.80−0\.60\)²/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Dot' }));
-    expect(screen.getByText('dot(q,d) = Σ qᵢdᵢ')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Dot product/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText(/= 0\.80×1\.70 \+ 0\.60×0\.40/)).toBeInTheDocument();
   });
 
@@ -26,9 +27,9 @@ describe('home-page real playgrounds', () => {
     render(<EmbeddingSimilaritySearchDiagram />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Step →' }));
-    expect(screen.getByText(/Step 2\/5:/)).toBeInTheDocument();
+    expect(screen.getByText(/Step 2 of 5/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Query dim 1'), { target: { value: '1.25' } });
-    expect(screen.getByText(/Step 1\/5:/)).toBeInTheDocument();
+    expect(screen.getByText(/Step 1 of 5/)).toBeInTheDocument();
     expect(screen.getByText(/\(1\.25×/)).toBeInTheDocument();
   });
 

@@ -9,7 +9,11 @@ import {
 } from '../data/playgroundCatalog';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
+import StickyNote, { type StickyColor } from '../viz/primitives/StickyNote';
+import TransformerBlockMap from '../viz/diagrams/TransformerBlockMap';
 import './playground.css';
+
+const TRY_COLORS: StickyColor[] = ['blue', 'green', 'pink', 'orange'];
 
 export default function PlaygroundToolPage() {
   const { slug = '' } = useParams<{ slug: string }>();
@@ -55,9 +59,9 @@ export default function PlaygroundToolPage() {
           <header className="playground-tool__head">
             <h1>{tool.title}</h1>
             <p className="playground-tool__summary">{tool.whatYouTry}</p>
-            <p className="playground-tool__idea">
-              <strong>Idea it teaches:</strong> {tool.ideaTaught}
-            </p>
+            <div className="playground-tool__idea">
+              <StickyNote title="The idea" color="yellow" tilt={-1}>{tool.ideaTaught}</StickyNote>
+            </div>
           </header>
 
           <section className="playground-tool__stage" aria-label={`${tool.title} interactive workbench`}>
@@ -69,7 +73,14 @@ export default function PlaygroundToolPage() {
                   </p>
                 }
               >
-                <ToolComponent />
+                {tool.slug === 'attention-step-through' ? (
+                  <div className="playground-tool__with-map">
+                    <ToolComponent />
+                    <TransformerBlockMap />
+                  </div>
+                ) : (
+                  <ToolComponent />
+                )}
               </Suspense>
             </ErrorBoundary>
           </section>
@@ -80,11 +91,13 @@ export default function PlaygroundToolPage() {
               <ol className="playground-tool__try-list">
                 {tool.tryThis.map((item, idx) => (
                   <li key={idx} className="playground-tool__try-item">
-                    <span>{item.prompt}</span>
-                    <details>
-                      <summary>Check what happens</summary>
-                      <p className="playground-tool__try-check">{item.check}</p>
-                    </details>
+                    <StickyNote title={`Try ${idx + 1}`} color={TRY_COLORS[idx % TRY_COLORS.length]} tilt={idx % 2 ? 1 : -1}>
+                      <p>{item.prompt}</p>
+                      <details>
+                        <summary>Check what happens</summary>
+                        <p className="playground-tool__try-check">{item.check}</p>
+                      </details>
+                    </StickyNote>
                   </li>
                 ))}
               </ol>

@@ -22,7 +22,7 @@ export interface RankedEmbedding extends EmbeddingDocument {
 }
 
 export const DEFAULT_EMBEDDING_DOCUMENTS: readonly EmbeddingDocument[] = [
-  { id: 'kitten', label: 'kitten', vector: [0.72, 0.68] },
+  { id: 'kitten', label: 'kitten', vector: [0.6, 0.78] },
   { id: 'tiger', label: 'tiger', vector: [1.7, 0.4] },
   { id: 'puppy', label: 'puppy', vector: [0.45, 0.85] },
   { id: 'car', label: 'car', vector: [-0.85, 0.15] },

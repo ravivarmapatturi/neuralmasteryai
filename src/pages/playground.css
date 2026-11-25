@@ -435,3 +435,52 @@
 @media (min-width: 1000px) {
   .playground__index { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 2.5rem; }
 }
+
+/* ---- Tool page, open layout (no outer boxes, full width, sticky notes) ---- */
+.playground-tool__sheet {
+  width: min(1680px, calc(100% - 3rem)); border: 0; border-radius: 0; background: transparent;
+  padding: clamp(1.25rem, 3vw, 2.25rem) 0 3.5rem;
+}
+.playground-tool__sheet::before { display: none; }
+.playground-tool__nav-row { border-bottom: 0; }
+.playground-tool__head { max-width: none; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.6fr); gap: 1.5rem 3rem; align-items: start; margin-bottom: 2rem; }
+.playground-tool__head h1, .playground-tool__summary { grid-column: 1; }
+.playground-tool__idea { grid-column: 2; grid-row: 1 / span 2; margin: 0; padding: 0; background: none; border: 0; }
+/* The tool itself sits straight on the page: no frame, more air between its parts. */
+.playground-tool__stage { margin: 0 0 2.5rem; }
+.playground-tool__stage .nm-viz-frame { border: 0 !important; box-shadow: none !important; background: transparent !important; padding: 0 !important; font-size: 16px; }
+.playground-tool__stage .nm-viz-frame > div { display: flex; flex-direction: column; gap: 1.1rem; }
+.playground-tool__stage .nm-viz-frame svg { border: 0 !important; }
+.playground-tool__try-panel { padding: 0; background: none; border: 0; }
+.playground-tool__try-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.4rem; }
+.playground-tool__try-item { list-style: none; }
+.playground-tool__try-check { background: color-mix(in srgb, var(--nm-surface) 60%, transparent); border-left-color: currentColor; }
+.playground-tool__footer-links { border-top: 1.5px dashed var(--nm-border); }
+@media (max-width: 860px) {
+  .playground-tool__head { grid-template-columns: minmax(0, 1fr); }
+  .playground-tool__idea { grid-column: 1; grid-row: auto; }
+}
+@media (max-width: 720px) { .playground-tool__sheet { width: calc(100% - 2rem); padding: 1.2rem 0 2.5rem; } }
+
+/* One type scale in every playground: drawings never blow their text up past ~1.3x,
+   and small inline text is lifted to the 15-16px body size. */
+.playground-tool__stage .nm-viz-frame svg[viewBox] { max-width: min(100%, 1040px); margin-inline: auto; display: block; }
+.playground-tool__stage .nm-viz-frame [style*="font-size: 11px"],
+.playground-tool__stage .nm-viz-frame [style*="font-size: 12px"],
+.playground-tool__stage .nm-viz-frame [style*="font-size: 13px"],
+.playground-tool__stage .nm-viz-frame [style*="font-size: 14px"] { font-size: 15px !important; }
+.playground-tool__stage .nm-viz-frame [style*="font-size: 18px"],
+.playground-tool__stage .nm-viz-frame [style*="font-size: 19px"],
+.playground-tool__stage .nm-viz-frame [style*="font-size: 20px"],
+.playground-tool__stage .nm-viz-frame [style*="font-size: 22px"],
+.playground-tool__stage .nm-viz-frame [style*="font-size: 24px"] { font-size: 18px !important; }
+.playground-tool__stage .nm-viz-frame label,
+.playground-tool__stage .nm-viz-frame button,
+.playground-tool__stage .nm-viz-frame input,
+.playground-tool__stage .nm-viz-frame select { font-size: 15px; }
+
+/* Tool + architecture map side by side */
+.playground-tool__with-map { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 2.5rem; align-items: start; }
+.playground-tool__with-map .nm-tblock { position: sticky; top: 5.5rem; margin: 0; }
+.nm-tblock figcaption { font-weight: 700; font-size: 16px; text-align: center; margin-bottom: 0.4rem; color: var(--nm-text-primary); }
+@media (max-width: 1100px) { .playground-tool__with-map { grid-template-columns: minmax(0, 1fr); } .playground-tool__with-map .nm-tblock { position: static; max-width: 340px; margin: 0 auto; } }

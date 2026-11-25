@@ -3,15 +3,14 @@ import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
 import PlaygroundShowcase from './home/PlaygroundShowcase';
 import DailyInterviewQuestion from './home/DailyInterviewQuestion';
+import HomeInterviewTopics from './home/HomeInterviewTopics';
 import { LiveStatsTicker } from './home/LiveStats';
-import AgentGraphSketch from './notebook/AgentGraphSketch';
 import { SketchUnderline } from './notebook/RoughShape';
 import { getFlatPages, getPracticeProblems } from '../lib/contentTree';
 import { SECTION_META, SECTION_ORDER, groupLandingRoute, groupPageRoutes } from '../data/sectionMeta';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { useProgress } from '../contexts/ProgressContext';
-import { STUDY_PLANS } from '../data/studyPlans';
 import interviewCounts from '../data/interviewCounts.generated.json';
 import playgroundCatalog from '../data/playgroundCatalog.json';
 import './home/home.css';
@@ -145,27 +144,16 @@ export default function ChooserPage() {
           </div>
         </section>
 
-        {/* Why: the agent loop sketch */}
-        <section className="nm-home-band nm-home-band--alt" aria-labelledby="home-why">
-          <div className="nm-landing-shell nb-loop-grid">
-            <div data-reveal>
-              <h2 id="home-why" className="nb-heading nm-home-h2">
-                Understand it. See it work. <span className="nm-home-hl" style={{ ['--hl' as string]: 'var(--nm-hl-3)' }}>Make the decision.</span>
+        {/* Interview prep */}
+        <section className="nm-home-band nm-home-band--alt" aria-labelledby="home-interview">
+          <div className="nm-landing-shell">
+            <div className="nm-section-heading-row" data-reveal>
+              <h2 id="home-interview" className="nb-heading nm-home-h2" style={{ margin: 0 }}>
+                Practice <span className="nm-home-hl" style={{ ['--hl' as string]: 'var(--nm-hl-4)' }}>interview questions</span>
               </h2>
-              <p className="nb-body nm-home-p">
-                AI can write more of the code than ever. Your edge is knowing what the system is doing, where it fails, which design to choose, and how to check the result.
-              </p>
-              <p className="nb-body nm-home-p">
-                Plans for every goal: <Link to="/study-plans" style={{ color: 'var(--nb-cobalt)' }}>{STUDY_PLANS.length} study plans</Link>, from your first model to an AI engineering interview.
-              </p>
+              <Link className="nm-text-link" to="/interview/mock" style={{ color: 'var(--nb-cobalt)' }}>Try a timed mock interview <Arrow /></Link>
             </div>
-            <div data-reveal style={{ ['--d' as string]: '120ms' }}>
-              <p className="nb-hand nm-home-caption">
-                The control loop of a graph-based agent.{' '}
-                <Link to="/docs/agents/loops-and-graphs" style={{ color: 'var(--nb-cobalt)' }}>Interactive version</Link>
-              </p>
-              <AgentGraphSketch />
-            </div>
+            <HomeInterviewTopics />
           </div>
         </section>
 

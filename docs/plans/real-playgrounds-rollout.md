@@ -68,8 +68,8 @@ Owner (2026-11-25): "make all 92 tools real playground, one by one and ship" + "
 - [ ] B07 lime-local-approx (3 controls, 67 lines) `src/viz/diagrams/LimeLocalApproxDiagram.tsx`
 - [ ] B07 cap-theorem (3 controls, 77 lines) `src/viz/diagrams/CapTheoremDiagram.tsx`
 - [ ] B08 ctc-alignment (3 controls, 83 lines) `src/viz/diagrams/CtcAlignmentDiagram.tsx`
-- [ ] B08 kv-cache-explorer (3 controls, 87 lines) `src/viz/diagrams/KvCacheDiagram.tsx`
-- [ ] B08 embedding-similarity-search (4 controls, 106 lines) `src/viz/diagrams/EmbeddingSimilaritySearchDiagram.tsx`
+- [x] B08 kv-cache-explorer (3 controls, 87 lines) `src/viz/diagrams/KvCacheDiagram.tsx`
+- [x] B08 embedding-similarity-search (4 controls, 106 lines) `src/viz/diagrams/EmbeddingSimilaritySearchDiagram.tsx`
 - [ ] B08 convolution-slide-explorer (4 controls, 175 lines) `src/viz/diagrams/ConvolutionSlideDiagram.tsx`
 - [ ] B08 agent-harness-architecture (4 controls, 287 lines) `src/viz/diagrams/AgentHarnessArchitectureVisualizer.tsx`
 - [ ] B08 cohens-kappa (4 controls, 55 lines) `src/viz/diagrams/CohensKappaDiagram.tsx`
@@ -88,10 +88,10 @@ Owner (2026-11-25): "make all 92 tools real playground, one by one and ship" + "
 - [ ] B10 agent-execution-graph (6 controls, 172 lines) `src/viz/AgentExecutionGraph.tsx`
 - [ ] B10 instruction-budget (6 controls, 187 lines) `src/viz/diagrams/InstructionBudgetVisualizer.tsx`
 - [ ] B10 quantization-scale (6 controls, 225 lines) `src/viz/diagrams/QuantizationScaleVisualizer.tsx`
-- [ ] B10 attention-step-through (6 controls, 230 lines) `src/viz/AttentionStepThrough.tsx`
+- [x] B10 attention-step-through (6 controls, 230 lines) `src/viz/AttentionStepThrough.tsx`
 - [ ] B10 speculative-decoding (6 controls, 240 lines) `src/viz/diagrams/SpeculativeDecodingSimulator.tsx`
 - [ ] B10 rag-pipeline-simulator (7 controls, 188 lines) `src/viz/RagPipelineSimulator.tsx`
-- [ ] B11 gradient-descent-explorer (7 controls, 190 lines) `src/viz/GradientDescentExplorer.tsx`
+- [x] B11 gradient-descent-explorer (7 controls, 190 lines) `src/viz/GradientDescentExplorer.tsx`
 - [ ] B11 agent-control-flow-graph (7 controls, 242 lines) `src/viz/diagrams/AgentControlFlowGraphDiagram.tsx`
 - [ ] B11 neural-network-playground (9 controls, 186 lines) `src/viz/NeuralNetworkPlayground.tsx`
 - [ ] B11 roofline-model (9 controls, 317 lines) `src/viz/diagrams/RooflineModelVisualizer.tsx`

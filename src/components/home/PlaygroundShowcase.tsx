@@ -25,6 +25,7 @@ const SLIDES = [
     slug: 'embedding-similarity-search',
     kicker: 'Vector search',
     hook: 'A query finds its nearest meaning in embedding space.',
+    props: { compact: true },
     Comp: lazyWithRetry(() => import('../../viz/diagrams/EmbeddingSimilaritySearchDiagram')),
   },
   {
@@ -61,6 +62,8 @@ function ScaledSlide({ children, active }: { children: React.ReactNode; active: 
   const outer = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const zoomRef = useRef(1);
+  // Tallest height the tool has reached: sizing to it means the zoom never pumps as steps change.
+  const maxNatural = useRef(0);
   const [zoom, setZoom] = useState(1);
   const [design, setDesign] = useState(760);
   useLayoutEffect(() => {
@@ -74,11 +77,13 @@ function ScaledSlide({ children, active }: { children: React.ReactNode; active: 
       if (w <= 0 || h <= 0 || !active) return; // hidden slide: keep the last good size
       const d = w < 560 ? 560 : 760;
       // offsetHeight is the natural (unzoomed) height of the tool.
-      const natural = box.offsetHeight;
+      maxNatural.current = Math.max(maxNatural.current, box.offsetHeight);
+      const natural = maxNatural.current;
       const z = Math.min(1, w / d, natural > 0 ? h / natural : 1);
+      if (Math.abs(z - zoomRef.current) < 0.01 && d === design) return; // ignore tiny changes: no jitter
       zoomRef.current = z;
       setDesign(d);
-      setZoom(Math.round(z * 1000) / 1000);
+      setZoom(Math.round(z * 100) / 100);
     };
     fit();
     const ro = new ResizeObserver(fit);
@@ -169,7 +174,7 @@ export default function PlaygroundShowcase() {
             >
               <ScaledSlide active={active}>
                 <Suspense fallback={<div className="nm-pgs-loading" role="status"><span className="nm-pgs-sketch" aria-hidden="true"><i /><i /><i /></span>Drawing the {s.kicker.toLowerCase()} playground…</div>}>
-                  <Comp />
+                  <Comp {...('props' in s ? (s.props as object) : {})} />
                 </Suspense>
               </ScaledSlide>
             </div>
