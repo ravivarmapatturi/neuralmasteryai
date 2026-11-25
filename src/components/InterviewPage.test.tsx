@@ -43,7 +43,7 @@ it('retains original choice grading and exposes all preparation guides', () => {
   fireEvent.click(screen.getByLabelText(/Limit the tree/));
   fireEvent.click(screen.getByRole('button',{name:'Review my answer →'}));
   expect(screen.getByText('Correct choice.')).toBeInTheDocument();
-  expect(screen.getByText('Preparation library · 15 guides')).toBeInTheDocument();
+  expect(screen.getByText('Preparation library · 17 guides')).toBeInTheDocument();
 });
 it('answer-shape starters insert each move and light it up', () => {
   render(<MemoryRouter><InterviewPage /></MemoryRouter>);
@@ -123,4 +123,25 @@ it('exposes the LLM outputs, evaluation, autonomy, and guardrails bank with nume
   expect(screen.getByText('Correct calculation.')).toBeInTheDocument();
   expect(screen.getByText(/Computes 1 minus C\(8, 3\)/)).toBeInTheDocument();
   expect(screen.getByRole('link',{name:/original study guide/})).toHaveAttribute('href','/docs/mlops/ml-and-llm-testing');
+});
+
+it('exposes the Production AI Systems and Agent Reliability & Evaluation banks with numeric checking and criteria', () => {
+  render(<MemoryRouter><InterviewPage /></MemoryRouter>);
+  fireEvent.change(screen.getByLabelText('Topic'), {target:{value:'production-ai-systems-questions'}});
+  fireEvent.change(screen.getByLabelText('Search interview questions'), {target:{value:'error-budget burn rate'}});
+  fireEvent.click(screen.getByRole('button', {name:/error-budget burn rate/}));
+  fireEvent.change(screen.getByLabelText(/Your numerical answer/), {target:{value:'12'}});
+  fireEvent.click(screen.getByRole('button',{name:'Review my answer →'}));
+  expect(screen.getByText('Correct calculation.')).toBeInTheDocument();
+  expect(screen.getByText(/Divides observed 0\.012 error rate/)).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:/original study guide/})).toHaveAttribute('href','/docs/software-system-design/availability-and-slos');
+
+  fireEvent.change(screen.getByLabelText('Topic'), {target:{value:'agent-reliability-and-eval-questions'}});
+  fireEvent.change(screen.getByLabelText('Search interview questions'), {target:{value:'pass^4'}});
+  fireEvent.click(screen.getByRole('button', {name:/pass\^4/}));
+  fireEvent.change(screen.getByLabelText(/Your numerical answer/), {target:{value:'52.2'}});
+  fireEvent.click(screen.getByRole('button',{name:'Review my answer →'}));
+  expect(screen.getByText('Correct calculation.')).toBeInTheDocument();
+  expect(screen.getByText(/Computes 0\.85⁴ = 0\.5220/)).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:/original study guide/})).toHaveAttribute('href','/docs/ai-evaluation/llm-rag-agent-evaluation');
 });

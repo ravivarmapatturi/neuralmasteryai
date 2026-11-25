@@ -1,6 +1,527 @@
 {
   "questions": [
     {
+      "id": "agent-reliability-and-eval-questions:af-transient-vs-permanent-retry-concept",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "An agent tool call fails inside an automated workflow. Which failure class should trigger automated exponential backoff with jitter in the harness, rather than immediate failure or feeding the error back to the LLM?",
+      "context": "Your agent calls internal REST APIs, SQL executors, and third-party SaaS endpoints.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Separate **transient infrastructure faults** (`429`, `502`/`503`/`504`, socket timeouts) from **permanent or semantic faults** (`400`, `403`, `404`, schema violations). Retrying transient errors silently inside the transport layer with bounded attempts and full jitter shields the LLM context from noisy hiccups and resolves temporary overload without burning extra model turns. Retrying a deterministic `400` or `403` in tight loops wastes attempt budgets, amplifies downstream load, and stalls the user for seconds when the right move is aborting immediately (for `403`) or returning the exact schema hint to the LLM (for `400`). Strict error classification keeps recovery fast while requiring every tool adapter to map vendor errors accurately.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/retries-and-backoff",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "`400 Bad Request` caused by missing required JSON fields in the tool call.",
+          "why": "Retrying identical malformed arguments fails deterministically every time; return the validation error to the LLM so it can fix its arguments."
+        },
+        {
+          "text": "`403 Forbidden` because the user lacks permission on the target workspace.",
+          "why": "Permission denials are permanent policy boundaries; retrying wastes quota and never flips authorization."
+        },
+        {
+          "text": "`429 Too Many Requests`, `503 Service Unavailable`, or a transient TCP connect timeout.",
+          "why": "Transient saturation and network blips resolve cleanly after jittered backoff without bothering the LLM."
+        },
+        {
+          "text": "A deterministic Python `ZeroDivisionError` inside a local calculation tool.",
+          "why": "Deterministic code or input bugs require the agent to revise its code or inputs, not blind transport retries."
+        }
+      ],
+      "correctOption": 2
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-exponential-backoff-deadline-calc",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "An HTTP tool wrapper uses a 4.0-second per-attempt timeout and up to 3 total attempts (1 initial call plus 2 retries), with deterministic backoff sleeps of 1.0 s after attempt 1 and 2.0 s after attempt 2 (no sleep after the final failure). If every attempt hangs until its timeout fires, what is the worst-case elapsed time in seconds for that single tool step?",
+      "context": "Ignore minor Python loop overhead and jitter variance; sum full timeout and sleep waits.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Sum all three hanging attempts plus the two inter-attempt sleeps: `(3 × 4.0 s) + 1.0 s + 2.0 s = 12.0 + 3.0 = ` **`15`** seconds. Engineers routinely configure per-attempt timeouts and retry counts independently, forgetting that `3 × 4s + backoff` consumes 15 seconds on a single step—blowing past a 10-second agent turn SLA or holding worker pools hostage. Always pass a shared **step deadline** into the retry loop (`min(attempt_timeout, remaining_deadline)`) and abort retries immediately once remaining time drops below a viable call budget.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/retries-and-backoff",
+      "kind": "calculation",
+      "numericAnswer": 15,
+      "tolerance": 0,
+      "unit": "s"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-idempotency-key-scope-concept",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "Why must an agent harness bind an idempotency key to the logical step `(run_id, step_seq, tool_name, args_hash)` before network dispatch, rather than generating a fresh UUID inside the HTTP retry helper or reusing one static key per user?",
+      "context": "The agent calls a `create_payout` API over an unstable network where responses occasionally drop after commit.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Generating a fresh `uuid4()` inside the low-level HTTP retry helper defeats idempotency completely: if attempt 1 commits the payout and times out before the HTTP response returns, attempt 2 sends a different UUID and creates a **duplicate payout**. Conversely, reusing one static key per user across different turns causes turn 5's legitimate second refund to return turn 2's cached response silently! Binding the key deterministically to `(run_id, step_seq, tool_name, canonical_args_hash)`—and persisting that step intent before calling the network—ensures network retries and worker crash recoveries share the exact same key, while distinct turns generate distinct keys. Step-scoped idempotency guarantees at-most-once side effects on supported APIs at the cost of persisting step metadata before external dispatch.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/idempotency",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-non-deterministic-replay-bug",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "A multi-step agent checkpoints after every completed step. After executing `charge_card($50)` on step 4, the worker crashes before persisting step 4's completion marker. On restart from step 3, the supervisor re-invokes the LLM to generate step 4 again; the LLM picks slightly different wording (`memo: \"Order retry\"`), generating a different argument hash, bypassing the idempotency cache, and double-charging the customer. What durable-execution invariant failed?",
+      "context": "Idempotency keys are computed from `hash(run_id, step_seq, args)` and checkpoint writes happen only after the HTTP tool returns.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Re-invoking an LLM during crash recovery breaks deterministic replay because LLM outputs can vary across batch scheduling or updated timestamps—even changing a harmless `memo` string alters an `args_hash` and turns a retry into a brand-new charge. A durable agent runner must follow a **write-ahead intent log**: (1) persist the exact LLM-selected `(step_seq, tool_name, canonical_args, idempotency_key)` to durable storage *before* dispatching the HTTP call; (2) on restart, replay committed results from the log without calling the LLM; and (3) if step 4 has an uncommitted in-flight intent on disk, re-execute or reconcile using that exact logged `idempotency_key` rather than asking the LLM again. Write-ahead step logging closes the crash-before-ack race completely at the cost of one small DB write per tool step.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/harness-engineering/state-continuity-and-memory",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Durable replay must record deterministic tool intents *before* execution and replay logged history rather than re-running a non-deterministic LLM past the boundary.",
+          "why": "Even at temperature 0, re-calling an LLM across batches or changed timestamps can mutate tool arguments and break replay identity."
+        },
+        {
+          "text": "Idempotency keys should be stored in browser `localStorage`.",
+          "why": "Server-side worker crashes require durable server storage, not client browser storage."
+        },
+        {
+          "text": "Checkpoints should only run at the end of the entire conversation.",
+          "why": "Coarse checkpoints widen the lost-work window instead of preventing step-4 double execution."
+        },
+        {
+          "text": "The payment API should accept HTTP GET requests for card charges.",
+          "why": "Mutations must remain non-safe POST operations guarded by durable operation intent."
+        }
+      ],
+      "correctOption": 0
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-retry-amplification-calc",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "During a partial database brownout, a three-layer stack runs independent retries: the root supervisor retries a failing sub-agent up to 3 times (4 total tries), the sub-agent's tool client retries a flaky internal service up to 3 times (4 total tries), and that internal service retries its database query up to 2 times (3 total tries). For 1 user request when every call stalls, how many total database attempts can this stack emit?",
+      "context": "Assume all layers retry independently on timeout with no shared retry budget.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Nested retries multiply across call hops: `4 supervisor tries × 4 tool-client tries × 3 database tries = ` **`48`** database attempts triggered by a single stalled user request. Across just 500 active users, that 48× multiplier floods a struggling database with 24,000 queries, locking a brief brownout into a prolonged total collapse (**metastable retry storm**). Prevent amplification by retrying **at most at one layer** (typically closest to the immediate transient hop or at the orchestrator with non-retrying inner hops), setting **retry budgets** (capping total retries at ~10% of normal traffic), and propagating remaining request deadlines. Single-layer bounded retries protect recovery headroom at the cost of failing unrecoverable inner calls slightly earlier.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/retries-and-backoff",
+      "kind": "calculation",
+      "numericAnswer": 48,
+      "tolerance": 0,
+      "unit": "attempts"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-idempotency-payload-mismatch-debug",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "Your ops agent calls `create_ticket(priority=\"high\")`, gets a schema rejection from a downstream validator, self-corrects to `priority=\"urgent\"`, and accidentally reuses the previous step's `idempotency_key`. The server returns HTTP 200 with the original response (`priority=\"high\"`), leaving the agent convinced its correction succeeded. What two bugs caused this?",
+      "context": "The tool server keys its idempotency table solely on `idempotency_key` without comparing request payload hashes.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Two complementary bugs collided: on the **server side**, the idempotency store returned a cached result keyed solely on `idempotency_key` without verifying that the incoming request body matches the original `payload_hash` (it should reject mismatched payloads with `409 Conflict` or `422`); on the **harness side**, the agent incremented a reasoning retry without advancing its `attempt/substep` sequence when generating logically *new* arguments. Anytime an LLM mutates tool arguments to fix a validation error, it is issuing a new logical intent that requires a fresh idempotency key, whereas only identical transport retries keep the original key. Enforcing server-side payload-digest equality and step-revision keys prevents silent stale-cache illusions at the cost of storing a 32-byte payload hash per idempotency record.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/idempotency",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-checkpoint-granularity-calc",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "A 50-step autonomous coding workflow runs at 4.0 seconds per step. Saving a durable state checkpoint after every step adds 0.5 seconds overhead per step (25.0 s total across 50 steps). Suppose a worker preemption hits once right after step 25 finishes: without checkpoints, the run restarts from step 0 (re-running 25 steps); with per-step checkpoints, recovery resumes immediately at step 26 with 0 lost steps. How many net seconds does per-step checkpointing save on this preempted run?",
+      "context": "Compare total execution time without checkpoints versus with per-step checkpoints across the single preemption after step 25.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Without checkpoints, restarting after step 25 wastes `25 × 4.0 s = 100.0 s` re-executing completed steps (`200 s` useful + `100 s` wasted = `300 s` total). With per-step checkpoints, lost work is `0 s` and total checkpoint writes across all 50 steps add `50 × 0.5 s = 25.0 s` (`225 s` total), yielding **`75`** net seconds saved (`100 − 25 = 75 s`). Notice the break-even trade-off: if preemption probability is tiny (say 1% of runs) and checkpoint overhead is large (for instance, serializing multi-gigabyte container snapshots instead of lightweight workspace diffs + conversation state), checkpointing every 5–10 steps or before expensive irreversible phases beats per-step snapshots.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/harness-engineering/state-continuity-and-memory",
+      "kind": "calculation",
+      "numericAnswer": 75,
+      "tolerance": 0,
+      "unit": "s"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-poison-pill-dlq-debug",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "An async agent worker pulls a malformed webhook event containing invalid UTF-8 bytes, crashes with an unhandled `UnicodeDecodeError` before acking the message, and restarts. The queue immediately redelivers the same message to the next pod, and within 5 minutes every worker pod is stuck crash-looping. Diagnose and fix this poison-pill failure.",
+      "context": "Queue uses standard at-least-once delivery with infinite immediate redelivery on unacked worker crashes.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "An unguarded fatal payload (**poison pill**) coupled with unbounded immediate redelivery creates an infinite crash-and-redeliver loop that starves every healthy task in the queue. Because the crash fires before `ack()`, the broker keeps re-queuing the exact toxic message to healthy pods one by one until the whole fleet OOMs or enters `CrashLoopBackOff`. Fix this with three controls: (1) track `delivery_count` (`max_receive_count = 3–5`) at the broker and automatically divert exhausted items to a **Dead-Letter Queue (DLQ)** with alert triage; (2) wrap top-level message deserialization in non-fatal schema validation that explicitly `nack(requeue=false)` / dead-letters permanent `DecodeError`s on attempt 1; and (3) apply exponential visibility backoff between legitimate retries. DLQ routing isolates toxic events cleanly at the cost of building replay tooling for dead-lettered items.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/message-queues-and-async-processing",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-zombie-heartbeat-orphan-tool-debug",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "A background agent worker picks up a 10-minute database backfill tool job from a queue configured with a 60-second visibility timeout and no heartbeats. At second 61, the broker marks the task stalled and hands it to Worker B, so two workers run the same non-atomic migration concurrently. How do you stop split-brain execution?",
+      "context": "Backfills vary from 10 seconds to 15 minutes; queue visibility defaults to 60 seconds.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Fixed short visibility timeouts without lease renewal cause **zombie workers** whenever legitimate long tool runs outlive the lease. At 61 s, Worker A is still alive and mutating rows while Worker B acquires a fresh message delivery and collides on the same target. Resolve split-brain with three layers: (1) run a background **lease heartbeat** inside the worker extending visibility (e.g., every 20 s) only while the process holds its thread/cancellation health; (2) pass a monotonically increasing **fencing token** (`lease_epoch`) into downstream locks/stores so any paused or orphaned Worker A with an older token gets rejected once Worker B acquires token `n+1`; and (3) check cooperative cancellation flags before committing side effects. Heartbeats plus fencing tokens eliminate duplicate long-tool execution at the cost of minor lease-renewal traffic and store-side epoch validation.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/distributed-locks",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-context-bloat-on-retries-concept",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "Why does appending full raw stack traces from four failed tool retries directly into an agent's active message history degrade accuracy on step 5, and how should the harness surface retry failures instead?",
+      "context": "Each Python/SQL traceback spans ~1,800 tokens; the agent must pivot to an alternative query strategy.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Dumping four multi-kilobyte stack traces into active context floods attention with repetitive noise and error priors (**context poisoning**), making the model anchor on failed paths or confuse old tracebacks with current code lines—cutting step-5 recovery accuracy sharply while multiplying input token cost quadratically. Instead of raw trace logs, collapse historical failed retries into a compact **structured diagnostic envelope** (under 150 tokens: `tool_name`, `error_code`, normalized 2-line root cause, `attempt 2/3`), store full logs out-of-band by `artifact_id` if the agent explicitly requests inspection, and prune or replace superseded failed attempts once an attempt succeeds. Compact error envelopes keep reasoning context crisp and cheap while risking loss of obscure tail clues unless full traces remain fetchable on demand.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/harness-engineering/verification-loops",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-checkpoint-schema-evolution-design",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "You ship a breaking refactor to your agent workflow—renaming a tool and splitting a single `plan` state node into `draft_plan` and `verify_plan`—while 2,000 long-running agent runs are checkpointed in `AWAITING_APPROVAL`. How do you resume all 2,000 runs cleanly without deserialization crashes?",
+      "context": "Checkpoints stay valid up to 7 days while waiting on human approvals.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Never deserialize live workflow checkpoints blindly into mutated code graphs—treat persisted checkpoints as versioned API contracts. Stamp every snapshot with explicit `graph_version` and `schema_version` fields alongside immutable step history. Route upgrades through two clean mechanisms: (1) **versioned worker deployment (blue-green routing)**, pinning resumed `v1` checkpoints to long-lived `v1` worker replicas while new requests run on `v2`, retiring `v1` workers after the 7-day approval TTL drains; or (2) **explicit lazy state upcasters** (`migrate_v1_to_v2(snapshot)`) that map old `plan` nodes into completed `draft_plan` + pending `verify_plan` states and translate deprecated tool names deterministically, gated by migration tests over real archived checkpoints before deploy. Version pinning and tested upcasters prevent mass deserialization outages at the cost of temporarily carrying two runtime versions or writing migration adapters.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/harness-engineering/state-continuity-and-memory",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:af-durable-agent-recovery-design",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Failures: Retries, Timeouts, Idempotency & Checkpoints",
+      "title": "Design a durable checkpoint-and-recovery engine for a multi-step enterprise agent executing mixed external APIs—some idempotent (Stripe), some non-idempotent legacy SOAP/SMTP endpoints—in an environment with 30-second spot-instance preemption notices.",
+      "context": "Runs span 5–30 minutes; spot nodes can terminate 30 seconds after receiving a shutdown webhook.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Separate execution into deterministic **checkpointed state transitions** paired with an **outbox / effect classification policy** and graceful preemption draining:\n\n1. **Preemption handler:** On the 30-second termination signal, stop accepting new tasks, allow short in-flight steps to commit or cancel cleanly before shutdown, flush the current write-ahead state + workspace diff to object storage/DB, and release leases immediately so a replacement worker picks up without waiting for timeout expiry.\n2. **Effect classification:** Before running a step, persist its `intent_log` entry (`run_id`, `step_seq`, `args_hash`). For idempotent APIs (Stripe), retry cleanly with the stored deterministic key; for non-idempotent legacy APIs (SMTP email, legacy SOAP), mark the step `UNCERTAIN_IF_INTERRUPTED` if preemption hits mid-socket: query a side-channel reconciliation lookup (sent-mail log / SOAP status query) before retrying, or pause for human confirmation rather than risking double customer emails.\n\nSeparating idempotent replay from non-idempotent reconciliation protects legacy side effects during spot churn, trading extra reconciliation adapters and occasional operator review for zero silent duplicates.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agents/react-agent-production",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-outcome-vs-trajectory-eval-concept",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "An agent finishes a customer support task with the exact right final refund amount, yet its execution trace shows it ignored an internal policy cache, queried an admin-only table twice, and retried 11 turns to get there. Why must agent evaluation grade trajectory alongside end-state outcome?",
+      "context": "You are designing an automated CI gate for tool-using customer operations agents.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Outcome-only scoring rewards lucky accidents and hides dangerous paths—an agent that probes restricted endpoints or wastes 14 unnecessary tool calls still passes if the final database row matches. Conversely, demanding exact string-match equality against one hardcoded reference tool sequence fails valid alternative plans (for example, looking up customer ID before order date instead of order date before customer ID). Production agent evals pair **end-state assertions** (final DB diff / test exit code) with **trajectory invariant checks** (no forbidden tool arguments, required confirmation gates honored, zero redundant cycle repeats) and **efficiency ceilings** (turn count and token cost). Separating invariant checks from rigid sequence matching catches unsafe behavior without penalizing valid reasoning flexibility.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-evaluation/llm-rag-agent-evaluation",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Outcome checks cannot compare numeric dollar values accurately.",
+          "why": "Exact outcome assertions check final balances and fields accurately; what they miss is how the state was reached."
+        },
+        {
+          "text": "Outcome-only checks miss security/policy breaches, side-effect pollution, and runaway step costs along the path, while requiring an exact golden sequence is too brittle when multiple valid paths exist.",
+          "why": "Grade end-state invariants together with trajectory policy rules and step/cost budgets rather than exact sequence matching."
+        },
+        {
+          "text": "Trajectory evaluation eliminates the need to reset databases between test tasks.",
+          "why": "State isolation between trials remains mandatory regardless of whether trajectories are scored."
+        },
+        {
+          "text": "Grading traces removes non-determinism from temperature 0.7 sampling.",
+          "why": "Trace grading measures behavioral reliability; it does not make sampling deterministic."
+        }
+      ],
+      "correctOption": 1
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-pass-hat-k-reliability-calc",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "A customer-refund agent succeeds independently on 85% of trials (`p = 0.85`). Enterprise release criteria evaluate `pass^k`, requiring all `k = 4` independent trials on a scenario to pass without failure. What is `pass^4` as a percentage? (One decimal.)",
+      "context": "Assume independent identically distributed runs with no cross-trial memory.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "For all 4 independent trials to succeed, multiply single-trial reliability: `0.85⁴ = 0.52200625 = ` **`52.2%`**. Unlike `pass@4` (`1 − 0.15⁴ = 99.95%`), which measures whether an agent can get lucky once in four tries, `pass^4` measures whether a team can trust the agent repeatedly across four production invocations on the same task shape. Dropping from an encouraging `85%` single-run score to `52.2%` at `k = 4` highlights why customer-facing workflows need strict schema constraints, deterministic validation retries, and conservative autonomy gates before claiming enterprise readiness.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-evaluation/llm-rag-agent-evaluation",
+      "kind": "calculation",
+      "numericAnswer": 52.200625,
+      "tolerance": 0.01,
+      "unit": "%"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-environment-state-grading-concept",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "Why do agent benchmarks like tau-bench and SWE-bench grade the final mutated environment state (database diffs or unit-test suites) rather than scoring the agent's final natural-language message against a reference string?",
+      "context": "An airline booking agent replies \"Done! Your flight is moved to Friday\" to a customer request.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Text similarity or even an LLM judge reading only the assistant's closing message cannot verify whether the agent actually changed reality or hallucinated tool execution. An agent can write a polite, fluent `\"Done! Moved to Friday\"` while forgetting to pass `confirm=true`, mutating the wrong passenger leg, or misreading a silent API error—and conversely, valid terse responses score poorly against verbose reference strings. Grading the **mutated environment end-state** (comparing live SQLite/Postgres table snapshots, file-system git diffs, or running hidden unit tests inside a fresh sandbox) measures true task accomplishment deterministically. Environment grading eliminates linguistic sycophancy at the cost of building fast sandbox reset snapshots and deterministic world-state assertions per task.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-evaluation/llm-rag-agent-evaluation",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-trace-span-schema-concept",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "In an OpenTelemetry-instrumented agent runtime, why must LLM generations, tool invocations, and sub-agent calls share a single root `trace_id` with parent-child `span_id` links rather than emitting flat independent HTTP logs?",
+      "context": "One user request fans out across a planner, two parallel retrieval workers, and three external tool servers.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Flat per-service logs break down immediately on multi-turn, parallel agents because concurrent tool calls and nested sub-agents interleave arbitrarily in shared log streams. Propagating a single root `trace_id` and parent-child `span_id` (plus `step_index`, `gen_ai.usage.*`, and `tool.status`) builds a causal **execution DAG** showing exact critical-path wait (parallel vs sequential tool waits), total rolled-up dollar cost per user turn, and the exact upstream span whose bad output poisoned downstream reasoning. Causal span trees make multi-hop agent triage deterministic at the cost of propagating W3C `traceparent` metadata across HTTP, queues, and local subprocess tool boundaries.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agent-observability/opentelemetry-and-distributed-tracing",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Parent-child span trees capture causal execution order, exact critical-path timing, and per-branch token accumulation across async workers and retries.",
+          "why": "Without `trace_id` and `parent_span_id`, you cannot reconstruct which sub-agent triggered a failing retry or where 80% of total latency actually sat."
+        },
+        {
+          "text": "Span trees automatically compress JSON prompt text by 4× in GPU VRAM.",
+          "why": "OpenTelemetry traces record telemetry out-of-band and never alter GPU KV caches."
+        },
+        {
+          "text": "Flat logs cannot store timestamps in UTC.",
+          "why": "Flat logs hold timestamps cleanly, yet lack parent-child causal pointers across concurrent async branches."
+        },
+        {
+          "text": "Using `trace_id` bypasses external rate limits on tool servers.",
+          "why": "Trace propagation is strictly observational and never overrides API rate limiters."
+        }
+      ],
+      "correctOption": 0
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-mock-vs-live-sandbox-eval",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "Compare running agent CI evaluations against deterministic recorded tool stubs (VCR mocks) versus live ephemeral sandboxes (seeded containers and mock servers). When do VCR mocks give dangerous false confidence?",
+      "context": "Your PR gate runs 150 agent scenarios in under 3 minutes; staging integrates real CRM and billing microservices.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Deterministic tool mocks execute in seconds with zero external flakiness, making them ideal for fast PR smoke checks on prompt parsing and known regressions—yet they freeze past API assumptions in place. If the live billing service changes an enum field, adds a stricter pagination cursor, or if the agent explores a slightly different query filter (`status=open` instead of `status=pending`), static recorded mocks either crash on missing cassette keys or replay stale successes that mask broken production integrations. Use **seeded ephemeral sandboxes** (containerized databases + local HTTP tool implementations with reset hooks) for nightly/release gates to catch real stateful mutations, ordering preconditions, and schema drift, while keeping minimal fast mocks for inner-loop PR iteration—balancing fast developer velocity against real end-to-end fidelity.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ml-and-llm-testing",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-step-efficiency-cost-calc",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "On a 500-task evaluation suite, Agent V1 solves 80% of tasks (400 tasks), averaging $0.06 per successful trajectory and $0.14 per failed trajectory (where the remaining 100 runs exhaust the turn cap). What is the effective cost per resolved task (`total spend ÷ resolved tasks`) in USD? (Three decimals.)",
+      "context": "Include spend from both passing and failing attempts in the numerator.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Calculate total suite spend across all 500 tasks:\n\n- **Passing runs:** `400 × $0.06 = $24.00`.\n- **Failing runs:** `100 × $0.14 = $14.00`.\n- **Total spend:** `$24.00 + $14.00 = $38.00` across `400` resolved tasks.\n\nEffective cost per resolved task is `$38.00 ÷ 400 = ` **`$0.095`** (nearly 60% higher than the naive `$0.06` sticker price of successful trajectories alone!). Evaluating cost per resolved task instead of average cost per call stops teams from shipping an agent that raises pass rate slightly from 80% to 82% while doubling failed-trajectory retry loops and exploding total unit economics.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agent-observability/token-and-cost-attribution",
+      "kind": "calculation",
+      "numericAnswer": 0.095,
+      "tolerance": 0.01,
+      "unit": "USD"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-trace-root-cause-localization-debug",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "Your billing agent fails 32% of multi-step refund tasks. Reading only final outputs makes every failure look like the LLM hallucinated refund amounts—yet step-by-step traces show `lookup_order` returned stale cached rows on step 2 before step 3 computed the refund. What evaluation taxonomy fix separates these failures?",
+      "context": "Team engineers were about to spend three weeks fine-tuning the model on refund math.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Final-answer error rates conflate upstream data defects with model failures whenever later LLM steps reason logically over bad tool observations. **First-fault trace attribution** classifies each failed trajectory at the earliest diverging span: (1) environment/tool bug (stale data, 5xx, wrong tool doc); (2) tool-argument/schema slip; (3) reasoning/planning error over valid inputs; or (4) premature stop / budget exhaustion. Attributing step 2's stale `lookup_order` response to the data layer saves weeks of pointless prompt engineering or fine-tuning and directs fixes straight to cache invalidation. Automated fault-attribution classifiers over traces cut root-cause triage time dramatically, at the cost of labeling an initial golden taxonomy of failure traces.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agent-observability/failure-taxonomy-and-anomaly-detection",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Compute BLEU between the agent's apology and a template string.",
+          "why": "Surface phrasing similarity says nothing about which tool or reasoning step broke first."
+        },
+        {
+          "text": "Raise the LLM's `max_tokens` so it prints longer intermediate explanations.",
+          "why": "Longer reasoning over stale tool rows still produces wrong totals."
+        },
+        {
+          "text": "Score only the final turn with a larger frontier judge model.",
+          "why": "An end-only judge without tool-output inspection still blames the LLM's final math."
+        },
+        {
+          "text": "Perform first-fault span attribution across each trace—separating retrieval/tool staleness, argument construction, reasoning errors, and policy stops—so each team fixes the actual broken layer.",
+          "why": "Pinpointing the earliest bad span stops prompt engineers from trying to tune away broken upstream APIs."
+        }
+      ],
+      "correctOption": 3
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-user-simulator-bias-debug",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "Your conversational agent scores 94% completion against an LLM user simulator in staging, yet drops to 61% during live customer beta. Inspecting transcripts shows the simulator always answers clarifying questions clearly, copies exact IDs verbatim, and never reverses itself mid-conversation. Diagnose the gap and fix it.",
+      "context": "Live customers frequently send typos, ambiguous pronouns, half-remembered order numbers, and impatient topic switches.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Polite, cooperative LLM user simulators suffer from **instruction-following echo bias**: because the simulator model shares helpful assistant priors, it supplies crisp formatted details, never pushes back ambiguously, and cooperates cleanly—inflating staging scores by 30+ points above real messy human behavior. Harden user simulation by seeding personas directly from anonymized production conversation traces: inject realistic behaviors including terse fragmented replies, typos in IDs, partial information revealed only after probing, mid-stream goal changes, and strict turn-impatience cutoffs. Pairing stratified real-behavior personas with human dogfooding closes the offline-to-online gap at the cost of higher variance and periodic persona refreshes as product habits shift.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-evaluation/human-and-adversarial-evaluation",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-trace-compliance-calc",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "An agent benchmark runs 400 evaluation tasks. Exactly 300 runs pass the final database end-state verification, yet trajectory trace auditing flags that 15% of those 300 passing runs violated a safety or tool policy (calling an unapproved admin read or bypassing confirmation). What is the true policy-compliant pass rate across all 400 tasks, in percent? (Two decimals.)",
+      "context": "Count a run as compliant-pass only if it satisfies both end-state correctness and trajectory policy rules.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Out of `300` end-state passes, `15%` (`45` runs) violated policy, leaving `300 × (1 − 0.15) = 255` compliant passes. Across `400` total tasks, the true policy-compliant pass rate is `255 ÷ 400 × 100 = ` **`63.75%`** (11.25 points lower than the raw 75.0% end-state headline!). Reporting end-state accuracy alongside policy-compliant pass rate stops safety regressions from masquerading as productivity wins, while showing explicitly whether improvements came from better capability or stricter tool constraints.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-evaluation/llm-rag-agent-evaluation",
+      "kind": "calculation",
+      "numericAnswer": 63.75,
+      "tolerance": 0.01,
+      "unit": "%"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-non-deterministic-flaky-ci-debug",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "Your 100-task agent eval suite fails PR CI randomly 35% of the time on completely unchanged commits, causing engineers to ignore red builds and hit retry. Why does a naive single-run threshold fail on multi-step agents, and how do you make CI deterministic and reliable?",
+      "context": "Each task averages 6 LLM turns at temperature 0.2 plus external search calls; passing threshold was set to 85/100.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "When individual multi-step tasks succeed with ~85% per-trial probability across 100 binary items (`SE ≈ 3.6%`), random binomial variance routinely drops single-run scores from 87% down to 81% on identical code—triggering a 35% false-fail rate when gated against a fixed 85% cutoff! Restore CI trust with a two-tier strategy: (1) on every PR, run **fast deterministic structural gates** using recorded/seeded tool sandboxes and `temperature = 0` on a curated deterministic core slice (schema, tool bounds, cycle guards); and (2) on release/nightly candidates, evaluate stochastic tasks across `k = 3–5` trials per item using **paired statistical comparison** (McNemar or paired bootstrap CI against the baseline commit) rather than noisy single-shot absolute cutoffs. Separating deterministic PR gates from multi-trial release gates restores developer trust in red CI builds at the cost of slightly longer nightly compute.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ml-and-llm-testing",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-production-trace-to-eval-flywheel-design",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "Design an automated production trace-to-eval flywheel that mines live agent OpenTelemetry traces for novel failures, strips PII, and turns them into regression tests without bloating CI or overfitting stale traffic.",
+      "context": "Production emits 200,000 agent traces daily; CI budget allows up to 300 regression cases.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Build a staged trace curation pipeline:\n\n1. **Failure-signal ingestion:** Filter tail-sampled OpenTelemetry traces matching high-signal anomalies—user re-asks/edits, cycle-breaker halts, guardrail triggers, tool retries `>= 3`, or human escalation handoffs.\n2. **PII scrubbing & minimal reproduction:** Redact customer identifiers deterministically, extract the minimal diverging sub-trajectory (system prompt + seed context + failing tool response), and synthesize deterministic mock stubs for external state at that turn.\n3. **Deduplication & stratification:** Cluster failure embeddings so one widespread outage spawns 1–2 representative cases rather than 100 duplicates; cap the active CI suite at 300 cases balanced across core invariants, recent incidents, and retired-bug sampling so old regressions stay covered without slowing CI forever.\n\nAutomated trace mining ensures real user failures enter CI within days rather than waiting for quarterly manual labeling, trading modest engineering maintenance on PII scrubbers and mock extractors for continuous regression hardening.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agent-observability/failure-taxonomy-and-anomaly-detection",
+      "kind": "explanation"
+    },
+    {
+      "id": "agent-reliability-and-eval-questions:ae-multi-agent-eval-harness-design",
+      "bank": "agent-reliability-and-eval-questions",
+      "area": "Agent Reliability & Evaluation",
+      "section": "Agent Evaluation & Traces",
+      "title": "Design an evaluation harness for a hierarchical multi-agent system (Lead Planner, Research Worker, Code-Execution Worker) that isolates component regressions, preserves cross-agent traces, and resets shared state cleanly.",
+      "context": "Upgrading the Research Worker prompt recently degraded end-to-end coding passes, yet teams cannot tell whether planning, search, or coding broke.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Design the harness around **propagated trace IDs, isolated sandbox snapshots, and modular component ablations**:\n\n- **Cross-agent tracing:** Propagate root `trace_id` and `parent_span_id` across every handoff packet (`planner → researcher → coder`), tagging each span with `agent_role`, `prompt_hash`, `model_id`, tokens, and structured handoff payload validation.\n- **Component-level ablation:** Evaluate both full end-to-end runs and isolated **interface harnesses**—feeding fixed golden planner sub-goals directly into the Research Worker (scoring retrieval recall + citation grounding) and fixed golden research briefs directly into the Code Worker (scoring test pass rate). When an upgrade drops end-to-end passes, comparing full runs against frozen-interface ablations isolates within minutes whether the Research Worker dropped facts or the Planner stopped delegating properly.\n- **Hermetic reset & composite scorecard:** Snapshot container filesystems and DB seeds per trial (zero leaked temp files across tasks) and report pass rate, `pass^k`, policy violations, total tokens across all sub-agents, and critical-path wall time together.\n\nModular ablations eliminate multi-agent blame games at the cost of maintaining clean handoff schemas and interface fixtures between agent roles.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agent-observability/opentelemetry-and-distributed-tracing",
+      "kind": "explanation"
+    },
+    {
       "id": "classical-ml-questions:cml-high-variance-tree",
       "bank": "classical-ml-questions",
       "area": "Classical ML",
@@ -3167,6 +3688,1086 @@
         }
       ],
       "correctOption": 1
+    },
+    {
+      "id": "production-ai-systems-questions:mr-model-version-pinning",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "Your production extraction service calls the provider's floating `model-latest` alias rather than a pinned dated snapshot. Why is this risky even when API uptime is 100%?",
+      "context": "Downstream workflows expect deterministic JSON field formats and calibrated confidence thresholds measured in last month's evaluation.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Floating aliases let the provider swap weights or system defaults underneath live traffic, silently invalidating your prompt tuning and calibrated thresholds. Every production endpoint should pin an immutable snapshot ID and treat a model upgrade like a code release: run shadow comparisons and regression evals on the candidate snapshot before shifting canary traffic. A routine silent update often alters whitespace formatting, tool-call verbosity, or borderline refusal rates overnight while HTTP 200 status codes stay green. Pinning guarantees behavioral reproducibility across incidents, at the cost of tracking deprecation dates and running scheduled migration gates before old snapshots retire.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/deployment-strategies",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Floating aliases double per-token billing without changing weights.",
+          "why": "Provider aliases carry the same published token pricing as the underlying snapshot."
+        },
+        {
+          "text": "Aliases bypass prompt caching at the network edge.",
+          "why": "Caching still works per prefix until the underlying weights change and invalidate KV compatibility."
+        },
+        {
+          "text": "Provider-side model updates silently shift output distributions, formatting habits, and safety refusals without any deploy on your side.",
+          "why": "Pinning an immutable version keeps behavior frozen until you replay your regression suite on the new snapshot."
+        },
+        {
+          "text": "Floating aliases disable streaming responses.",
+          "why": "Streaming transport works identically across pinned and unpinned model identifiers."
+        }
+      ],
+      "correctOption": 2
+    },
+    {
+      "id": "production-ai-systems-questions:mr-when-small-beats-large",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "When should you choose a specialized 8B model (or fine-tuned encoder) over a frontier reasoning model in a production system?",
+      "context": "A support router classifies 400 tickets/second into 12 fixed intents under a strict 150 ms p99 latency SLA.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Choose a specialized small model when the task has bounded input-output structure, tight latency or cost targets, and enough labeled examples to match frontier quality on that narrow distribution. Small encoders or distilled 8B models finish in tens of milliseconds on compact GPUs and avoid verbose reasoning drift on rigid schemas. Sending 400 classification requests per second to a frontier reasoning model blows latency budgets, multiplies spend by 10–30×, and introduces occasional explanatory prose around enum labels. Narrow models win on predictable unit economics and speed, trading away broad zero-shot generalization when new ticket categories emerge.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ml-system-design/model-catalog-and-benchmarking",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:mr-blended-router-cost-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "A two-tier router serves 1,000,000 monthly requests averaging 1,000 input tokens and 300 output tokens each. It sends 70% of requests to a fast tier ($0.15/1M input, $0.60/1M output) and 30% to a frontier tier ($3.00/1M input, $15.00/1M output), while the router classifier adds $0.02 per 1,000 requests. What is the total monthly spend in USD?",
+      "context": "Assume no prompt caching discounts and zero retries across the 1,000,000 requests.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Compute each tier separately plus router overhead:\n\n- **Fast tier (700,000 requests):** 700M input tokens × $0.15 = $105.00; 210M output tokens × $0.60 = $126.00; subtotal = $231.00.\n- **Frontier tier (300,000 requests):** 300M input tokens × $3.00 = $900.00; 90M output tokens × $15.00 = $1,350.00; subtotal = $2,250.00.\n- **Router overhead:** 1,000 thousand requests × $0.02 = $20.00.\n\nTotal spend is $231 + $2,250 + $20 = **$2,501**, saving two-thirds compared with sending all traffic to the frontier model ($7,500). Output tokens dominate the frontier bill ($1,350 vs $900), so routing verbose generation tasks accurately yields the biggest savings while misrouting easy verbose replies wastes budget fast.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ai-cost-engineering",
+      "kind": "calculation",
+      "numericAnswer": 2501,
+      "tolerance": 0,
+      "unit": "USD"
+    },
+    {
+      "id": "production-ai-systems-questions:mr-router-vs-cascade-tradeoff",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "Compare an upfront predictive router against a sequential confidence cascade. When does a cascade lose both latency and cost against direct frontier calls?",
+      "context": "User-facing coding assistant expects sub-second TTFT; complex multi-file queries make up 65% of live traffic.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "An upfront router classifies query difficulty before generation, whereas a sequential cascade tries the cheap model first, evaluates the draft, and escalates weak outputs to the frontier tier. When complex queries dominate traffic, cascades burn both time and money: 65% of users wait through a full small-model decode and verifier check only to restart from scratch on the frontier model. Under heavy escalation, streaming cannot begin safely until verification clears, destroying perceived TTFT. Upfront routing cuts tail latency when labeled routing data exists, trading verifier accuracy on ambiguous edge cases for single-hop dispatch.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ai-cost-engineering",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "When the small model answers correctly 95% of the time without needing verification.",
+          "why": "High small-model pass rates make sequential cascades maximally cheap because few requests escalate."
+        },
+        {
+          "text": "When most queries escalate to the frontier tier anyway, forcing requests to pay small-model generation plus verifier latency before starting the frontier call.",
+          "why": "At high escalation rates, the cascade adds wasted small-model tokens and doubles first-token wait for the majority of users."
+        },
+        {
+          "text": "When the predictive router uses a logistic regression classifier over embeddings.",
+          "why": "Lightweight embedding classifiers add under 10 ms overhead and avoid running any failed LLM generation first."
+        },
+        {
+          "text": "When frontier pricing is lower than small-model pricing.",
+          "why": "Frontier models carry higher per-token costs; the issue is paying two generations plus verification on escalated traffic."
+        }
+      ],
+      "correctOption": 1
+    },
+    {
+      "id": "production-ai-systems-questions:mr-cascade-threshold-breakeven-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "Sending a request directly to a frontier model costs $0.020. A cascade instead runs a small model ($0.002) plus an external verifier ($0.002) on every request, then escalates failing cases to the frontier model ($0.020). What is the maximum escalation rate (in percent) where the cascade still stays cheaper than calling the frontier model directly?",
+      "context": "Ignore latency cost and assume all escalated requests pay both the initial cascade pass and the full frontier price.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Each request pays $0.002 + $0.002 = $0.004 upfront, plus `e × $0.020` for escalated traffic. Setting expected cost below direct frontier cost gives `0.004 + 0.020 × e < 0.020`, so `0.020 × e < 0.016`, yielding break-even escalation **`e = 80%`**. Beyond 80% escalation, paying the small model and verifier wastes more money than skipping straight to the frontier endpoint. In real systems where escalations also degrade TTFT and consume extra KV capacity, teams cap cascade escalation well below 40%–50% or switch to an upfront predictive router once traffic difficulty shifts upward.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ai-cost-engineering",
+      "kind": "calculation",
+      "numericAnswer": 80,
+      "tolerance": 0,
+      "unit": "%"
+    },
+    {
+      "id": "production-ai-systems-questions:mr-verifier-bottleneck-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "Your two-tier cascade uses a small model with a prompt asking it to rate its own certainty (1–5) and escalates scores below 4. Monthly cost drops 55%, yet wrong answers on subtle policy edge cases jump while escalation stays at 12%. Why?",
+      "context": "Escalation rate sits near 12%, HTTP errors are zero, and customer complaints cluster around outdated exception rules.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Self-assessed confidence ratings from a small generator fail as a cascade gate because models hallucinate plausibly with high stated certainty (`5/5`). When subtle policy exceptions diverge from pretraining priors, the 8B model confidently outputs stale guidance and skips escalation, cutting API spend at the cost of silent accuracy collapse on the hardest 15% of queries. Production cascades replace self-ratings with external signals: deterministic schema or code checks, retrieval grounding scores, sequence log-probability margins, or an independent lightweight verifier model. External verifiers restore recall on policy traps at the cost of 20–100 ms verification overhead.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ai-cost-engineering",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Small models are poorly calibrated on out-of-distribution errors and emit high self-confidence scores on fluent hallucinations.",
+          "why": "Self-reported certainty correlates with surface fluency rather than factual accuracy on edge cases."
+        },
+        {
+          "text": "The frontier model is overriding small-model answers with lower quality.",
+          "why": "Only 12% of queries ever reach the frontier tier, so the 88% handled by the small tier drives the accuracy drop."
+        },
+        {
+          "text": "Token-level log probabilities always return 1.0 under greedy decoding.",
+          "why": "Greedy decoding picks the argmax token, whose softmax probability can still be low (for example 0.35), though prompted numeric self-ratings are even less calibrated."
+        },
+        {
+          "text": "Prompt caching hid the escalation instructions after the first request.",
+          "why": "Prompt caching preserves exact prefix behavior and does not erase rubric instructions."
+        }
+      ],
+      "correctOption": 0
+    },
+    {
+      "id": "production-ai-systems-questions:mr-shadow-eval-calibration-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "On a 2,000-query golden benchmark, a tuned routing threshold sends 1,400 queries to the fast tier (where the fast tier achieves 88.0% accuracy) and 600 queries to the frontier tier (where the frontier tier achieves 95.0% accuracy). What is the router's blended accuracy in percent?",
+      "context": "Evaluate exact weighted accuracy across the 2,000 queries with no abstentions.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Count correct answers per slice: `(1,400 × 0.88) + (600 × 0.95) = 1,232 + 570 = 1,802` correct queries out of `2,000`, so blended accuracy is `1,802 ÷ 2,000 × 100 = ` **`90.1%`**. Tracking only aggregate accuracy can mislead if the 198 failures in the fast slice happen on high-stakes billing or medical intents. Reporting accuracy per routed bucket alongside cost-normalized accuracy shows whether the frontier tier would have fixed those 198 misses (avoidable routing errors) or whether both models failed on bad retrieval context, guiding threshold calibration vs data fixes.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ml-system-design/model-catalog-and-benchmarking",
+      "kind": "calculation",
+      "numericAnswer": 90.1,
+      "tolerance": 0.01,
+      "unit": "%"
+    },
+    {
+      "id": "production-ai-systems-questions:mr-multiturn-router-stickiness-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "A chat coding assistant runs a per-turn router: greetings go to an 8B model and debugging turns go to a 70B model. Users report abrupt tone and formatting whiplash across turns, and provider prompt-cache hit rates sit near zero on long threads. What went wrong, and how do you fix it?",
+      "context": "Conversations average 8 turns; each turn re-sends the growing thread history.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Routing every turn independently breaks both behavioral continuity and prefix KV caching across a session. When turn 1 runs on an 8B model, turn 2 on a 70B model, and turn 3 back on an 8B model, neither provider holds warm prefix blocks from the prior turn (causing full prefill re-computation and zero cache discount), while the weaker model reads earlier 70B code blocks and regresses style or tool formatting mid-thread. Switch to **session-sticky routing** or a **one-way escalation ratchet**: classify the thread on turn 1, pin the session to that tier (or escalate permanently to the stronger model once complexity triggers), and keep the prefix immutable. Session pinning restores prompt-cache hits and tone stability at the cost of keeping escalated sessions on the pricier tier until reset.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agents/routing-and-supervisor",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:mr-tool-capability-aware-routing",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "Why do static leaderboard ranks (like overall MMLU or Arena Elo) fail as the sole model-selection criterion in an enterprise agent router, and what capability signals belong in the routing matrix instead?",
+      "context": "Your platform routes structured extraction, SQL tool-use, long-contract summarization, and non-English customer chat across four model families.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Aggregate benchmark averages mask steep per-capability cliffs—a model scoring top-3 on general chat can drop 25 points on parallel function calling, strict JSON grammar conformance, 64k-token multi-hop recall, or non-Latin tokenizer efficiency. Routing an enterprise SQL agent purely by Arena Elo sends complex multi-table joins to a chatty model that invents column names or breaks tool schemas under 40k context. Build a task-capability matrix from your own golden slices tracking schema pass rate, needle-reconciliation recall at real context lengths, non-English token fertility multiplier, and p99 TTFT. Capability-sliced routing matches workloads accurately at the cost of maintaining periodic eval runs per capability cell.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ml-system-design/model-catalog-and-benchmarking",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:mr-canary-router-rollback-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "You add a new fast model to a production semantic router. Aggregate p50 latency drops 30% and spend drops 25%, yet checkout conversion in French and German drops 14% with zero HTTP errors. How do you isolate and resolve this?",
+      "context": "English makes up 85% of daily queries; automated error-rate alerts remained silent.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Aggregate medians hid a localized quality regression because English traffic (85%) dominated global metrics while the new fast model degraded non-English prompts. Slice routing telemetry by `(model_id, locale, intent)` to compare refusal rates, output-token inflation, and conversion immediately before vs after router weights shifted. Often a fast model exhibits higher subword tokenization fertility on French/German—tripling token count toward `max_tokens` truncation—or overly aggressive safety refusals on translated idioms. Pin affected locales back to the baseline model, add per-locale minimum cohorts to automated canary gates, and require stratified multilingual evals before admitting new models, trading higher non-English token spend for preserved conversion.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/monitoring-and-drift",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:mr-multi-region-latency-routing-design",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "Design a multi-region LLM routing gateway serving US, EU, and APAC users where EU prompts must stay strictly inside EU endpoints under data residency rules while minimizing global tail latency.",
+      "context": "Each region runs primary and secondary model endpoints; traffic peaks rotate across time zones.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Split routing into a hard **compliance filter** followed by a **region-local latency and health scorer**. First, bind tenant residency tags (`region_lock: eu`) in signed auth claims so the EU ingress router filters candidate endpoints exclusively to EU VPC clusters, hard-failing (`503`) rather than spilling over to US replicas during an EU outage. Second, within allowed regions, score healthy endpoints using EWMA TTFT, active queue depth, and circuit-breaker state; non-residency-locked APAC/US traffic can spill across nearest healthy neighbors when local GPUs saturate. Global health broadcasting without residency pinning risks silent cross-border PII transfers during failover. Hard policy filters plus local EWMA scoring maintain legal compliance and low latency at the cost of higher standby capacity inside locked regions.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/llm-hosting-and-serving-patterns",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:mr-online-bandit-router-design",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Model Routing & Choosing Models",
+      "title": "Design an online contextual-bandit router that learns model selection weights from live production feedback without starving newly added models or chasing delayed labels blindly.",
+      "context": "Explicit feedback is rare; ticket resolution outcomes arrive 2 to 24 hours after a chat ends, and new models onboard monthly.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Use an off-policy logged contextual bandit (such as LinUCB or Thompson Sampling over query/task features) combined with bounded exploration (`epsilon = 2%–5%`), composite cost-quality rewards, and delayed attribution windows. Log the router's exact propensity score `p(arm | x)` at request time so delayed resolution signals arriving 24 hours later train updates without selection bias, while gating reward updates with short-horizon proxy checks (format validity, zero immediate re-asks) so catastrophic broken models halt within minutes instead of waiting 24 hours. Greedy argmax routing without exploration locks out newly onboarded models permanently, while uncapped exploration leaks bad answers to paying users. Propensity-logged shadow traffic plus capped exploration balances continual adaptation with strict user-experience bounds.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ai-cost-engineering",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:fb-degradation-ladder-concept",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "When your primary frontier LLM times out on a RAG product-search assistant, what is the right graceful degradation order rather than immediately returning HTTP 500?",
+      "context": "Users are browsing product documentation; sub-second responsiveness matters more than polished prose during an upstream outage.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "A graceful degradation ladder trades conversational polish for deterministic availability across progressive fallback rungs: switch to a secondary model or backup provider first, drop expensive reranking or generation to return cached/extractive snippets from retrieved docs next, fall back to plain BM25 search results if generation fails entirely, and show a clean static retry message as the floor. Immediately jumping to 500 pages users needlessly when retrieval itself still works, while ungrounded parametric fallbacks fabricate product specs. Every degraded rung must display clear UI state (`\"Showing matching docs while chat recovers\"`) and alert ops so prolonged brownouts never hide silently behind green HTTP 200 metrics.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/production-reliability",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Retry the primary frontier endpoint 10 times with 5-second waits before failing.",
+          "why": "Ten sequential retries keep threads blocked for 50 seconds and amplify load on a struggling upstream."
+        },
+        {
+          "text": "Ask a smaller model to answer without running retrieval.",
+          "why": "Dropping retrieval turns product docs into ungrounded hallucinations."
+        },
+        {
+          "text": "Return raw stack traces so power users know which region crashed.",
+          "why": "Exposing internal stack traces hurts UX and leaks topology details."
+        },
+        {
+          "text": "Step down a ladder: backup model tier → cached popular answer or fast extractive summary → plain lexical search links → deterministic status message.",
+          "why": "Each rung lowers dependency cost while preserving grounded utility instead of hard-failing."
+        }
+      ],
+      "correctOption": 3
+    },
+    {
+      "id": "production-ai-systems-questions:fb-parallel-vs-fallback-availability-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "A primary model provider delivers 99.0% availability (0.99), and an independent secondary provider delivers 98.0% availability (0.98). Assuming instant health failover on outage, what is the combined theoretical availability in percent?",
+      "context": "Assume failure modes across the two providers are statistically independent.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Failover only breaks when **both** providers fail simultaneously: `(1 − 0.99) × (1 − 0.98) = 0.01 × 0.02 = 0.0002` failure probability, yielding combined availability `1 − 0.0002 = 0.9998 = ` **`99.98%`** (cutting downtime by 50× from 7.2 hours/month to ~8.6 minutes/month). In production, shared upstream failures—DNS outages, regional fiber cuts, or identical safety-filter bugs triggered by the same adversarial input—introduce correlation that caps real availability lower than 99.98%. Keeping backups on distinct clouds and testing failover with scheduled chaos drills validates genuine independence at the cost of maintaining dual prompt parity.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/production-reliability",
+      "kind": "calculation",
+      "numericAnswer": 99.98,
+      "tolerance": 0.001,
+      "unit": "%"
+    },
+    {
+      "id": "production-ai-systems-questions:fb-circuit-breaker-states-concept",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "Explain the Closed, Open, and Half-Open states of a circuit breaker on an LLM gateway, and clarify why a breaker does not repair a failing model server.",
+      "context": "Upstream GPU nodes start hanging at 30 s timeouts under load; gateway worker threads are saturating.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "A circuit breaker stops callers from piling onto a broken dependency: in **Closed** state, traffic flows normally while tracking rolling error/timeout rates; once failures breach a threshold, it trips **Open** to fail fast locally (or route immediately to fallback) without waiting 30 s per request; after a cooldown timer, it moves to **Half-Open** to admit limited test probes, closing on success or reopening on failure. Without a breaker, 30-second hanging calls exhaust every gateway thread and connection pool, cascading an upstream model stall into a total API outage. Remember that a breaker only buys recovery headroom and protects caller resources—it cannot fix an upstream OOM or bad deploy unless autoscaling, load shedding, or rollback relieves the root cause.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/circuit-breakers",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:fb-error-taxonomy-for-breaker-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "Your LLM gateway's circuit breaker suddenly trips Open during a busy afternoon, dropping healthy requests to a degraded fallback—yet upstream GPU health checks are 100% green. Logs show a surge of `HTTP 400` and guardrail rejection responses from malformed client payloads. What bug triggered the false trip?",
+      "context": "One enterprise customer deployed a broken script sending oversized invalid JSON payloads for 5 minutes.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Counting `4xx` client mistakes (invalid schemas, auth errors, context-length rejections, or safety blocks) inside the dependency failure counter lets a single buggy client trip the breaker for every healthy tenant. Circuit breakers must classify errors strictly: count only upstream infrastructure signals (`5xx`, connection resets, read timeouts, and optionally `429` for capacity routing) toward trips, while excluding `400`/`401`/`403`/`422` client errors. Similarly, multi-tenant gateways should isolate per-endpoint breakers from per-tenant rate limiters so abusive callers get `429` locally without failing over global capacity. Tight error taxonomy prevents self-inflicted outages at zero extra latency.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/circuit-breakers",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Half-Open probe interval was set to 5 seconds instead of 60 seconds.",
+          "why": "Probe duration affects recovery speed, not why healthy client errors tripped the closed breaker initially."
+        },
+        {
+          "text": "The circuit breaker counted `4xx` client validation and policy rejections as dependency failures instead of restricting trips to `5xx`, `429`, and network timeouts.",
+          "why": "One bad tenant sending invalid `400` payloads polluted the global error ratio and locked out every other tenant."
+        },
+        {
+          "text": "Circuit breakers must run inside the database rather than gateway memory.",
+          "why": "Per-gateway or shared breakers work cleanly once error classification separates client vs upstream faults."
+        },
+        {
+          "text": "HTTP 400 responses consume more KV cache than HTTP 200 responses.",
+          "why": "Bad payload rejections fail at validation before KV-cache allocation."
+        }
+      ],
+      "correctOption": 1
+    },
+    {
+      "id": "production-ai-systems-questions:fb-hedged-requests-cost-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "To cut tail latency, your gateway sends a hedged backup call to a secondary endpoint whenever the primary model has not returned a first token by its p95 latency mark (affecting 5% of traffic). On 200,000 daily requests costing $0.006 per dispatched call (with no partial billing refund on late abort), what extra daily spend in USD does hedging add?",
+      "context": "Assume secondary calls have identical $0.006 unit pricing and no retries inside either branch.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Hedged duplicates fire on `5%` of `200,000` requests = `10,000` extra calls per day, adding `10,000 × $0.006 = ` **`$60`** per day (a 5% cost premium over the $1,200 baseline). Hedging trims p99 tail latency dramatically against straggler GPUs at modest cost when triggered only past p95. However, if primary latency degrades globally during an overload event, >50% of traffic crosses the fixed latency threshold simultaneously, turning hedging into a 1.5×–2× traffic amplifier that worsens cluster saturation. Pairing hedged calls with dynamic percentile thresholds and a hedging token budget prevents overload amplification while preserving clean p99 bounds.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/latency",
+      "kind": "calculation",
+      "numericAnswer": 60,
+      "tolerance": 0,
+      "unit": "USD"
+    },
+    {
+      "id": "production-ai-systems-questions:fb-half-open-probe-thundering-herd-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "During recovery from a provider outage, all 40 gateway pods exit their 30-second Open cooldown simultaneously in Half-Open state, each allowing 5 probe requests through—instantly crashing the warming upstream vLLM cluster again. Diagnose and fix this.",
+      "context": "Normal steady-state capacity of the recovering cluster is 80 RPS; 40 pods sit behind round-robin load balancing.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Synchronized cooldown timers caused a Half-Open probe thundering herd: 40 independent pods × 5 concurrent probes dumped 200 cold-queue requests into the recovering backend at the exact same millisecond. Because newly restarted inference pods are still compiling CUDA graphs or warming prefix caches, that burst immediately trips timeouts and flips all 40 pods back to Open in an endless oscillation loop. Add **jittered open cooldowns** (`30s ± 10s`), restrict Half-Open probes to **1 in-flight probe per pod** (or coordinate via a central token bucket / slow-start ramp: 1% → 5% → 25% → 100% traffic over 60 seconds), and enforce consecutive successes before closing. Slow-start ramping protects warming GPUs cleanly at the cost of slightly longer time to full recovery.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/circuit-breakers",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:fb-priority-load-shedding-concept",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "Under severe upstream GPU saturation, why is strict priority-based load shedding (rejecting background batch jobs first) better than keeping FIFO queues or dropping 20% of all requests at random?",
+      "context": "Your gateway serves interactive checkout assistants alongside nightly document tagging and offline eval replays.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Under overload, FIFO queues accumulate deep backlogs where even fast interactive requests wait past client timeouts, causing the GPU to burn 100% compute on abandoned responses (`0%` useful goodput). Random shedding still drops critical checkout traffic while burning capacity on deferrable nightly tags. Priority load shedding assigns an explicit criticality tier (`P0` interactive, `P1` async workflows, `P2` batch/evals) at admission: when queue delay or concurrency crosses thresholds, shed `P2` and `P1` immediately with `429 Retry-After` and keep `P0` queues shallow and fast. Priority admission preserves user-facing SLOs during spikes at the cost of delaying batch pipelines and requiring honest caller tier tags.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/production-reliability",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Random drops violate TCP checksum ordering.",
+          "why": "HTTP/TCP framing is unaffected; the issue is wasting GPU capacity on non-urgent work while dropping interactive users."
+        },
+        {
+          "text": "FIFO queues execute higher-token prompts faster.",
+          "why": "FIFO queues actually mix long batch prompts ahead of interactive prompts, hurting interactive TTFT."
+        },
+        {
+          "text": "FIFO queueing makes every request wait past client timeouts (goodput drops toward zero), whereas priority shedding drops deferrable background work so interactive users stay fast.",
+          "why": "Dropping low-priority batch jobs preserves high goodput for latency-sensitive user traffic."
+        },
+        {
+          "text": "Priority shedding disables KV-cache eviction.",
+          "why": "Shedding occurs at gateway admission before KV-cache allocation."
+        }
+      ],
+      "correctOption": 2
+    },
+    {
+      "id": "production-ai-systems-questions:fb-stale-cache-fallback-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "A RAG pipeline serves 100,000 daily requests with 99.5% primary upstream availability (500 primary failures/day). When the primary generator fails, a graceful fallback serves cached answers or BM25 document cards for 76% of failed requests, leaving 24% visibly failing. What is user-visible availability in percent?",
+      "context": "Assume degraded responses satisfy the fallback SLO when primary generation is unavailable.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Of the `0.5%` primary outage slice (`500` requests), only `24%` still fail visibly: `0.005 × 0.24 = 0.0012 = 0.12%` (`120` failed requests per day). Subtracting from `100%` gives effective user-visible availability `100% − 0.12% = ` **`99.88%`** (cutting unserved requests from 500 to 120 daily). Measuring primary health and fallback-served availability separately is vital: if ops alerts only on user-visible 500s, a broken primary model hidden behind 76% degraded card coverage can linger unnoticed for days while search quality drops.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/production-reliability",
+      "kind": "calculation",
+      "numericAnswer": 99.88,
+      "tolerance": 0.001,
+      "unit": "%"
+    },
+    {
+      "id": "production-ai-systems-questions:fb-cross-provider-schema-drift-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "During a primary API outage, traffic fails over cleanly to a backup open-weight model hosted elsewhere—with HTTP 200s across the board—yet downstream JSON parsers crash on 18% of requests and tool calls loop. What failed across the failover boundary?",
+      "context": "Primary uses strict JSON Schema enforcement; backup uses prompt-only JSON mode and a 16k context window.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Failover succeeded at the transport layer yet broke semantic and schema contracts because backup capabilities did not match primary assumptions. Specifically: (1) backup lacked constrained grammar decoding (`strict: true`), returning Markdown fences or missing keys; (2) slightly different tool-call formatting or weaker instruction adherence caused repetitive malformed arguments; and (3) a 32k prompt quietly exceeded the backup's 16k window, truncating critical tool definitions. Never ship an untested backup target: run your full schema, tool-use, and truncation contract suite continuously against every fallback tier, cap input lengths to the smallest tier's context ceiling (or apply an automatic summarizer step on failover), and keep fallback prompt adapters versioned alongside primary prompts—trading minor latency for reliable multi-provider parity.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/production-reliability",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:fb-retrieval-degradation-without-hallucination",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "During a vector-database timeout on a medical benefits assistant, an engineer suggests falling back to pure LLM generation without context so users still get a fast answer. Why is that dangerous, and what degraded path should you build instead?",
+      "context": "Users ask about drug coverage, deductibles, and out-of-pocket limits from current plan PDFs.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Dropping retrieval and falling back to ungrounded LLM generation converts a visible latency outage into a silent, high-liability hallucination outage. The model fluently invents outdated deductible rules or coverage limits with confident medical phrasing that looks indistinguishable from cited policy facts. Instead, degrade down a **grounded-only ladder**: (1) fall back from vector search to a fast backup BM25/keyword index or precomputed plan-summary cache; (2) if all knowledge stores fail, return a structured deterministic error or link directly to the relevant plan portal section (`\"Plan database temporarily unavailable — please verify coverage directly at...\"`); and (3) require explicit UI badges on degraded modes. Refusing cleanly preserves clinical and legal trust at the cost of temporary zero-answer rates during total retrieval outages.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/production-reliability",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:fb-brownout-feature-shedding-design",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "Design an automated brownout controller for an enterprise AI research assistant when GPU cluster utilization exceeds 92% or error-budget burn spikes 5×.",
+      "context": "A full request runs query rewriting, 3-hop retrieval, cross-encoder reranking, multi-step reflection, and verbose frontier synthesis.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Build a centralized feature-flag **brownout state machine** (`NORMAL` → `CONSERVE` → `CRITICAL`) driven by sliding-window TTFT, queue depth, and SLO burn rate, shedding optional quality multipliers before rejecting traffic. At `CONSERVE` (GPU > 88%), disable multi-pass reflection and speculative query expansion (cutting LLM calls per query from 4 to 1). At `CRITICAL` (GPU > 94%), bypass the cross-encoder reranker (using bi-encoder top-5 directly), cap `max_tokens`, and route eligible queries to a faster quantized model while keeping core grounded citations intact. Add **hysteresis** (trip at 92% for 30 s, recover only below 80% for 2 min) and minimum dwell times to prevent flapping oscillation across states. Staged brownouts keep core queries fast during spikes at the cost of temporary recall dips and complex testing across degraded permutations.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/production-reliability",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:fb-multiregion-active-passive-failover-design",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Fallbacks & Graceful Degradation",
+      "title": "Design active-passive regional failover for a stateful conversational AI API when Region A loses all GPU capacity. Address in-flight streams, conversation history, prompt-cache warmness, and preventing Region B overload.",
+      "context": "Region B runs warm at 35% baseline load while Region A serves 65% of global traffic; active streams last up to 20 seconds.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Separate stateless compute failover from durable state replication and controlled traffic draining. Store conversation turns and checkpoint state in a multi-region replicated store (with read-your-writes session pinning or monotonic version tokens so failover never reverts recent turns), and configure clients to auto-reconnect failed mid-stream SSE calls using an idempotent `turn_id` + cursor rather than duplicating generation. Before shifting 100% of Region A traffic to Region B—where cold prefix KV caches and sudden 2.8× load would overwhelm Region B immediately—ramp DNS/anycast weights smoothly, shed `P2` batch lanes in Region B to free KV memory, and pre-warm top shared system prompts on Region B standbys. Controlled failover avoids cascading a single-region loss into a global outage at the cost of standby GPU headroom and asynchronous replication lag trade-offs.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/multi-region-design",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:bg-token-bucket-vs-fixed-window-concept",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "You set a rate limit of 60 requests per minute using a simple fixed calendar-minute counter (`minute_key`). Why can a client still hit your GPU inference server with 120 requests inside a 2-second burst?",
+      "context": "The downstream vLLM worker saturates above 75 concurrent requests in a short window.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Fixed-window rate limiters suffer from a **2× boundary spike**: a burst at `00:59` consumes the current minute's quota right before the counter resets at `01:00`, letting another full 60 requests pass one second later. Those 120 concurrent requests arrive within 2 seconds and blow past a 75-request GPU capacity ceiling, triggering OOM or queue timeouts. Replacing fixed counters with a **token bucket** (explicitly bounding max burst capacity `B` and steady refill rate `r`) or a **sliding-window counter** eliminates boundary doubling. Token buckets enforce burst smoothing cleanly in Redis with compact state (two keys per tenant via atomic Lua), trading tiny clock-skew edge cases for predictable downstream protection.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/rate-limiting",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Sending 60 requests at 12:00:59 and 60 more at 12:01:00 satisfies both adjacent fixed windows while hammering the backend with 120 requests in 2 seconds.",
+          "why": "Fixed windows reset abruptly at minute boundaries, permitting double-rate boundary bursts."
+        },
+        {
+          "text": "Fixed-window counters cannot use Redis atomic `INCR` commands.",
+          "why": "Fixed windows work atomically with `INCR` + `EXPIRE`; the flaw is the boundary math, not atomicity."
+        },
+        {
+          "text": "Token buckets multiply allowed bursts by 2× across boundaries.",
+          "why": "Token buckets cap burst explicitly via bucket capacity `B` regardless of clock boundaries."
+        },
+        {
+          "text": "Sliding logs drop valid requests at second 30.",
+          "why": "Sliding logs track exact request timestamps over any rolling 60-second span without boundary resets."
+        }
+      ],
+      "correctOption": 0
+    },
+    {
+      "id": "production-ai-systems-questions:bg-tpm-burst-depletion-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "A tenant's token bucket has a maximum capacity of 120,000 tokens and refills steadily at 2,000 tokens/second (120,000 TPM). Starting from full capacity, a script fires 15 requests consuming 6,000 tokens each immediately, waits 10 seconds, and then fires 10 more requests of 6,000 tokens each (admitted one by one). How many requests in the second wave are rejected with HTTP 429?",
+      "context": "Assume instantaneous execution within each wave and exact integer token accounting.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Trace the bucket balance step by step:\n\n1. **After wave 1:** `120,000 − (15 × 6,000) = 120,000 − 90,000 = 30,000` tokens left.\n2. **After 10 s refill:** `30,000 + (10 × 2,000) = 50,000` tokens available (below the `120,000` cap).\n3. **Wave 2 requests:** Each takes `6,000` tokens, so `floor(50,000 ÷ 6,000) = 8` requests are admitted (leaving 2,000 tokens), and `10 − 8 = ` **`2`** requests are rejected with HTTP 429.\n\nSeparating burst capacity `B` from sustained refill rate `r` lets operators tighten short-window spikes without lowering a tenant's monthly TPM allowance, though misjudging batch bursts leaves legitimate scripts stalling unless clients respect `Retry-After`.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/rate-limiting",
+      "kind": "calculation",
+      "numericAnswer": 2,
+      "tolerance": 0,
+      "unit": "requests"
+    },
+    {
+      "id": "production-ai-systems-questions:bg-prompt-cache-quota-discount-concept",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "Why do modern LLM providers exempt or heavily discount cached input tokens against Tokens-Per-Minute (TPM) rate limits, and what breaks if your internal gateway fails to mirror that distinction?",
+      "context": "Agents run 10-turn tool loops where 90% of a 20k-token prefix hits the provider's prompt cache.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Cached prompt tokens skip expensive prefill matrix multiplications by reading existing KV-cache states, consuming far less GPU compute than fresh tokens—so many providers exclude cached read tokens from strict input TPM quotas (or count them at a steep discount, such as `0.1×–0.2×`). If your internal gateway deducts the full `20,000` gross input tokens per turn from a static TPM bucket instead of separating cached vs uncached prefill tokens, multi-turn agents hit artificial `429` blocks at just 15% of real provider capacity. Conversely, counting cached tokens at `0` completely ignores HBM bandwidth and KV-residency overhead during cache storms. Discounting cached reads at ~`0.1×–0.25×` in gateway admission matches true hardware load while requiring post-call header reconciliation.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ai-cost-engineering",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:bg-latency-budget-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "Your product sets an end-to-end p99 latency budget of 1,000 ms for the first token in a RAG assistant. Sequential pipeline stages consume: 25 ms gateway auth/WAF, 45 ms query embedding, 190 ms hybrid vector search plus cross-encoder rerank, 120 ms output safety buffer, and 40 ms network round-trip. What maximum TTFT budget (in ms) remains for the LLM call?",
+      "context": "Assume all listed non-LLM stages execute sequentially on the critical path.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Sum all fixed non-LLM stages on the critical path: `25 + 45 + 190 + 120 + 40 = 420 ms`. Subtracting from the `1,000 ms` total budget leaves `1,000 − 420 = ` **`580`** ms for LLM queueing plus prefill and first-token decode. Writing down an explicit critical-path latency budget stops teams from over-optimizing a 45 ms embedder while ignoring a 190 ms reranker or 120 ms sync guardrail that consumes half the headroom; note also that individual stage p99s do not simply add linearly when tails correlate or overlap.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/latency",
+      "kind": "calculation",
+      "numericAnswer": 580,
+      "tolerance": 0,
+      "unit": "ms"
+    },
+    {
+      "id": "production-ai-systems-questions:bg-output-token-asymmetry-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "Your internal FinOps gateway tracks a tenant's cumulative input tokens against their monthly cap and shows them at 35% usage—yet the provider invoice arrives at 3.2× the tenant's budget. What billing oversight caused this?",
+      "context": "The tenant runs a chain-of-thought code-explanation workflow generating 1,500-token answers from 400-token prompts.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Counting raw input tokens (or unweighted total tokens) hides massive spend variance because output tokens—including hidden reasoning tokens—typically cost 3× to 10× more per token than input tokens due to memory-bandwidth-bound autoregressive decode. On a 400-input / 1,500-output code workflow where output costs 5× input, input tokens represent just ~5% of actual dollar liability, letting a tenant burn 3× budget before an input counter reaches 40%. Enforce **dollar-denominated budgets** (`input_tokens × rate_in + cached_tokens × rate_cache + output_tokens × rate_out`) rather than unweighted token counts. Dollar weighting aligns FinOps limits directly with invoices at the cost of keeping a per-model pricing table synchronized in gateway memory.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agent-observability/token-and-cost-attribution",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "The provider charged extra for HTTP keep-alive connections.",
+          "why": "Keep-alive sockets do not change per-token billing."
+        },
+        {
+          "text": "Input token counts exclude system prompts at the provider side.",
+          "why": "Providers bill every input token including system prompts unless discounted by prompt cache hits."
+        },
+        {
+          "text": "Tokenizer BPE compression drops output cost below input cost.",
+          "why": "Tokenization counts tokens identically per family; output tokens are priced per token, not compressed differently."
+        },
+        {
+          "text": "Dollar budgets must weight output tokens (often 3–10× more expensive than input tokens, including reasoning tokens), because input-only tracking misses verbose generation spend.",
+          "why": "On a 400-input / 1,500-output ratio where output costs 4–5× more per token, output spend drives over 90% of the bill."
+        }
+      ],
+      "correctOption": 3
+    },
+    {
+      "id": "production-ai-systems-questions:bg-fanout-latency-budget-concept",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "A workflow orchestrator enforces a 400 ms per-call timeout and fans out 12 independent retrieval/scoring calls in parallel per request. Why does p99 end-to-end latency spike far above 400 ms, and how does deadline propagation fix it?",
+      "context": "Each individual microservice hits its 400 ms p99 SLO, yet overall p99 exceeds 1,200 ms.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Parallel fan-out suffers **tail-latency amplification**: even when each of 12 independent services succeeds within `300 ms` 99% of the time, the probability that *all 12* finish fast is `0.99¹² ≈ 88.6%`, meaning over 11% of user requests hit at least one slow tail—and if any slow branch triggers a retry without an inherited request deadline, total delay stacks across retries to >1,200 ms. Pass an absolute **upstream deadline timestamp** (`deadline_ms`) in every RPC header, cancel slower optional fan-out branches once enough results arrive (partial-quorum completion), and forbid inner retries once remaining deadline drops below minimum execution cost. Shared deadlines cap worst-case user wait cleanly at the cost of dropping occasional low-value tail shards.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/latency",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:bg-hierarchical-org-quota-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "An engineering org enforces a $1,200/day hard cap across three teams. Each team has a $400/day soft quota and may burst up to 25% above its soft quota ($500) only while total org spend stays below $1,200. On Tuesday, Team A spends $400 and Team B spends $350. What is the maximum daily spend in USD Team C can reach before throttling?",
+      "context": "Evaluate both Team C's individual burst cap and the shared organization ceiling.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Check both hierarchical constraints on Team C:\n\n- **Team C burst cap:** `$400 × 1.25 = $500`.\n- **Remaining org headroom:** `$1,200 − ($400 + $350) = $450`.\n\nTeam C is bounded by the tighter constraint: `min($500, $450) = ` **`$450`** USD. Hierarchical quotas prevent idle team allocations from blocking productive spikes while still protecting total org finance limits, though without reserving a protected minimum floor for Team B (`$50` unused above), early-day bursts by Team C could starve Team B later in the day.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agent-observability/token-and-cost-attribution",
+      "kind": "calculation",
+      "numericAnswer": 450,
+      "tolerance": 0,
+      "unit": "USD"
+    },
+    {
+      "id": "production-ai-systems-questions:bg-pre-call-reservation-skew-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "Your gateway avoids quota overruns by pre-reserving `prompt_tokens + max_tokens` (where `max_tokens = 4,096`) from a user's TPM bucket before sending the request, refunding unused output tokens after the stream ends. Users writing short 200-token replies hit 429s at just 15% of real token usage under concurrency. Why, and how do you fix it?",
+      "context": "Average actual completion is 220 tokens; 80 concurrent requests run per tenant.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Pre-reserving the full worst-case `max_tokens` (`4,096`) locks ~18× more TPM capacity per in-flight request than actual 220-token completions use, causing 80 concurrent streams to lock `327k` virtual tokens for minutes while consuming under `20k` real tokens—creating massive artificial `429` starvation. Fix reservation skew by: (1) sizing pre-flight reservations using an empirical EWMA route estimator (`p90` historical output length for that endpoint, e.g., 400 tokens) plus small safety headroom rather than raw `max_tokens`; (2) debiting incrementally per streaming chunk or releasing unused reservation immediately via a Lua script in a `finally` block (including client disconnects); and (3) capping `max_tokens` tightly per task schema. Empirical reservations restore real concurrency at the cost of slight temporary burst overshoot if unexpected 4k outputs arrive together.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/rate-limiting",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:bg-queue-depth-vs-concurrency-cap",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "When placing a gateway in front of a self-hosted vLLM inference pool with finite KV-cache memory, why should you cap active in-flight concurrency (or active KV tokens) and reject overflow quickly rather than buffering thousands of waiting requests in a long gateway queue?",
+      "context": "Each request holds ~500 ms–3 s of GPU time; client HTTP timeout is 15 seconds.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "By Little's Law (`L = λ × W`), letting an unbounded queue grow in front of a saturated GPU pushes wait time `W` past the 15-second client timeout—meaning nearly every request finally hits the GPU *after* the user has disconnected or retried, burning 100% compute for zero useful goodput. Enforcing a tight **concurrency / active-token cap** and failing excess requests immediately with `429` + `Retry-After` keeps admitted requests inside SLO and gives clients clean backoff signals (or triggers failover to a secondary cloud API). Fast shedding trades graceful excess refusal for predictable low latency and high goodput on admitted load.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/production-reliability",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Unbounded gateway queues cause GPU weights to unload from VRAM.",
+          "why": "Model weights remain pinned in GPU VRAM regardless of upstream HTTP queue length."
+        },
+        {
+          "text": "HTTP 429 responses automatically double the GPU memory bandwidth.",
+          "why": "Fast rejection protects server stability without altering GPU hardware bandwidth."
+        },
+        {
+          "text": "Deep queues push wait times past client timeouts (Little's Law), so the GPU spends all its work generating answers for disconnected clients that already timed out.",
+          "why": "Capping active queue depth keeps latency bounded for admitted users and preserves real goodput."
+        },
+        {
+          "text": "Queueing disables continuous batching inside vLLM.",
+          "why": "vLLM continues batching admitted slots; unbounded upstream queues cause client-timeout waste and memory bloat."
+        }
+      ],
+      "correctOption": 2
+    },
+    {
+      "id": "production-ai-systems-questions:bg-multi-tenant-noisy-neighbor-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "Tenant A runs 64k-token PDF summarization jobs while staying strictly inside its 10 RPM limit. Suddenly p99 TTFT for every other tenant sharing the GPU cluster jumps from 220 ms to 4.8 seconds. Why did RPM rate limiting miss this, and what fixes tenant isolation?",
+      "context": "Other tenants send short 400-token interactive chat prompts on the same 8-GPU vLLM pool.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Request-per-minute (RPM) limits treat a 400-token chat turn and a 64k-token PDF identically (`1` unit), completely ignoring compute and KV-cache asymmetry: prefilling a 64k-token prompt takes 160× more FLOPs and KV blocks than a 400-token chat, stalling the scheduler's prefill queue for seconds while occupying large slices of shared VRAM. Enforce **compute- and memory-weighted quotas**: (1) apply **Tokens-Per-Minute** (or prefill-weighted token budgets) alongside RPM; (2) enable **chunked prefill** so short decode steps interleave ahead of multi-second long prefills; and (3) isolate heavy batch/long-context tenants into a dedicated worker lane or separate KV pool. Token-weighted admission plus workload-lane isolation protects interactive p99 TTFT at the cost of slightly lower peak multiplexing during quiet hours.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/llm-hosting-and-serving-patterns",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:bg-soft-vs-hard-budget-enforcement-design",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "Design a multi-tier budget enforcement policy (75%, 90%, 100%) for a SaaS AI platform serving Enterprise SLA, Pro, and Free workspaces without aborting multi-step agent writes mid-transaction.",
+      "context": "Workspaces occasionally spike legitimately; mid-step hard kills leave half-updated CRM tickets.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Use progressive degradation thresholds keyed on rolling spend velocity and contract tier rather than abrupt single-threshold cutoffs. At **75%**, emit FinOps webhooks and email owners without touching traffic. At **90%**, tighten per-request caps on Free/Pro (`max_tokens` reduction, disable speculative multi-step branches, downgrade non-critical sub-tasks to mini models), while switching Enterprise into warning-only mode. At **100%**, block **new** top-level run admissions (`402/429` with clear portal upgrade link) on Free/Pro while letting **already-started** in-flight agent trajectories complete their final cleanup or commit step via a small reserved completion buffer (say 5% grace margin), and allow Enterprise overage billing with executive alerts unless an explicit hard kill-switch was opted in. Progressive admission blocks + grace completion protect transactional integrity while bounding runaway bills, at the cost of tracking per-run budget leases.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agent-observability/token-and-cost-attribution",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:bg-fair-share-token-scheduler-design",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Budgets & Rate Limits",
+      "title": "Design a fair-share gateway token scheduler sharing a single 500,000 TPM upstream provider quota across interactive user chat, CI evaluation suites, and overnight batch enrichment so chat TTFT never degrades when batch jobs backlog.",
+      "context": "Batch pipelines routinely submit 50,000 queued items; interactive chat averages 120k TPM with bursts up to 350k TPM.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Implement **priority-partitioned token-bucket queues with work-conserving Deficit Round Robin (DRR)** borrowing across lanes. Reserve an un-preemptable floor (`350k` TPM) strictly for interactive `P0` chat, give `P1` CI evals `100k` TPM, and assign `P2` batch `50k` baseline TPM; when `P0` uses only `120k` TPM, allow `P1`/`P2` to borrow idle headroom via small paced dispatch windows (e.g., 1-second refill slices, never consuming future multi-second tokens up front) so `P0` reclaims capacity within 1 second whenever a user spike arrives. Pair DRR with per-lane concurrency caps and upstream `429` header feedback (`x-ratelimit-remaining-tokens`) to throttle `P2` first on any upstream squeeze. Work-conserving fair-share scheduling maximizes quota utilization without letting deep batch queues starve live users, trading small dispatch delay on batch tasks for crisp interactive SLAs.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/rate-limiter",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:ob-high-cardinality-metrics-concept",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "An engineer adds `user_id` and `prompt_hash` as labels to a Prometheus request counter (`llm_requests_total`), and the metrics backend runs out of memory within hours. Why?",
+      "context": "The service processes 500 requests/second across 200,000 daily users with dynamic prompts.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Metrics engines store an in-memory index entry and chunk buffer for every unique label-set combination: adding unbounded keys like `user_id` or `prompt_hash` across 500 RPS spawns millions of active time-series (`200k users × distinct hashes × buckets`), exhausting RAM and crashing collectors. Keep Prometheus metric labels strictly **low-cardinality** (fewer than ~100 distinct values per label: `model_id`, `route`, `tier`, `status_class`), while emitting `user_id`, `trace_id`, and `prompt_hash` inside **structured JSON logs** and **OpenTelemetry trace attributes** designed for high-cardinality filtering. Separating aggregate metrics from high-cardinality events preserves fast alerting without sacrificing individual-request root-cause debugging.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/observability",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Prometheus counters cannot increment when strings contain hashes.",
+          "why": "Prometheus accepts arbitrary label strings; the limit is the explosion of distinct label combinations."
+        },
+        {
+          "text": "Every unique `(user_id, prompt_hash)` combination creates a permanent new time-series in TSDB memory until retention expires, causing cardinality explosion.",
+          "why": "Time-series databases index every unique label set in RAM; unbounded IDs belong in structured logs or traces."
+        },
+        {
+          "text": "High-cardinality labels force Prometheus to disable histogram quantiles.",
+          "why": "Histograms continue computing per series, amplifying cardinality even further (one series per bucket)."
+        },
+        {
+          "text": "Prometheus scrapes trace spans synchronously inside the HTTP request path.",
+          "why": "Prometheus scrapes `/metrics` asynchronously; the OOM happens inside the time-series index."
+        }
+      ],
+      "correctOption": 1
+    },
+    {
+      "id": "production-ai-systems-questions:ob-mttd-mttr-incident-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "A faulty prompt change deploys at 14:00, immediately causing silent JSON truncation on 15% of requests. Monitoring alerts page the on-call engineer at 14:12, the bad prompt hash is isolated at 14:28, and a feature-flag rollback restores 100% healthy traffic at 14:39. Measuring MTTR from incident detection (14:12) to full mitigation (14:39), what is MTTR in minutes?",
+      "context": "Use standard incident lifecycle boundaries: start (14:00), detection (14:12), mitigation (14:39).",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Time from alert detection (`14:12`) to full mitigation (`14:39`) is `39 − 12 = ` **`27`** minutes (`MTTD = 12` minutes; total user-exposure window = `39` minutes). Breaking incidents into detection time (`MTTD`), diagnosis time (`16` min), and execution time (`11` min) pinpoints where reliability investment pays off most: adding real-time schema-failure alerts cuts MTTD from 12 minutes to under 2 minutes, while decoupled prompt-version flags cut rollback time from 11 minutes to seconds without waiting on container rebuilds.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/observability",
+      "kind": "calculation",
+      "numericAnswer": 27,
+      "tolerance": 0,
+      "unit": "minutes"
+    },
+    {
+      "id": "production-ai-systems-questions:ob-implicit-user-feedback-signals",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "Why are explicit thumbs-up/thumbs-down buttons unreliable as primary production quality telemetry, and which four implicit user signals provide cleaner coverage?",
+      "context": "Your assistant sees 100,000 daily turns, yet fewer than 1.5% receive an explicit thumbs rating.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Explicit thumbs ratings suffer severe selection and reporting bias—under 2% of users click them, skewing heavily toward outraged edge cases or super-fans while missing silent abandonment on subtle errors. Complement explicit ratings with four high-volume **implicit behavioral signals** logged per `trace_id`: (1) **immediate re-ask / prompt reformulation** within 60 seconds (indicates an unhelpful or missed first reply); (2) **copy / code-insert / action-accept rate** versus discard; (3) **manual undo or edit distance** on AI-drafted text/code; and (4) **human-agent escalation or session drop-off** right after an assistant turn. Implicit signals capture nearly 100% of sessions automatically, at the cost of careful confounding checks (for example, fast session exit can signal either immediate success or total frustration unless paired with copy/click telemetry).",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-evaluation/llm-rag-agent-evaluation",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:ob-error-budget-burn-rate-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "A production LLM endpoint has a 99.9% monthly availability SLO (allowing a 0.001 error fraction over 30 days). During a 1-hour upstream incident, observed request errors spike to 1.2% (0.012). What is the error-budget burn rate during that hour (as a multiple of the sustainable rate)?",
+      "context": "Compute burn rate as `observed_error_rate / allowed_error_budget_rate`.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Allowed error rate is `1 − 0.999 = 0.001` (`0.1%`). During the incident, errors run at `0.012 ÷ 0.001 = ` **`12`** × the sustainable budget rate (consuming 12 hours of monthly error budget every single hour, which exhausts the entire 720-hour monthly budget in 60 hours if unmitigated). Expressing severity in burn-rate multiples rather than raw percentages makes alerting consistent across endpoints with different SLOs (99.9% vs 99.99%), while reminding teams to gate non-urgent prompt launches once monthly budget runs low.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/availability-and-slos",
+      "kind": "calculation",
+      "numericAnswer": 12,
+      "tolerance": 0,
+      "unit": "x"
+    },
+    {
+      "id": "production-ai-systems-questions:ob-histogram-quantile-bucket-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "During an incident where users complain of 8-second AI freezes, your Prometheus dashboard using `histogram_quantile(0.99, ...)` reports p99 TTFT near `0.95 s`. Yet raw OpenTelemetry traces show 4% of requests taking `7–9 seconds`. What telemetry setup masked the spike?",
+      "context": "The latency histogram was configured with web-API bucket bounds `[0.05, 0.1, 0.25, 0.5, 1.0, +Inf]`.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Copying default sub-second web-API histogram buckets (`<= 1.0 s`) onto LLM pipelines makes `histogram_quantile` blind to multi-second tail outages. Because Prometheus knows only cumulative bucket counts up to the largest finite edge (`1.0 s`), any spike into `7–9 s` piles indistinguishably into `+Inf` and clamps reported quantiles around `~1.0 s`, leaving dashboards green while users stare at frozen screens. Size LLM histogram buckets logarithmically across actual serving ranges (e.g., `[0.05, 0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32]` seconds for TTFT and full completion, or use DDSketch / native exponential histograms). Wider bucket spans restore accurate p99 visibility at minor extra series overhead (`~10` buckets per route).",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/observability",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "The largest finite bucket ends at `1.0 s`, so 7–9 s LLM requests all fall into `+Inf` and `histogram_quantile` caps or interpolates near the `1.0 s` boundary.",
+          "why": "Prometheus cannot interpolate beyond the top finite bound (`1.0 s`), hiding arbitrary multi-second tail spikes."
+        },
+        {
+          "text": "Prometheus histograms drop requests exceeding 5 seconds automatically.",
+          "why": "Observations still increment `+Inf`, which simply lacks resolution above 1.0 s."
+        },
+        {
+          "text": "Client-side streaming cancels the metric timer before prefill finishes.",
+          "why": "The traces proved server TTFT actually took 7–9 s."
+        },
+        {
+          "text": "`rate()` divides histogram counts by window length, shrinking latencies.",
+          "why": "Ratios inside `histogram_quantile` cancel time denominators."
+        }
+      ],
+      "correctOption": 0
+    },
+    {
+      "id": "production-ai-systems-questions:ob-change-failure-rate-calc",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "Over a 30-day period, an AI platform team ships 40 distinct releases across prompt templates, retrieval configurations, and model-serving settings. Four releases trigger automated canary rollbacks, two require post-launch hotfix reverts, and one requires an emergency config pin (7 incident-causing releases total). What is the Change Failure Rate (CFR) in percent?",
+      "context": "Compute CFR across all 40 distinct releases shipped during the month.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Change Failure Rate equals `failed_or_reverted_releases ÷ total_releases = 7 ÷ 40 × 100 = ` **`17.5%`** (nearly one in five changes degraded production enough to require intervention). Tracking CFR separately for prompt/retrieval changes versus serving infrastructure exposes where CI gates are weakest: if 6 of the 7 failures came from unvalidated prompt edits bypassing schema and latency tests, tightening automated pre-merge evals lowers CFR without slowing down deployment frequency.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/deployment-strategies",
+      "kind": "calculation",
+      "numericAnswer": 17.5,
+      "tolerance": 0.01,
+      "unit": "%"
+    },
+    {
+      "id": "production-ai-systems-questions:ob-silent-context-truncation-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "Over two weeks, user satisfaction drops steadily on long-document queries while HTTP status codes stay 100% 200 OK and p50 latency actually improves slightly. Trace inspection shows prompt + tool schemas grew from 4k to 9k tokens on a server configured with an 8,192-token `max_model_len` and silent truncation. How do you detect and prevent this?",
+      "context": "New tool definitions and few-shot examples were added gradually across three releases.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Silent prompt truncation drops instructions or retrieved chunks right before generation, making answers fast (shorter inputs) and HTTP-200 clean while quietly lobotomizing accuracy. Prevent silent drops by: (1) rejecting or alerting loudly whenever `prompt_tokens >= 0.90 × model_context_limit` instead of enabling silent left/middle truncation; (2) logging `requested_input_tokens`, `billed_input_tokens`, and `truncation_applied` on every GenAI span; and (3) tracking an **instruction-budget ratio** (`system + tool_schema tokens / max_context`) in CI so schema bloat cannot crowd out user context unnoticed. Explicit truncation errors and context-fill gauges turn multi-week quality decay into immediate actionable alerts, at the cost of handling oversized-input errors cleanly in the client.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agent-observability/failure-taxonomy-and-anomaly-detection",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:ob-multi-window-burn-alert-concept",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "Why do production SLO alerting standards use a multi-window, multi-burn-rate rule (for example, triggering a page only when burn rate exceeds 14.4× over BOTH the last 1 hour AND the last 5 minutes) instead of alerting on a single short window or a single static 1% error threshold?",
+      "context": "Traffic has spiky nightly dips and occasional 30-second client bursts.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "A 1-minute error spike resets before an engineer logs in, waking people needlessly, whereas a lone 6-hour rolling alert fires too late and stays firing hours after rollback. Pairing a **long window** (`1 h` at `14.4×` burn rate, confirming meaningful 2% monthly budget loss) with a **short confirmation window** (`5 m` at `14.4×` burn rate, proving the outage is happening *right now*) alerts within ~5 minutes on real severe regressions, ignores 60-second blips, and clears immediately when rollback stops the bleed. Tuning dual windows per SLO tier cuts alert fatigue sharply at the cost of slightly trickier PromQL test validation (`promtool`).",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/observability",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Single-window averages cannot evaluate Prometheus PromQL expressions.",
+          "why": "PromQL supports single windows trivially; the flaw is false-positive noise versus slow detection."
+        },
+        {
+          "text": "Multi-window alerts reduce OpenTelemetry span storage by 14.4×.",
+          "why": "Burn-rate rules query aggregated metrics without altering trace sampling retention."
+        },
+        {
+          "text": "Static 1% error thresholds only work when traffic exceeds 10,000 QPS.",
+          "why": "Static thresholds fail across both high and low QPS when SLOs differ or brief blips resolve before a human opens a laptop."
+        },
+        {
+          "text": "Requiring both a long window (budget impact) and a short window (active failure) catches fast outages quickly, ignores fleeting blips, and auto-resolves promptly once fixed.",
+          "why": "The short window prevents stale pages after mitigation while the long window filters transient noise."
+        }
+      ],
+      "correctOption": 3
+    },
+    {
+      "id": "production-ai-systems-questions:ob-cache-hit-skew-masking-latency-debug",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "After tuning a semantic cache aggressively, aggregate p50 latency drops from 900 ms to 120 ms—yet power users writing novel prompts report 2.4× slower responses than before. Why did aggregate latency metrics lie, and how do you instrument this properly?",
+      "context": "Cache hit rate jumped to 65%; cold generation now passes through an extra cross-region cache lookup and embedding check.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Because 65% of requests now terminate in 20 ms on cache hits, the **aggregate p50** shifted completely inside the hit population (`120 ms`), masking the fact that the remaining 35% of cache misses slowed from `900 ms` to `2,160 ms` due to extra embedding overhead, lock contention, or GPU cold-cache effects. Bimodal hit/miss latency distributions make global p50 meaningless whenever hit rate moves. Split every latency panel and SLO alert by **`cache_status` (`hit` vs `miss`)** alongside `cache_lookup_ms` overhead, and monitor `miss_p50` and `miss_p99` independently so cache regressions surface immediately. Stratifying by execution path keeps true inference speed honest at the cost of a small bounded `cache_status` label.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/caching-strategies",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:ob-blameless-postmortem-ai-incident",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "What changes in a blameless postmortem when an AI incident stems from probabilistic drift (a subtle prompt edit, upstream model behavior shift, or retrieval index staleness) rather than a deterministic code crash?",
+      "context": "No server threw an exception; for 3 hours, 22% of financial summaries omitted tax liabilities.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Traditional deterministic postmortems link a commit SHA directly to a stack trace, whereas probabilistic AI incidents require reconstructing exact **data, prompt, and model provenance** to explain why outputs shifted silently. A strong AI postmortem captures: (1) exact immutable `prompt_hash`, `model_snapshot_id`, `retriever_index_version`, and inference parameters (`temperature`, `seed`) at incident time; (2) the **detection gap** explaining why HTTP monitoring missed semantic omissions; (3) **blast-radius quantification** over sampled traces using an offline rubric evaluator; and (4) **durable preventive gates**—promoting failing trace inputs directly into deterministic CI regression tests and adding automated output invariant alerts (e.g., `\"tax_field_present_rate\"`). Without immutable version tagging across prompts and indexes, teams blame \"model flakiness\" and repeat the exact outage weeks later.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/observability",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:ob-correlated-telemetry-incident-triage",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "At 09:15 UTC, customer escalations spike for wrong invoice totals. API status codes are 100% HTTP 200, GPU utilization looks normal, and no code deploy ran. Walk through the exact triage steps using logs, OpenTelemetry traces, and evaluation telemetry.",
+      "context": "Your pipeline combines PDF ingestion, hybrid retrieval, and LLM structured extraction.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Follow the causal trace pipeline backward from output to ingestion rather than guessing at prompts:\n\n1. **Correlate by time and slice:** Group recent bad traces by `tenant`, `document_type`, `model_snapshot`, and `index_version` to see if failures hit everything or one upstream change (e.g., an external model update or an overnight ingestion batch).\n2. **Inspect LLM inputs vs outputs in traces:** Check whether extracted totals match the retrieved chunks inside the span; if chunks already contain mangled table rows, the fault is **ingestion/parsing**, not the LLM.\n3. **Check retrieval score distributions:** Compare `top_k` similarity scores, filter drop counts, and empty-context rates against yesterday's baseline to spot index staleness or embedding drift.\n4. **Verify model and guardrail spans:** Check if `model_id` resolved to an updated upstream snapshot, `finish_reason` shifted to `length`, or post-processing normalizers stripped signs/decimals.\n\nCausal trace isolation resolves the right layer in minutes, avoiding wasted prompt rewrites over a broken PDF parser.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/observability",
+      "kind": "explanation"
+    },
+    {
+      "id": "production-ai-systems-questions:ob-otel-genai-observability-design",
+      "bank": "production-ai-systems-questions",
+      "area": "Production AI Systems",
+      "section": "Observability & Incident Analysis",
+      "title": "Design an OpenTelemetry observability architecture for a 5,000 QPS multi-model AI gateway: specify GenAI span attributes, PII redaction, cost-bounded tail sampling, and real-time incident alerting.",
+      "context": "Storing 100% of raw traces at 5,000 QPS costs more than GPU inference itself; strict privacy compliance forbids raw PII in central trace stores.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Combine low-cardinality Prometheus metrics at the edge with PII-scrubbed, tail-sampled OpenTelemetry traces. Every gateway and tool step propagates W3C `traceparent` headers and emits OpenTelemetry GenAI attributes (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `cached_tokens`, `output_tokens`, `prompt_hash`, `finish_reason`, `ttft_ms`, `guardrail_verdict`). Run a local collector processor inside the VPC to mask PII/secrets and store raw prompts only in encrypted short-TTL debug buckets (or drop payloads while retaining hashes and token counts). Use **tail-based sampling** in the collector tier: keep **100%** of traces with `5xx`/`429`, `ttft > SLO`, guardrail triggers, retries, or implicit user re-asks, and keep only **1%–2%** baseline head-sampled healthy traces. Pair edge metrics with multi-window SLO burn alerts and automated token-velocity alarms, giving complete incident visibility at ~5% of full-trace storage cost while requiring sufficient collector buffer RAM for tail-sampling trace assembly.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agent-observability/opentelemetry-and-distributed-tracing",
+      "kind": "explanation"
     },
     {
       "id": "qa-quick-reference:0686ffdebb6f",
@@ -7449,6 +9050,20 @@
       "description": "48 interview questions on structured outputs, reference scoring, bounded agent autonomy, and guardrails — 24 checkable drills and 24 debugging and system-design scenarios.",
       "route": "/docs/interview-prep/llm-outputs-eval-and-safety-questions",
       "position": 5.34
+    },
+    {
+      "slug": "production-ai-systems-questions",
+      "title": "Production AI Systems Interview Questions",
+      "description": "48 interview questions on model routing, fallbacks and graceful degradation, budgets and rate limits, and observability and incident analysis.",
+      "route": "/docs/interview-prep/production-ai-systems-questions",
+      "position": 5.35
+    },
+    {
+      "slug": "agent-reliability-and-eval-questions",
+      "title": "Agent Reliability & Evaluation Interview Questions",
+      "description": "24 interview questions on agent failure recovery (retries, timeouts, idempotency, checkpoints) and agent evaluation and execution traces.",
+      "route": "/docs/interview-prep/agent-reliability-and-eval-questions",
+      "position": 5.36
     },
     {
       "slug": "technology-comparisons",
