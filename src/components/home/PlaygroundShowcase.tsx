@@ -19,6 +19,7 @@ const SLIDES = [
     slug: 'kv-cache-explorer',
     kicker: 'KV cache',
     hook: 'See why an LLM stops recomputing the past.',
+    props: { compact: true },
     Comp: lazyWithRetry(() => import('../../viz/diagrams/KvCacheDiagram')),
   },
   {
@@ -31,7 +32,8 @@ const SLIDES = [
   {
     slug: 'gradient-descent-explorer',
     kicker: 'Gradient descent',
-    hook: 'Watch an optimizer roll downhill to the minimum.',
+    hook: 'Watch optimizers race downhill to the lowest loss.',
+    props: { compact: true },
     Comp: lazyWithRetry(() => import('../../viz/GradientDescentExplorer')),
   },
 ] as const;
@@ -79,7 +81,7 @@ function ScaledSlide({ children, active }: { children: React.ReactNode; active: 
       // offsetHeight is the natural (unzoomed) height of the tool.
       maxNatural.current = Math.max(maxNatural.current, box.offsetHeight);
       const natural = maxNatural.current;
-      const z = Math.min(1, w / d, natural > 0 ? h / natural : 1);
+      const z = Math.min(1.3, w / d, natural > 0 ? h / natural : 1);
       if (Math.abs(z - zoomRef.current) < 0.01 && d === design) return; // ignore tiny changes: no jitter
       zoomRef.current = z;
       setDesign(d);

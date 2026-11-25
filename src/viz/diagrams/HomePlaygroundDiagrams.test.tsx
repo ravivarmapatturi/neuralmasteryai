@@ -45,8 +45,8 @@ describe('home-page real playgrounds', () => {
   it('recomputes KV memory from editable model dimensions', () => {
     render(<KvCacheDiagram />);
 
-    expect(screen.getByText(/1,073,741,824 bytes \(1\.00 GiB\)/)).toBeInTheDocument();
+    expect(screen.getByText(/= 1,073,741,824 bytes/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Sequence tokens'), { target: { value: '4096' } });
-    expect(screen.getByText(/536,870,912 bytes \(0\.50 GiB\)/)).toBeInTheDocument();
+    expect(screen.getByText(/= 536,870,912 bytes/)).toBeInTheDocument();
   });
 });

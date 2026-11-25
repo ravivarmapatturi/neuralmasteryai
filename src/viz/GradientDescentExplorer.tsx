@@ -4,6 +4,8 @@ import { FONT_FAMILY, RADIUS, useVizTokens } from '../theme/vizTokens';
 import { SketchArrow } from '../components/notebook/RoughShape';
 import {
   PillSelect,
+  StickyNote,
+  StickyRow,
   Slider,
   VisualizationContainer,
   VisualizationHeader,
@@ -43,6 +45,24 @@ const SURFACE_OPTIONS: { value: SurfaceId; label: string }[] = [
   { value: 'saddle', label: 'Saddle' },
 ];
 
+const SURFACE_LATEX: Record<SurfaceId, string> = {
+  ravine: 'L(w)=0.1\\,w_1^2+2\\,w_2^2',
+  bowl: 'L(w)=0.5\\,w_1^2+0.5\\,w_2^2',
+  saddle: 'L(w)=0.15\\,w_1^2+0.45\\,(w_2^2-1)^2',
+};
+const UPDATE_LATEX: Record<Optimizer, string> = {
+  sgd: 'w \\leftarrow w-\\eta\\,\\nabla L',
+  momentum: 'v \\leftarrow \\beta v-\\eta\\,\\nabla L,\\quad w \\leftarrow w+v',
+  rmsprop: 'w \\leftarrow w-\\frac{\\eta\\,\\nabla L}{\\sqrt{s}+\\epsilon}',
+  adam: 'w \\leftarrow w-\\eta\\,\\frac{\\hat m}{\\sqrt{\\hat v}+\\epsilon}',
+};
+const UPDATE_PLAIN: Record<Optimizer, string> = {
+  sgd: 'Take a step of size η straight downhill.',
+  momentum: 'Keep a running velocity v, so steps build speed along a steady slope.',
+  rmsprop: 's is a running average of squared slopes; steep directions get smaller steps.',
+  adam: 'm̂ = average slope, v̂ = average squared slope: momentum plus per-direction step sizes.',
+};
+
 const PREDICT_OPTIONS = [
   'Bounces across the steep w₂ wall',
   'Glides straight to (0, 0) in 2 steps',
@@ -51,7 +71,7 @@ const PREDICT_OPTIONS = [
 
 const MAX_AUTO_STEPS = 55;
 
-export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as Optimizer } = {}) {
+export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as Optimizer, compact = false }: { defaultOptimizer?: Optimizer; compact?: boolean } = {}) {
   const t = useVizTokens();
   const reducedMotion = usePrefersReducedMotion();
   const visible = useVizVisible();
@@ -144,21 +164,20 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
   }, [playing, visible, reducedMotion, finishedRun, autoLoop, stepper, start, surface]);
 
   // Synchronized comparison trajectories for SGD and Momentum/Adam from the exact same start
+  // One clearly different colour per optimizer, used everywhere (paths, loss curves, legend).
+  const optColor = useMemo<Record<Optimizer, string>>(() => ({ sgd: t.accentDanger, momentum: t.accentSecondary, rmsprop: t.accentPurple, adam: t.accentPrimary }), [t]);
   const racePaths = useMemo(() => {
     if (!compareAll) return [];
     const targetSteps = Math.max(12, current.step);
-    const competitors: { id: Optimizer; color: string; label: string }[] = [
-      { id: 'sgd', color: t.accentDanger, label: 'SGD' },
-      { id: 'momentum', color: t.accentWarn, label: 'Mom' },
-      { id: 'adam', color: t.accentSecondary, label: 'Adam' },
-    ];
+    const competitors: { id: Optimizer; color: string; label: string }[] = (['sgd', 'momentum', 'rmsprop', 'adam'] as Optimizer[])
+      .map((id) => ({ id, color: optColor[id], label: OPTIMIZER_META[id].shortLabel }));
     return competitors
       .filter((c) => c.id !== optimizer)
       .map((c) => ({
         ...c,
         records: runTrajectory({ optimizer: c.id, lr, start, surface, steps: targetSteps }),
       }));
-  }, [compareAll, current.step, optimizer, lr, start, surface, t.accentDanger, t.accentWarn, t.accentSecondary]);
+  }, [compareAll, current.step, optimizer, lr, start, surface, optColor]);
 
   const saddleContours = useMemo(() => {
     if (surface !== 'saddle') return [];
@@ -199,8 +218,9 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
     const handlePlotClick = (e: React.MouseEvent<SVGSVGElement | SVGGElement>) => {
       const svg = e.currentTarget.ownerSVGElement ?? (e.currentTarget as SVGSVGElement);
       const rect = svg.getBoundingClientRect();
-      const viewBoxW = isCompactPhone ? 340 : 700;
-      const viewBoxH = isCompactPhone ? 225 : 232;
+      const vb = (svg as SVGSVGElement).viewBox.baseVal;
+      const viewBoxW = vb.width;
+      const viewBoxH = vb.height;
       const vx = ((e.clientX - rect.left) / rect.width) * viewBoxW;
       const vy = ((e.clientY - rect.top) / rect.height) * viewBoxH;
       if (vx < padL || vx > panelW - padR || vy < padT || vy > panelH - padB) return;
@@ -250,12 +270,16 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
           </g>
         ))}
         <text x={(padL + panelW - padR) / 2} y={panelH - 2} textAnchor="middle" fontSize={13} fontWeight={600} fontFamily={FONT_FAMILY} fill={t.textSecondary}>
-          Weight w₁ (click plot to move start)
+          weight w₁   (click to pick a start)
         </text>
         <text x={14} y={padT + 8} textAnchor="middle" fontSize={13} fontWeight={600} fontFamily={FONT_FAMILY} fill={t.textSecondary}>
           w₂
         </text>
 
+        <defs>
+          <clipPath id={`gd-clip-${panelW}`}><rect x={padL} y={padT} width={panelW - padL - padR} height={panelH - padT - padB} /></clipPath>
+        </defs>
+        <g clipPath={`url(#gd-clip-${panelW})`}>
         {/* Contours */}
         {surfDef.ellipseRadii
           ? surfDef.levels.map((level) => {
@@ -295,8 +319,8 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
         {surfDef.minima.map((m, i) => (
           <g key={`min-${i}`}>
             <circle cx={xScale(m.x)} cy={yScale(m.y)} r={5} fill="none" stroke={t.accentPrimary} strokeWidth={2} />
-            <text x={xScale(m.x) + 8} y={yScale(m.y) + 4} fontSize={13} fontWeight={700} fontFamily={FONT_FAMILY} fill={t.accentPrimary}>
-              Min
+            <text x={xScale(m.x) + 9} y={yScale(m.y) - 9} fontSize={14} fontWeight={700} fontFamily={FONT_FAMILY} fill={t.accentPrimary} stroke={t.background} strokeWidth={4} paintOrder="stroke">
+              minimum
             </text>
           </g>
         ))}
@@ -313,8 +337,8 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
               points={race.records.map((r) => clampPx(r.x, r.y).join(',')).join(' ')}
               fill="none"
               stroke={race.color}
-              strokeWidth={1.7}
-              strokeDasharray="4 3"
+              strokeWidth={2}
+              strokeLinejoin="round"
             />
             {race.records.length > 0 && (
               <circle
@@ -333,7 +357,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
           Start
         </text>
         {records.length > 1 && (
-          <polyline points={mainPoints} fill="none" stroke={t.accentPrimary} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points={mainPoints} fill="none" stroke={optColor[optimizer]} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
         )}
 
         {/* Negative gradient vector (-∇L) */}
@@ -351,14 +375,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
         )}
 
         <circle cx={curPx} cy={curPy} r={6.5} fill={statusColor} stroke={t.background} strokeWidth={1.5} />
-
-        {/* Legend top row */}
-        <text x={padL} y={14} fontSize={13} fontWeight={700} fontFamily={FONT_FAMILY} fill={t.textPrimary}>
-          {surfDef.formulaLabel}
-        </text>
-        <text x={panelW - padR} y={14} textAnchor="end" fontSize={13} fontFamily={FONT_FAMILY} fill={t.accentDanger}>
-          Arrow = −∇L slope
-        </text>
+        </g>
       </g>
     );
   };
@@ -367,7 +384,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
   const renderLossPanel = (offsetX: number, panelW: number, panelH: number) => {
     const plotX0 = offsetX + 46;
     const plotX1 = offsetX + panelW - 10;
-    const plotY0 = 96;
+    const plotY0 = 20;
     const plotY1 = panelH - 30;
     const maxStep = Math.max(15, current.step, MAX_AUTO_STEPS * (playing ? 0.5 : 0));
     const maxLoss = Math.max(1, records[0]?.loss ?? 10, ...records.map((r) => (Number.isFinite(r.loss) ? Math.min(30, r.loss) : 30)));
@@ -381,20 +398,6 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
 
     return (
       <g>
-        {/* Live computed numbers */}
-        <text x={offsetX + 8} y={16} fontSize={13.5} fontWeight={700} fontFamily={FONT_FAMILY} fill={t.textPrimary}>
-          Live numbers (step {current.step}):
-        </text>
-        <text x={offsetX + 8} y={36} fontSize={13} fontFamily="monospace" fill={t.textPrimary}>
-          w = ({current.x.toFixed(2)}, {current.y.toFixed(2)})
-        </text>
-        <text x={offsetX + 8} y={54} fontSize={13} fontFamily="monospace" fill={t.accentDanger}>
-          ∇L = ({current.gx.toFixed(2)}, {current.gy.toFixed(2)})
-        </text>
-        <text x={offsetX + 8} y={72} fontSize={13} fontFamily="monospace" fontWeight={700} fill={t.accentPrimary}>
-          Loss L = {current.loss.toFixed(4)}
-        </text>
-
         {/* Loss curve chart */}
         <line x1={plotX0} y1={plotY0} x2={plotX0} y2={plotY1} stroke={t.border} strokeWidth={1.3} />
         <line x1={plotX0} y1={plotY1} x2={plotX1} y2={plotY1} stroke={t.border} strokeWidth={1.3} />
@@ -405,7 +408,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
           0
         </text>
         <text x={(plotX0 + plotX1) / 2} y={panelH - 6} textAnchor="middle" fontSize={13} fontWeight={600} fontFamily={FONT_FAMILY} fill={t.textSecondary}>
-          Loss vs Step (0 → {Math.round(maxStep)})
+          Loss after each step
         </text>
 
         {racePaths.map((race) => (
@@ -417,29 +420,15 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
               .join(' ')}
             fill="none"
             stroke={race.color}
-            strokeWidth={1.5}
-            strokeDasharray="4 3"
-            opacity={0.85}
+            strokeWidth={1.8}
+            opacity={0.9}
           />
         ))}
         {records.length > 1 && (
-          <polyline points={mainCurve} fill="none" stroke={t.accentPrimary} strokeWidth={2.4} strokeLinecap="round" />
+          <polyline points={mainCurve} fill="none" stroke={optColor[optimizer]} strokeWidth={2.4} strokeLinecap="round" />
         )}
         <circle cx={sx(Math.min(maxStep, current.step))} cy={sy(Math.min(maxLoss, current.loss))} r={4.5} fill={statusColor} />
 
-        {/* Colour legend above the loss plot so names never collide */}
-        {compareAll && (
-          <g transform={`translate(${plotX0}, ${plotY0 - 6})`}>
-            <text x={0} y={0} fontSize={13} fontWeight={700} fontFamily={FONT_FAMILY} fill={t.accentPrimary}>
-              ● {OPTIMIZER_META[optimizer].shortLabel}
-            </text>
-            {racePaths.map((r, idx) => (
-              <text key={r.id} x={56 + idx * 58} y={0} fontSize={13} fontFamily={FONT_FAMILY} fill={r.color}>
-                -- {OPTIMIZER_META[r.id].shortLabel}
-              </text>
-            ))}
-          </g>
-        )}
       </g>
     );
   };
@@ -449,6 +438,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
       title="Gradient Descent Optimizer Explorer"
       footer="Exact SGD, Momentum, RMSProp, and Adam update rules running live on analytical loss surfaces. Click the plot or type w₁, w₂ to move the starting point."
     >
+      {!compact && (<>
       {/* Header + transport on one compact row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
         <div style={{ marginBottom: -14 }}>
@@ -493,6 +483,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
         <div style={{ marginBottom: -8 }}>
           <PillSelect<Optimizer>
+            label="Optimizer (how it steps)"
             value={optimizer}
             onChange={(nextOpt) => {
               const val = typeof nextOpt === 'function' ? nextOpt(optimizer) : nextOpt;
@@ -506,6 +497,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
         </div>
         <div style={{ marginBottom: -8 }}>
           <PillSelect<SurfaceId>
+            label="Loss surface (the hill)"
             value={surface}
             onChange={(nextSurf) => {
               const val = typeof nextSurf === 'function' ? nextSurf(surface) : nextSurf;
@@ -534,7 +526,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
             cursor: 'pointer',
           }}
         >
-          Race all: {compareAll ? 'ON' : 'OFF'}
+          Compare all optimizers: {compareAll ? 'on' : 'off'}
         </button>
       </div>
 
@@ -626,59 +618,56 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
         </div>
       </div>
 
-      {/* One-line plain-English explanation (highlighter strip, zero box border) */}
-      <div
-        style={{
-          padding: '6px 10px',
-          marginBottom: 8,
-          background: t.surfaceAlt,
-          borderLeft: `3px solid ${statusColor}`,
-          fontSize: 14.5,
-          lineHeight: 1.4,
-          color: t.textPrimary,
-        }}
-        aria-live="polite"
-      >
-        {caption}
-      </div>
 
       {/* Main SVG (contour + loss chart side-by-side at 760px, stacked at 375px) */}
-      <div ref={svgHostRef} style={{ width: '100%' }}>
-        {!isCompactPhone ? (
-          <svg
-            width="100%"
-            viewBox="0 0 700 232"
-            role="img"
-            aria-label={`2D loss surface and loss curve for ${optimizer} on ${surfDef.label}`}
-            style={{ display: 'block', overflow: 'visible' }}
-          >
-            {renderContourPanel(418, 232)}
-            {renderLossPanel(422, 278, 232)}
-          </svg>
-        ) : (
-          <div style={{ display: 'grid', gap: 10 }}>
-            <svg
-              width="100%"
-              viewBox="0 0 340 225"
-              role="img"
-              aria-label={`2D loss contours for ${surfDef.label}`}
-              style={{ display: 'block', overflow: 'visible' }}
-            >
-              {renderContourPanel(340, 225)}
-            </svg>
-            <svg
-              width="100%"
-              viewBox="0 0 340 200"
-              role="img"
-              aria-label={`Loss over steps for ${optimizer}`}
-              style={{ display: 'block', overflow: 'visible' }}
-            >
-              {renderLossPanel(0, 340, 200)}
-            </svg>
-          </div>
-        )}
+      </>)}
+      {compareAll && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px', fontSize: 15 }} aria-label="Path colours">
+          <span><span style={{ display: 'inline-block', width: 22, height: 4, background: optColor[optimizer], verticalAlign: 'middle', marginRight: 6 }} />{OPTIMIZER_META[optimizer].label} (selected)</span>
+          {racePaths.map((r) => (
+            <span key={r.id}><span style={{ display: 'inline-block', width: 22, height: 3, background: r.color, verticalAlign: 'middle', marginRight: 6 }} />{OPTIMIZER_META[r.id].label}</span>
+          ))}
+        </div>
+      )}
+      <div ref={svgHostRef} style={{ width: '100%', display: 'grid', gridTemplateColumns: isCompactPhone ? '1fr' : compact ? 'minmax(0, 2.3fr) minmax(0, 1fr)' : 'minmax(0, 1.7fr) minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>
+        <svg width="100%" viewBox="0 0 520 330" role="img" aria-label={`2D loss surface for ${surfDef.label}`} style={{ display: 'block' }}>
+          {renderContourPanel(520, 330)}
+        </svg>
+        <svg width="100%" viewBox="0 0 300 260" role="img" aria-label={`Loss over steps for ${optimizer}`} style={{ display: 'block' }}>
+          {renderLossPanel(0, 300, 260)}
+        </svg>
       </div>
 
+      {compact ? (
+        <StickyRow>
+          <StickyNote title={`Update rule · ${OPTIMIZER_META[optimizer].label}`} latex={UPDATE_LATEX[optimizer]} color="pink" tilt={-1}>
+            <p style={{ textAlign: 'center' }}>{UPDATE_PLAIN[optimizer]}</p>
+          </StickyNote>
+          <StickyNote title={`Step ${current.step} · loss ${current.loss.toFixed(3)}`} color="blue" tilt={1} live>
+            <p>{caption}</p>
+          </StickyNote>
+        </StickyRow>
+      ) : (
+      <StickyRow>
+        <StickyNote title={`Loss surface · ${surfDef.label}`} latex={SURFACE_LATEX[surface]} color="yellow" tilt={-1}>
+          <p style={{ textAlign: 'center' }}>The rings are heights of this loss; the goal is the lowest point.</p>
+        </StickyNote>
+        <StickyNote title={`Update rule · ${OPTIMIZER_META[optimizer].label}`} latex={UPDATE_LATEX[optimizer]} color="pink" tilt={1}>
+          <p style={{ textAlign: 'center' }}>{UPDATE_PLAIN[optimizer]}</p>
+        </StickyNote>
+        <StickyNote title={`Live numbers · step ${current.step}`} color="green" tilt={-1}>
+          <p className="nm-sticky__mono">w = ({current.x.toFixed(2)}, {current.y.toFixed(2)})</p>
+          <p className="nm-sticky__mono">∇L = ({current.gx.toFixed(2)}, {current.gy.toFixed(2)})</p>
+          <p className="nm-sticky__mono"><strong>L = {current.loss.toFixed(4)}</strong> · {statusLabel}</p>
+        </StickyNote>
+        <StickyNote title="What just happened" color="blue" tilt={1} live>
+          <p>{caption}</p>
+          <p style={{ color: t.textSecondary }}>The red arrow is −∇L: the downhill direction at the current point.</p>
+        </StickyNote>
+      </StickyRow>
+      )}
+
+      {!compact && (<>
       {/* Inline Predict-then-run challenge (no nested card border) */}
       <div
         style={{
@@ -764,6 +753,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
           </span>
         )}
       </div>
+      </>)}
     </VisualizationContainer>
   );
 }

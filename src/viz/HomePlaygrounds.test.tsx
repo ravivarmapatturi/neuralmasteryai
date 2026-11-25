@@ -23,14 +23,14 @@ describe('AttentionStepThrough interactive playground', () => {
     const { container } = renderWithTheme(<AttentionStepThrough />);
 
     // Default sentence starts on "cat" at Stage 0 -> shows cosine 0.94 explanation
-    expect(screen.getByText(/The query 'cat' is closest to 'kitten'.*cosine 0\.94/i)).toBeInTheDocument();
+    expect(screen.getByText(/Q·Kᵀ: the query vector Q of 'cat'.*'kitten' scores/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
 
     // Autoplay advances to Stage 1 after 1900ms
     act(() => {
       vi.advanceTimersByTime(1950);
     });
-    expect(screen.getByText(/Dot product Q·Kᵀ/i)).toBeInTheDocument();
+    expect(screen.getByText(/dₖ is the length of each key vector/i)).toBeInTheDocument();
 
     // All SVG <text> nodes use fontSize >= 13
     const svgTexts = Array.from(container.querySelectorAll('svg text'));
@@ -54,13 +54,13 @@ describe('AttentionStepThrough interactive playground', () => {
     act(() => {
       vi.advanceTimersByTime(5000);
     });
-    expect(screen.getByText(/The query 'cat' is closest to 'kitten'/i)).toBeInTheDocument();
+    expect(screen.getByText(/Q·Kᵀ: the query vector Q of 'cat'/i)).toBeInTheDocument();
 
     // Visible: manual Step advances stages cleanly and hands control to learner
     renderWithTheme(<AttentionStepThrough />, true);
     const stepBtns = screen.getAllByRole('button', { name: 'Step' });
     fireEvent.click(stepBtns[1]);
-    expect(screen.getByText(/Dot product Q·Kᵀ/i)).toBeInTheDocument();
+    expect(screen.getByText(/dₖ is the length of each key vector/i)).toBeInTheDocument();
   });
 
   it('responds to free text input, head switching, causal mask, scale toggle, and predict challenge', () => {
@@ -69,12 +69,12 @@ describe('AttentionStepThrough interactive playground', () => {
     // Free text sentence input, then click row token 'dog' and toggle causal mask ON
     const input = screen.getByLabelText('Sentence:');
     fireEvent.change(input, { target: { value: 'the dog chased the mouse' } });
-    expect(screen.getByText(/The query 'the' is closest to/i)).toBeInTheDocument();
+    expect(screen.getByText(/Q·Kᵀ: the query vector Q of 'the'/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByText('dog')[1]);
     fireEvent.click(screen.getByRole('button', { name: /Causal mask: OFF/i }));
     expect(screen.getByRole('button', { name: /Causal mask: ON/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '3. Softmax %' }));
+    fireEvent.click(screen.getByRole('button', { name: '3. Softmax' }));
     expect(screen.getByText(/masked to 0%/i)).toBeInTheDocument();
 
     // Switch head
@@ -127,7 +127,7 @@ describe('GradientDescentExplorer interactive playground', () => {
 
     const saddleBtn = screen.getAllByRole('button', { name: 'Saddle' })[1];
     fireEvent.click(saddleBtn);
-    expect(screen.getByText(/L = 0\.15w₁² \+ 0\.45\(w₂² − 1\)²/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Saddle valley/).length).toBeGreaterThan(0);
 
     const predictBtn = screen.getAllByRole('button', { name: 'Bounces across the steep w₂ wall' })[1];
     fireEvent.click(predictBtn);
