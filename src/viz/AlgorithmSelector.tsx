@@ -118,7 +118,7 @@ export default function AlgorithmSelector({ compact = false }: { compact?: boole
       {scores.map((score, index) => <span key={score.id}><span style={{ display: 'inline-block', width: 20, height: 5, marginRight: 5, verticalAlign: 'middle', background: colors[index] }} />{score.label}</span>)}
     </div>
 
-    <svg width="100%" viewBox={`0 0 ${width} ${chartHeight}`} role="img"
+    <svg width="100%" viewBox={`0 0 ${width} ${chartHeight + 8}`} role="img"
       aria-label={`After ${currentFactor}, ${currentLeader.score.label} leads with ${currentLeader.value} points`}
       style={{ display: 'block', fontFamily: HAND_FONT }}>
       <defs><clipPath id="algorithm-score-plot"><rect x={205} y={34} width={470} height={chartHeight - 55} /></clipPath></defs>
@@ -141,8 +141,8 @@ export default function AlgorithmSelector({ compact = false }: { compact?: boole
         </g>;
       })}
       <line x1={205} y1={chartHeight - 18} x2={655} y2={chartHeight - 18} stroke={t.border} strokeWidth={1.5} />
-      <text x={205} y={chartHeight - 1} fontSize={14} fill={t.textSecondary}>0</text>
-      <text x={655} y={chartHeight - 1} textAnchor="end" fontSize={14} fill={t.textSecondary}>{maxScore} points</text>
+      <text x={205} y={chartHeight + 2} fontSize={14} fill={t.textSecondary}>0</text>
+      <text x={655} y={chartHeight + 2} textAnchor="end" fontSize={14} fill={t.textSecondary}>{maxScore} points</text>
     </svg>
 
     {compact ? <StickyRow>
