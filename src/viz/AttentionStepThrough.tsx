@@ -25,9 +25,15 @@ import {
 
 const HEADS = [makeHead(1), makeHead(2), makeHead(3)];
 const HEAD_OPTIONS: { value: number; label: string }[] = [
-  { value: 0, label: 'Head 1: Meaning' },
-  { value: 1, label: 'Head 2: Who↔Action' },
-  { value: 2, label: 'Head 3: Where' },
+  { value: 0, label: 'Similar words' },
+  { value: 1, label: 'Who did what' },
+  { value: 2, label: 'Where it happened' },
+];
+/** What each example head looks for, in plain words, with an example from the preset sentences. */
+const HEAD_EXPLAIN = [
+  'This head links words with similar meaning, e.g. “cat” looks at “kitten”.',
+  'This head links a doer to its action, e.g. “cat” looks at “sat”.',
+  'This head links an action to its place, e.g. “sat” looks at “mat”.',
 ];
 
 const SENTENCE_PRESETS: { label: string; text: string; focus: number }[] = [
@@ -57,11 +63,13 @@ export default function AttentionStepThrough() {
   const [focusRowManual, setFocusRowManual] = useState(1);
   const [stage, setStage] = useState<AttentionStage>(reducedMotion ? 2 : 0);
   // Let the architecture map beside the tool follow the current step.
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent(ATTENTION_STAGE_EVENT, { detail: stage }));
-  }, [stage]);
+
   const [useScale, setUseScale] = useState(true);
   const [causalMask, setCausalMask] = useState(false);
+  // Let the architecture map beside the tool follow the current step and mask.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(ATTENTION_STAGE_EVENT, { detail: { stage, masked: causalMask } }));
+  }, [stage, causalMask]);
   const [temperature, setTemperature] = useState(1.0);
   const [playing, setPlaying] = useState(!reducedMotion);
   const [autoAdvanceTokens, setAutoAdvanceTokens] = useState(true);
@@ -602,6 +610,7 @@ export default function AttentionStepThrough() {
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
         <div style={{ marginBottom: -8 }}>
           <PillSelect<number>
+            label="Attention head (what it looks for)"
             value={headIdx}
             onChange={(v) => {
               stopAuto();
@@ -610,6 +619,9 @@ export default function AttentionStepThrough() {
             options={HEAD_OPTIONS}
           />
         </div>
+        <p style={{ flexBasis: '100%', margin: '2px 0 4px', fontSize: 15, color: t.textSecondary }}>
+          A transformer runs several attention <strong>heads</strong> side by side; each one learns to look for a different kind of link between words. {HEAD_EXPLAIN[headIdx]} (These three are hand-set examples.)
+        </p>
         <button
           type="button"
           aria-pressed={useScale}

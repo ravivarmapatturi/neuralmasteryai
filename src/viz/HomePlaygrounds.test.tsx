@@ -78,7 +78,7 @@ describe('AttentionStepThrough interactive playground', () => {
     expect(screen.getByText(/masked to 0%/i)).toBeInTheDocument();
 
     // Switch head
-    fireEvent.click(screen.getByRole('button', { name: 'Head 2: Who↔Action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Who did what' }));
 
     // Predict-then-run challenge reveals feedback and "Test ÷√dₖ OFF now" action
     fireEvent.click(screen.getByRole('button', { name: 'Gets sharper (closer to 100%)' }));

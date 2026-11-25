@@ -1,92 +1,169 @@
 import { useEffect, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 
-/** Fired by AttentionStepThrough whenever its step changes (0..3). */
+/** Fired by AttentionStepThrough whenever its step (0..3) or causal mask changes. */
 export const ATTENTION_STAGE_EVENT = 'nm-attention-stage';
+export type AttentionStageDetail = { stage: number; masked: boolean };
 
-const INNER = [
-  { label: 'Q·Kᵀ', note: 'match scores' },
-  { label: '÷ √dₖ', note: 'keep scores small' },
-  { label: 'softmax', note: 'scores → weights' },
-  { label: '× V', note: 'weighted sum of values' },
-];
+// Colour convention of the original Transformer paper (Vaswani et al., 2017, Fig. 1),
+// as translucent fills so they work on light and dark paper.
+const C = {
+  embed: 'rgba(244, 114, 182, 0.28)',
+  attn: 'rgba(251, 146, 60, 0.32)',
+  norm: 'rgba(234, 225, 90, 0.42)',
+  ffn: 'rgba(56, 189, 248, 0.30)',
+  linear: 'rgba(129, 140, 248, 0.30)',
+  soft: 'rgba(74, 222, 128, 0.32)',
+};
 
 /**
- * Where the attention playground sits inside a (decoder-only) transformer:
- * one block, repeated N times. The attention box is opened up into the four
- * steps the playground animates, and the step it is on is highlighted.
+ * The full Transformer (encoder left, decoder right) drawn with the paper's
+ * conventions, plus the paper's "scaled dot-product attention" zoom-in. The
+ * attention block the playground is computing is outlined, and the step it is
+ * on is lit in the zoom-in.
  */
 export default function TransformerBlockMap() {
   const t = useVizTokens();
-  const [stage, setStage] = useState(0);
+  const [{ stage, masked }, setDetail] = useState<AttentionStageDetail>({ stage: 0, masked: false });
   useEffect(() => {
-    const on = (e: Event) => setStage((e as CustomEvent<number>).detail);
+    const on = (e: Event) => setDetail((e as CustomEvent<AttentionStageDetail>).detail);
     window.addEventListener(ATTENTION_STAGE_EVENT, on);
     return () => window.removeEventListener(ATTENTION_STAGE_EVENT, on);
   }, []);
 
-  const W = 300;
-  const cx = W / 2;
-  const box = (y: number, h: number, label: string, sub: string, fill: string, stroke: string, key: string) => (
+  const ink = t.textPrimary;
+  const accent = t.accentDanger;
+  const BW = 150;
+  const encX = 110;
+  const decX = 300;
+
+  const block = (cx: number, y: number, h: number, fill: string, lines: string[], key: string, hot = false) => (
     <g key={key}>
-      <rect x={30} y={y} width={W - 60} height={h} rx={8} fill={fill} stroke={stroke} strokeWidth={1.8} />
-      <text x={cx} y={y + (sub ? h / 2 - 2 : h / 2 + 5)} textAnchor="middle" fontSize={15} fontWeight={700} fill={t.textPrimary}>{label}</text>
-      {sub && <text x={cx} y={y + h / 2 + 15} textAnchor="middle" fontSize={13} fill={t.textSecondary}>{sub}</text>}
+      <rect x={cx - BW / 2} y={y} width={BW} height={h} rx={6} fill={fill} stroke={hot ? accent : ink} strokeWidth={hot ? 3.2 : 1.6} />
+      {lines.map((l, i) => (
+        <text key={l} x={cx} y={y + h / 2 + 5 + (i - (lines.length - 1) / 2) * 16} textAnchor="middle" fontSize={14} fill={ink}>{l}</text>
+      ))}
     </g>
   );
-  const arrow = (y1: number, y2: number, key: string) => (
-    <g key={key}>
-      <line x1={cx} y1={y1} x2={cx} y2={y2 - 6} stroke={t.textMuted} strokeWidth={1.6} />
-      <path d={`M${cx - 5} ${y2 - 9} L${cx} ${y2 - 1} L${cx + 5} ${y2 - 9}`} fill="none" stroke={t.textMuted} strokeWidth={1.6} />
+  const up = (x: number, y1: number, y2: number, key: string) => (
+    <g key={key} stroke={ink} strokeWidth={1.6} fill="none">
+      <line x1={x} y1={y1} x2={x} y2={y2 + 5} />
+      <path d={`M${x - 4} ${y2 + 9} L${x} ${y2 + 1} L${x + 4} ${y2 + 9}`} />
+    </g>
+  );
+  // Residual: from below a sub-layer, around its side, into its Add & Norm.
+  const residual = (cx: number, side: 1 | -1, yFrom: number, yTo: number, key: string) => {
+    const x = cx + side * (BW / 2 + 12);
+    const xe = cx + side * (BW / 2);
+    return (
+      <g key={key} stroke={ink} strokeWidth={1.3} fill="none">
+        <path d={`M${cx} ${yFrom} H${x} V${yTo} H${xe + side * 4}`} />
+        <path d={`M${xe + side * 9} ${yTo - 4} L${xe + side * 1} ${yTo} L${xe + side * 9} ${yTo + 4}`} />
+      </g>
+    );
+  };
+  const posEnc = (cx: number, y: number, side: 1 | -1, key: string) => (
+    <g key={key} stroke={ink} strokeWidth={1.5} fill="none">
+      <circle cx={cx} cy={y} r={9} fill={t.surface} />
+      <line x1={cx - 5} y1={y} x2={cx + 5} y2={y} />
+      <line x1={cx} y1={y - 5} x2={cx} y2={y + 5} />
+      <line x1={cx + side * 9} y1={y} x2={cx + side * 22} y2={y} />
+      <circle cx={cx + side * 36} cy={y} r={14} fill={t.surface} />
+      <path d={`M${cx + side * 36 - 9} ${y + 2} q 4.5 -10 9 0 q 4.5 10 9 0`} />
+      <text x={cx + side * 56} y={y - 3} textAnchor={side > 0 ? 'start' : 'end'} fontSize={12.5} fill={t.textSecondary} stroke="none">positional</text>
+      <text x={cx + side * 56} y={y + 12} textAnchor={side > 0 ? 'start' : 'end'} fontSize={12.5} fill={t.textSecondary} stroke="none">encoding</text>
     </g>
   );
 
-  // Layout, bottom (input) to top (output), drawn top-down for SVG.
-  const yOut = 10, yLin = 70, yN2 = 136, yFfn = 186, yN1 = 246, yAttn = 296, attnH = 250, yEmb = 580;
-  const blockTop = yN2 - 14, blockBottom = yAttn + attnH + 12;
-  const accent = t.accentPrimary;
+  // Zoom-in: scaled dot-product attention (paper Fig. 2), bottom to top.
+  const zoom = [
+    { label: 'MatMul  Q·Kᵀ', note: 'match scores', s: 0 },
+    { label: 'Scale  ÷ √dₖ', note: 'keep them small', s: 1 },
+    { label: 'Mask (decoder only)', note: 'hide future words', s: masked ? 1.5 : -1 },
+    { label: 'SoftMax', note: 'scores → weights', s: 2 },
+    { label: 'MatMul  × V', note: 'weighted sum of V', s: 3 },
+  ];
 
   return (
-    <figure className="nm-tblock" aria-label="Where attention sits inside a transformer block">
-      <figcaption>Where this happens in a transformer</figcaption>
-      <svg viewBox={`0 0 ${W} 640`} width="100%" role="img">
-        {box(yOut, 40, 'Next-token probabilities', '', t.surfaceAlt, t.border, 'out')}
-        {arrow(yLin, yOut + 40, 'a0')}
-        {box(yLin, 44, 'Linear + softmax', 'over the vocabulary', t.surfaceAlt, t.border, 'lin')}
-        {arrow(blockTop, yLin + 44, 'a1')}
+    <figure className="nm-tblock" aria-label="Where attention sits inside the Transformer">
+      <figcaption>Where this happens in the Transformer</figcaption>
+      <svg viewBox="-40 0 500 700" width="100%" role="img" aria-label={`Transformer architecture; the ${masked ? 'decoder masked' : 'encoder'} multi-head attention block is highlighted`}>
+        {/* output head */}
+        <text x={decX} y={18} textAnchor="middle" fontSize={14} fill={ink}>Output probabilities</text>
+        {up(decX, 46, 24, 'o1')}
+        {block(decX, 46, 26, C.soft, ['Softmax'], 'soft')}
+        {up(decX, 92, 72, 'o2')}
+        {block(decX, 92, 26, C.linear, ['Linear'], 'lin')}
+        {up(decX, 134, 118, 'o3')}
 
-        {/* the repeated block */}
-        <rect x={12} y={blockTop} width={W - 24} height={blockBottom - blockTop} rx={12} fill="none" stroke={t.textMuted} strokeDasharray="6 5" strokeWidth={1.5} />
-        <rect x={18} y={blockTop - 11} width={92} height={22} rx={4} fill={t.surface} />
-        <text x={24} y={blockTop + 5} fontSize={14} fontWeight={700} fill={t.textSecondary}>repeat × N</text>
-        {box(yN2, 36, 'Add & Norm', '', t.surface, t.border, 'n2')}
-        {arrow(yFfn, yN2 + 36, 'a2')}
-        {box(yFfn, 46, 'Feed-forward', 'each word on its own', t.surface, t.border, 'ffn')}
-        {arrow(yN1, yFfn + 46, 'a3')}
-        {box(yN1, 36, 'Add & Norm', '', t.surface, t.border, 'n1')}
-        {arrow(yAttn, yN1 + 36, 'a4')}
+        {/* decoder stack */}
+        <rect x={decX - BW / 2 - 24} y={134} width={BW + 48} height={436} rx={14} fill={t.surfaceAlt} fillOpacity={0.5} stroke={ink} strokeWidth={1.6} />
+        <text x={decX + BW / 2 + 32} y={350} fontSize={15} fill={ink}>N×</text>
+        {block(decX, 146, 24, C.norm, ['Add & Norm'], 'dn3')}
+        {up(decX, 182, 170, 'd1')}
+        {block(decX, 182, 40, C.ffn, ['Feed', 'Forward'], 'dffn')}
+        {residual(decX, 1, 236, 158, 'dr3')}
+        {up(decX, 236, 222, 'd2')}
+        {block(decX, 250, 24, C.norm, ['Add & Norm'], 'dn2')}
+        {up(decX, 286, 274, 'd3')}
+        {block(decX, 286, 40, C.attn, ['Multi-Head', 'Attention'], 'dcross')}
+        {residual(decX, 1, 344, 262, 'dr2')}
+        {up(decX, 360, 326, 'd4')}
+        {block(decX, 372, 24, C.norm, ['Add & Norm'], 'dn1')}
+        {up(decX, 408, 396, 'd5')}
+        {block(decX, 408, 56, C.attn, ['Masked', 'Multi-Head', 'Attention'], 'dmask', masked)}
+        {residual(decX, 1, 486, 384, 'dr1')}
+        {up(decX, 556, 464, 'd6')}
 
-        {/* attention, opened up */}
-        <rect x={30} y={yAttn} width={W - 60} height={attnH} rx={10} fill={`${accent}12`} stroke={accent} strokeWidth={2.4} />
-        <text x={cx} y={yAttn + 22} textAnchor="middle" fontSize={15} fontWeight={700} fill={accent}>Masked self-attention</text>
-        <text x={cx} y={yAttn + 40} textAnchor="middle" fontSize={13} fill={t.textSecondary}>this playground ↓</text>
-        {INNER.map((s, i) => {
-          const y = yAttn + 172 - i * 44;
-          const on = i === stage;
+        {/* encoder stack */}
+        <rect x={encX - BW / 2 - 24} y={330} width={BW + 48} height={240} rx={14} fill={t.surfaceAlt} fillOpacity={0.5} stroke={ink} strokeWidth={1.6} />
+        <text x={encX - BW / 2 - 50} y={455} fontSize={15} fill={ink}>N×</text>
+        {block(encX, 342, 24, C.norm, ['Add & Norm'], 'en2')}
+        {up(encX, 378, 366, 'e1')}
+        {block(encX, 378, 40, C.ffn, ['Feed', 'Forward'], 'effn')}
+        {residual(encX, -1, 430, 354, 'er2')}
+        {up(encX, 430, 418, 'e2')}
+        {block(encX, 444, 24, C.norm, ['Add & Norm'], 'en1')}
+        {up(encX, 480, 468, 'e3')}
+        {block(encX, 480, 40, C.attn, ['Multi-Head', 'Attention'], 'eattn', !masked)}
+        {residual(encX, -1, 546, 456, 'er1')}
+        {up(encX, 556, 520, 'e4')}
+        {/* encoder output -> decoder cross-attention (K and V) */}
+        <path d={`M${encX} 342 V318 H${decX - 40} V340`} fill="none" stroke={ink} strokeWidth={1.6} />
+        <path d={`M${decX - 44} 334 L${decX - 40} 342 L${decX - 36} 334`} fill="none" stroke={ink} strokeWidth={1.6} />
+        <text x={(encX + decX) / 2 - 10} y={312} textAnchor="middle" fontSize={12.5} fill={t.textSecondary}>K, V from encoder</text>
+
+        {/* inputs */}
+        {posEnc(encX, 590, -1, 'pe1')}
+        {posEnc(decX, 590, 1, 'pe2')}
+        {up(encX, 618, 599, 'i1')}
+        {up(decX, 618, 599, 'i2')}
+        {block(encX, 618, 36, C.embed, ['Input', 'Embedding'], 'iemb')}
+        {block(decX, 618, 36, C.embed, ['Output', 'Embedding'], 'oemb')}
+        <text x={encX} y={676} textAnchor="middle" fontSize={14} fill={ink}>Inputs</text>
+        <text x={decX} y={676} textAnchor="middle" fontSize={14} fill={ink}>Outputs</text>
+        <text x={decX} y={693} textAnchor="middle" fontSize={12.5} fill={t.textSecondary}>(shifted right)</text>
+      </svg>
+
+      <figcaption className="nm-tblock__zoom-title">
+        Inside the <span style={{ color: accent }}>outlined</span> block: scaled dot-product attention
+      </figcaption>
+      <svg viewBox="0 0 420 300" width="100%" role="img" aria-label="Scaled dot-product attention steps, current step highlighted">
+        {zoom.map((z, i) => {
+          const y = 236 - i * 52;
+          const on = z.s === stage || (z.s === 1.5 && stage === 1 && masked);
+          const off = z.s === -1;
           return (
-            <g key={s.label}>
-              <rect x={52} y={y} width={W - 104} height={38} rx={6} fill={on ? accent : t.surface} stroke={on ? accent : t.border} strokeWidth={on ? 2.2 : 1.2} />
-              <text x={64} y={y + 24} fontSize={15} fontWeight={700} fill={on ? t.surface : t.textPrimary}>{i + 1}. {s.label}</text>
-              <text x={W - 64} y={y + 24} textAnchor="end" fontSize={13} fill={on ? t.surface : t.textSecondary}>{s.note}</text>
-              {i < INNER.length - 1 && <line x1={cx} y1={y} x2={cx} y2={y - 12} stroke={t.textMuted} strokeWidth={1.4} />}
+            <g key={z.label} opacity={off ? 0.45 : 1}>
+              <rect x={60} y={y} width={300} height={38} rx={6} fill={i === 3 ? C.soft : i === 2 ? C.embed : C.linear} stroke={on ? accent : ink} strokeWidth={on ? 3.2 : 1.4} strokeDasharray={off ? '5 4' : undefined} />
+              <text x={74} y={y + 24} fontSize={14.5} fontWeight={700} fill={ink}>{z.label}</text>
+              <text x={346} y={y + 24} textAnchor="end" fontSize={13} fill={t.textSecondary}>{z.note}</text>
+              {i < zoom.length - 1 && up(210, y, y - 14, `z${i}`)}
             </g>
           );
         })}
-        <text x={cx} y={yAttn + attnH - 30} textAnchor="middle" fontSize={13} fill={t.textSecondary}>Q, K, V: three learned</text>
-        <text x={cx} y={yAttn + attnH - 13} textAnchor="middle" fontSize={13} fill={t.textSecondary}>projections of each word</text>
-
-        {arrow(yEmb, blockBottom, 'a5')}
-        {box(yEmb, 46, 'Word embeddings', '+ positions', t.surfaceAlt, t.border, 'emb')}
+        <text x={210} y={294} textAnchor="middle" fontSize={14} fill={ink}>Q        K                         V ↗</text>
+        <text x={210} y={18} textAnchor="middle" fontSize={13} fill={t.textSecondary}>output for each word ↑</text>
       </svg>
     </figure>
   );
