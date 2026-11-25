@@ -1697,5 +1697,389 @@
       "Requires checksums and failure-domain-aware repair."
     ],
     "followup": "How does halving repair bandwidth affect the exposure window after a storage-node loss?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-json-mode-vs-schema": {
+    "criteria": [
+      "Distinguishes generic JSON syntax enforcement from schema-compiled per-token masking.",
+      "Explains why missing keys or wrong primitive types still occur in plain JSON mode.",
+      "Notes schema compilation latency and the risk of forced guessing on missing data."
+    ],
+    "followup": "How should you represent an invoice field like tax_id when some documents omit it completely?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-schema-shape-not-truth": {
+    "criteria": [
+      "Separates syntactic conformance from semantic accuracy and source grounding.",
+      "Explains that constrained decoding permits arbitrary digits or strings matching the schema type.",
+      "Proposes nullable types, verbatim source quotes, or cross-field arithmetic checks as mitigations."
+    ],
+    "followup": "What deterministic post-check would verify extracted line-item subtotals against total_usd?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-token-overhead-calc": {
+    "criteria": [
+      "Computes 42 million monthly formatting tokens and $168 monthly scaffolding spend.",
+      "Explains that structural tokens consume billed decode steps unless skipped by engine compression.",
+      "Identifies verbose nested key names or compact flat formats as the design trade-off."
+    ],
+    "followup": "When does switching from nested JSON objects to positional arrays hurt extraction accuracy?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-truncation-max-tokens": {
+    "criteria": [
+      "Checks stop_reason or finish_reason for length or max_tokens before altering prompts.",
+      "Explains that grammar constraints cannot force a closing brace before hitting the token ceiling.",
+      "Proposes raising max_tokens or paginating long inputs while noting higher memory and tail latency."
+    ],
+    "followup": "How would you split a 40-item invoice so no single request hits the output cap?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-few-shot-order-bias": {
+    "criteria": [
+      "Identifies class imbalance and recency bias in the four few-shot examples.",
+      "Explains that strict enum decoding amplifies prior token skew across the fixed choices.",
+      "Proposes balanced labels, shuffled ordering, or abstain examples while tracking prefix cost."
+    ],
+    "followup": "How would you measure whether label skew changed precision separately from recall?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-retry-cost-calc": {
+    "criteria": [
+      "Computes 0.15 cubed equals 0.003375, or 0.34% remaining failure after three attempts.",
+      "Explains why document-induced errors violate independence and repeat across retries.",
+      "Contrasts upfront grammar constraints with error-guided retries and tail-latency cost."
+    ],
+    "followup": "Which error information should you include in a repair prompt so retries do not repeat mistakes?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-fsm-throughput-debug": {
+    "criteria": [
+      "Isolates CPU-side grammar-to-vocabulary FSM compilation and cache misses before prefill.",
+      "Explains why per-request dynamic field names bypass the compiled automaton cache.",
+      "Proposes static parameterized schemas while noting post-decode validation of dynamic column types."
+    ],
+    "followup": "How can you support custom user columns without compiling a fresh DFA per request?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-cot-before-field-design": {
+    "criteria": [
+      "Places clause evaluation or reasoning fields ahead of decision in an ordered JSON schema.",
+      "Explains that left-to-right decoding commits to early keys before checking evidence.",
+      "Notes the trade-off between higher reasoning accuracy and extra generated output tokens."
+    ],
+    "followup": "How do you prevent downstream callers from relying on intermediate scratchpad wording?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-logit-bias-ceiling-calc": {
+    "criteria": [
+      "Computes 90 plus 15 plus 36 times 18 equals 753 ms end-to-end latency.",
+      "Explains how jump-forward decoding skips GPU passes for unambiguous literal key sequences.",
+      "Notes that flexible formatting or optional whitespace breaks single-path literal skipping."
+    ],
+    "followup": "Why does jump-forward decoding save much less time when outputs contain mostly free-text strings?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-tool-vs-response-format-debug": {
+    "criteria": [
+      "Identifies that global JSON response_format masks tool-call delimiter tokens.",
+      "Explains why the model embeds intended function calls inside plain JSON strings instead.",
+      "Proposes decoupling tool turns from final formatting or modeling completion as a tool call."
+    ],
+    "followup": "What happens if an API provider lets you mark a submit_answer tool with tool_choice required?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-nullable-optional-design": {
+    "criteria": [
+      "Allows null or explicit missing-evidence enum values across optional schema properties.",
+      "Requires verbatim source_quote spans verified deterministically against the doctor note.",
+      "Addresses the token overhead and review routing cost for unmatched clinical extractions."
+    ],
+    "followup": "How do you handle verbatim quote checks when the note abbreviates or misspells a drug name?"
+  },
+  "llm-outputs-eval-and-safety-questions:so-streaming-partial-json-design": {
+    "criteria": [
+      "Pairs strict server-side schema decoding with an incremental partial-JSON stream parser.",
+      "Separates early preview rendering of safe fields from gating action-critical fields until complete.",
+      "Applies HTML escaping and stop_reason checks before persisting records or updating UI."
+    ],
+    "followup": "How should the client UI recover if the stream drops mid-array after rendering three bullets?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-bleu-rouge-trap": {
+    "criteria": [
+      "Explains that BLEU and ROUGE score surface n-gram overlap rather than semantic truth.",
+      "Identifies why changing 5 to 30 keeps most n-grams intact while valid paraphrases share few.",
+      "Balances fast deterministic drift utility against blindness to single-token factual flips."
+    ],
+    "followup": "For which narrow NLP tasks is exact n-gram overlap still a useful regression signal?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-exact-match-normalization": {
+    "criteria": [
+      "Identifies casing, punctuation, whitespace, Markdown wrappers, and numeric formatting noise.",
+      "Proposes type-aware standardized parsing for dates and amounts alongside minimal cleanup.",
+      "Warns against aggressive stripping that removes minus signs or negation words."
+    ],
+    "followup": "How would you normalize currency answers when the reference omits cents or currency symbols?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-pass-at-k-calc": {
+    "criteria": [
+      "Computes 1 minus C(8, 3) divided by C(10, 3) equals 0.533.",
+      "Explains why drawing more than k samples without replacement removes finite-sample bias.",
+      "Distinguishes peak pass@3 potential from single-shot pass@1 user reliability."
+    ],
+    "followup": "Why does sampling at temperature 0 fail to give a meaningful pass@10 improvement?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-semantic-negation-bug": {
+    "criteria": [
+      "Explains that dense embeddings and BERTScore capture topical overlap while missing negation.",
+      "Shows why flipping one polarity token barely changes the pooled or max-matched cosine score.",
+      "Recommends NLI entailment or claim-level checks when factual polarity matters."
+    ],
+    "followup": "How would you build a 50-pair contrastive test suite to catch negation blindness in your scorer?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-auc-ties-concept": {
+    "criteria": [
+      "Assigns 0.5 credit to tied positive-negative score pairs in Mann-Whitney AUC.",
+      "Explains how row-order tie breaking inflates a constant scorer above 0.5 on ordered data.",
+      "Notes that quantized buckets hide probability calibration and PR-AUC gaps under imbalance."
+    ],
+    "followup": "What happens to ROC-AUC and PR-AUC if you double all predicted scores while keeping ties unchanged?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-bleu-brevity-penalty-calc": {
+    "criteria": [
+      "Computes brevity penalty exp(-1) times 0.80 equals approximately 0.294.",
+      "Explains that BP prevents one-word high-precision outputs from gaming precision-only BLEU.",
+      "Notes that brevity penalties punish legitimately concise summaries or capped outputs."
+    ],
+    "followup": "Why does ROUGE-L avoid needing an exponential brevity penalty of its own?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-auc-pairwise-calc": {
+    "criteria": [
+      "Evaluates all 6 positive-negative pairs with 0.5 tie credit to get 4.5 / 6 = 0.75.",
+      "Connects ROC-AUC to the probability a random positive outranks a random negative.",
+      "Contrasts threshold-free ranking invariance against uncalibrated scores and class imbalance."
+    ],
+    "followup": "Which single negative example change would drop this ROC-AUC from 0.75 to 0.50?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-rouge-tokenizer-mismatch-debug": {
+    "criteria": [
+      "Isolates scorer tokenization and Markdown formatting drift rather than factual quality loss.",
+      "Explains how bolding asterisks or attached punctuation break literal token equality.",
+      "Recommends pinning deterministic preprocessing while checking formatting separately."
+    ],
+    "followup": "What automated check ensures a ROUGE library upgrade does not shift historical baselines silently?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-exec-vs-lexical-code-eval": {
+    "criteria": [
+      "Contrasts behavioral unit-test execution against brittle lexical CodeBLEU overlap.",
+      "Gives a failure where wrong comparator logic scores high lexically or weak tests pass hardcoded code.",
+      "Notes sandbox isolation cost and the need for hidden edge-case or property tests."
+    ],
+    "followup": "How do you detect when a coding model memorizes or exploits flaws in your hidden test harness?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-passk-vs-passhatk-debug": {
+    "criteria": [
+      "Computes rough single-try pass rate near 35% from pass@5 = 88%.",
+      "Distinguishes best-of-k capability (pass@k) from consecutive reliability (pass^k).",
+      "Proposes tracking pass@1, pass@k, and pass^k alongside multi-trial CI budgets."
+    ],
+    "followup": "When is optimizing pass@5 actually preferable to pass@1 in a real user workflow?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-hybrid-eval-pipeline-design": {
+    "criteria": [
+      "Layers deterministic drug and dose extraction ahead of narrative entailment and selective LLM judges.",
+      "Explains how exact entity matching prevents negation and dosage omissions missed by ROUGE.",
+      "Respects the $15 nightly CI budget across 2,000 cases via selective judge routing."
+    ],
+    "followup": "How do you verify that the deterministic clinical entity extractor itself isn't missing brand-name variants?"
+  },
+  "llm-outputs-eval-and-safety-questions:rs-judge-vs-ref-calibration-design": {
+    "criteria": [
+      "Requires chance-corrected Cohen's kappa over raw percent agreement on the 86%-pass slice.",
+      "Separates test-retest reliability from validity and presentation biases like ordering or length.",
+      "Sets ongoing stratified human audits and false-pass monitoring for regulatory safety."
+    ],
+    "followup": "Your judge scores kappa = 0.78 overall yet misses 15% of missing-disclosure errors. What changes next?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-lethal-triad-concept": {
+    "criteria": [
+      "Identifies the untrusted input, private data access, and outbound channel triad.",
+      "Explains how indirect prompt injection steers a read-only database tool into exfiltration.",
+      "Breaks the triad via isolated parsing, stripped links, or confirmation gates despite friction."
+    ],
+    "followup": "Even without a webhook tool, how could an injected email exfiltrate data through Markdown rendering?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-hard-step-budget-concept": {
+    "criteria": [
+      "Places turn, spend, and wall-clock counters in deterministic outer harness code.",
+      "Explains why prompt instructions fail under context dilution or rationalization loops.",
+      "Balances guaranteed spend ceilings against interrupting long tasks without checkpoints."
+    ],
+    "followup": "What state must the harness save when a wall-clock timeout stops a refactor at step 14?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-compounding-reliability-calc": {
+    "criteria": [
+      "Computes 0.94 to the 15th power equals roughly 39.5% full-run success.",
+      "Explains multiplicative error compounding across dependent multi-step trajectories.",
+      "Proposes fewer coarse tools, validation retries, or step caps while noting reduced flexibility."
+    ],
+    "followup": "How much does adding one deterministic retry that lifts step success from 0.94 to 0.985 improve 15-step completion?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-fork-bomb-timeout-debug": {
+    "criteria": [
+      "Explains that shell=True spawns a subshell whose timeout leaves grandchildren orphaned on PID 1.",
+      "Uses start_new_session or os.setsid with os.killpg and cgroups pids.max limits.",
+      "Notes the trade-off of blocking detached background daemons unless tracked explicitly."
+    ],
+    "followup": "How can an agent test a local HTTP server safely if detached background jobs are killed?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-sandbox-tier-selection": {
+    "criteria": [
+      "Contrasts bwrap namespace speed (~8-15 ms) against gVisor syscall sentry and Firecracker KVM.",
+      "Identifies shared host Linux kernel exposure as the critical gap for untrusted multi-tenant webhooks.",
+      "Balances boot latency and memory overhead against stronger kernel virtualization boundaries."
+    ],
+    "followup": "Beyond compute isolation, what network egress rules should a Firecracker coding sandbox enforce?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-worst-case-runaway-cost-calc": {
+    "criteria": [
+      "Sums the 12-turn arithmetic sequence from 3,000 to 19,500 to get 135,000 input tokens.",
+      "Explains quadratic token growth from resending accumulating conversation history each step.",
+      "Proposes cumulative token caps, log truncation, and prefix caching while noting lost detail."
+    ],
+    "followup": "How much does prefix caching help if turn 2 truncates an early message from turn 1?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-ping-pong-cycle-debug": {
+    "criteria": [
+      "Identifies Markovian amnesia after context compaction drops earlier contradictory edits.",
+      "Implements an external normalized state-hash cycle detector to trip a circuit breaker.",
+      "Balances fast loop halting against false trips unless fingerprints include diff and error context."
+    ],
+    "followup": "What prompt or action should the supervisor trigger right after halting a cycle on turn 3?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-least-privilege-tool-design": {
+    "criteria": [
+      "Replaces shared admin run_sql with narrow parameterized read and refund endpoints.",
+      "Enforces caller-tenant authorization and the $50 limit deterministically in server code.",
+      "Routes refunds over $50 to human approval while accepting maintenance of explicit endpoints."
+    ],
+    "followup": "How do you prevent the model from splitting one $120 refund into three $40 tool calls?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-subagent-blast-radius-calc": {
+    "criteria": [
+      "Counts 1 plus 3 plus 9 equals 13 agents for $26 worst-case spend.",
+      "Explains multiplicative budget escape when sub-agents carry independent local limits.",
+      "Requires a shared atomic trace-level budget ledger while handling partial branch cancellation."
+    ],
+    "followup": "How should parallel child branches reserve budget without starving siblings or racing over the cap?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-self-grading-sycophancy-debug": {
+    "criteria": [
+      "Attributes 96% false self-approval to autoregressive confirmation bias and missing hard gates.",
+      "Enforces deterministic linter and pytest exit-zero gates before allowing task completion.",
+      "Introduces a separate fresh-context Maker-Checker evaluator while noting extra latency and calls."
+    ],
+    "followup": "Why must the Checker agent receive only the diff and requirements rather than the Generator's reasoning trace?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-hitl-checkpoint-resume-design": {
+    "criteria": [
+      "Persists a serialized plan artifact and SHA-256 digest before releasing worker compute.",
+      "Binds the human approval token to trace_id, plan hash, approver identity, and expiry.",
+      "Verifies the hash and live infra drift on resume, forcing re-approval when state shifts."
+    ],
+    "followup": "Which concurrency lock or lease prevents two approved Terraform runs from colliding on apply?"
+  },
+  "llm-outputs-eval-and-safety-questions:ba-mcp-untrusted-tool-design": {
+    "criteria": [
+      "Pins approved MCP tool names, schemas, and descriptions by cryptographic hash against rug pulls.",
+      "Truncates oversized tool outputs, strips hidden HTML, and wraps results as untrusted data.",
+      "Validates project and ticket mutations against user RBAC despite server-update friction."
+    ],
+    "followup": "What should happen at runtime if a pinned third-party MCP server changes one parameter description?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-input-vs-output-checks": {
+    "criteria": [
+      "Explains that output-only checks expose raw PII to external API providers and logs.",
+      "Proposes pre-model VPC PII tokenization with reversible placeholders alongside output checks.",
+      "Notes latency and benign-ID over-masking trade-offs of input PII scrubbing."
+    ],
+    "followup": "If you replace a patient name with `<NAME_1>` before calling the model, where can re-hydration fail?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-classifier-fp-vs-fn": {
+    "criteria": [
+      "Calculates roughly 1,980 blocked legitimate customer messages per day from 4% FPR.",
+      "Explains how high benign prevalence magnifies small false-positive rates in production.",
+      "Tunes thresholds against benign-adversarial trigger sets and routes borderline cases to safe prompts."
+    ],
+    "followup": "Why does evaluating a safety classifier on a 50/50 split hide false-refusal problems?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-fp-volume-calc": {
+    "criteria": [
+      "Computes 199,000 times 0.02 equals 3,980 wrongly blocked benign requests daily.",
+      "Shows that block precision is under 20% because benign traffic dominates 199:1.",
+      "Proposes two-stage verification or downgraded strict-mode actions at extra latency on flagged queries."
+    ],
+    "followup": "What false-positive rate would you need at 0.5% attack prevalence for at least half of all blocks to be real attacks?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-fail-open-vs-closed-debug": {
+    "criteria": [
+      "Identifies global fail-open as a timeout-triggered policy bypass on sensitive routes.",
+      "Separates fail-closed defaults for medical/tool paths from bounded fail-open on public FAQs.",
+      "Notes availability trade-offs and local deterministic regex fallbacks during classifier overload."
+    ],
+    "followup": "How do you keep an attacker's huge input from exhausting your guardrail timeout budget for everyone else?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-streaming-latency-conflict": {
+    "criteria": [
+      "Explains the conflict between full-output waiting (6s TTFT) and raw unbuffered token leaks.",
+      "Proposes sliding micro-window buffering (~20-40 tokens) with fast synchronous regex and classifiers.",
+      "Aborts SSE streams and replaces partial client output on violation while noting chunkier streaming."
+    ],
+    "followup": "Why can token-by-token streaming leak an SSN even if you scan each token individually?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-defense-in-depth-calc": {
+    "criteria": [
+      "Computes 0.30 times 0.20 times 0.10 equals 0.6% surviving attack rate.",
+      "Explains that correlated errors across shared models or rules invalidate independence.",
+      "Pairs orthogonal deterministic and probabilistic boundaries while accounting for cumulative latency."
+    ],
+    "followup": "If layers 1 and 2 share the same base prompt classifier, how do you test their real joint failure rate?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-canary-blast-radius-calc": {
+    "criteria": [
+      "Computes 80,000 / 96 * 0.05 * 0.12 equals 5 unsafe responses per 15-minute window.",
+      "Explains the tension between tiny canaries delaying detection and wide rollouts multiplying harm.",
+      "Pairs staged canary slices with automated safety-regression rollback triggers."
+    ],
+    "followup": "Why should a canary monitor unsafe-rate per canary request rather than total unsafe incidents sitewide?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-unicode-normalization-debug": {
+    "criteria": [
+      "Identifies byte-level parser mismatch against LLM generalization over homoglyphs and encodings.",
+      "Applies NFKC normalization, zero-width stripping, and decoding checks ahead of deterministic rules.",
+      "Pairs normalization with semantic classifiers while respecting valid multilingual or code inputs."
+    ],
+    "followup": "What breaks if your gateway naively rejects every request containing a valid base64 string?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-policy-when-fired-design": {
+    "criteria": [
+      "Distinguishes in-place redaction, constrained retry, neutral fallback, and structured API block codes.",
+      "Explains why prose refusals break strict JSON API callers and rule details leak probing signals.",
+      "Matches response policy to risk severity and downstream schema contracts."
+    ],
+    "followup": "When a guardrail triggers a retry with critique, how many retries should you allow before falling back?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-rag-vs-guardrail-false-refusal-debug": {
+    "criteria": [
+      "Audits blocked logs to separate true fabrications from benign multi-chunk synthesis and simple math.",
+      "Evaluates NLI against concatenated retrieved chunks and separates hard facts from connective prose.",
+      "Replaces blanket deletion of neutral scores with citations or soft caution tags."
+    ],
+    "followup": "How can you run faithfulness verification without doubling user-visible response latency?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-async-vs-sync-guardrail-design": {
+    "criteria": [
+      "Places fast deterministic rules and tiny quantized classifiers inside the 150 ms synchronous path.",
+      "Reserves the 700 ms heavy judge synchronously only for uncertain scores or the 5% write-tool path.",
+      "Runs asynchronous deep audits on sampled read-only logs while acknowledging post-hoc detection lag."
+    ],
+    "followup": "How do you ensure asynchronous audit findings automatically tighten the synchronous fast-path?"
+  },
+  "llm-outputs-eval-and-safety-questions:gr-multi-turn-escalation-design": {
+    "criteria": [
+      "Tracks compact per-session risk state and an intent summary rather than scanning messages[-1] alone.",
+      "Evaluates sliding windows of intent summary plus recent turns and accumulated model outputs.",
+      "Applies progressive friction (disabling tools before hard blocks) with risk decay for long benign chats."
+    ],
+    "followup": "Why is inspecting the assistant's own prior partial answers necessary when detecting multi-turn crescendo attacks?"
   }
 }

@@ -1405,6 +1405,1086 @@
       "correctOption": 3
     },
     {
+      "id": "llm-outputs-eval-and-safety-questions:so-json-mode-vs-schema",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "Your extraction pipeline uses plain JSON mode, yet downstream code fails with KeyError on 4% of invoices. Why does switching to strict JSON Schema enforcement fix this?",
+      "context": "Every API response is valid JSON, but required fields are missing or types drift from floats to strings. Throughput target is 10,000 invoices per hour.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Strict JSON Schema compiles your field definitions into a finite-state grammar that masks illegal tokens at every decode step, whereas plain JSON mode checks only generic JSON syntax. Because any syntactically valid object satisfies plain JSON mode, an invoice extractor can emit `{\"amount\": \"forty\"}` or omit `tax_id`, crashing downstream `float()` casts with `KeyError` or `ValueError` even though `json.loads()` succeeds. Constrained schema decoding guarantees field presence and primitive types, trading first-request schema compilation latency and the risk that non-nullable fields force the model to guess values when source text omits them.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/prompt-engineering",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Plain JSON mode validates syntax only after the response finishes generating.",
+          "why": "JSON mode constrains or retries syntax, yet imposes no constraints on which keys or value types appear."
+        },
+        {
+          "text": "Strict JSON Schema compiles the schema into token masks at each decode step, whereas plain JSON mode enforces only generic JSON syntax.",
+          "why": "Masking disallowed tokens prevents missing required keys and mismatched primitive types, though semantic values still need checks."
+        },
+        {
+          "text": "Strict JSON Schema fine-tunes the model weights on your field names.",
+          "why": "Schema constraints act at decoding time via logit masking rather than updating any weights."
+        },
+        {
+          "text": "Plain JSON mode disables temperature sampling, causing dropped keys.",
+          "why": "Temperature controls randomness; missing keys occur because any valid JSON object satisfies generic JSON syntax."
+        }
+      ],
+      "correctOption": 1
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-schema-shape-not-truth",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "A strict JSON Schema guarantees every field parses without error, yet analysts still find wrong numbers in 6% of extracted contracts. Why does schema enforcement not prevent this?",
+      "context": "The contract extractor outputs `{total_usd: number, renewal_date: string, auto_renews: boolean}` with 100% schema conformance.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Schema enforcement guarantees syntactic shape, not factual accuracy or grounding in the document. Constrained decoding tracks structural tokens (braces, quotes, key names, number characters) and masks illegal syntax transitions, while the model still chooses digits and strings freely from its learned probability distribution. When a contract omits a renewal date or lists only a monthly fee, a strict non-nullable schema forces the model to emit *some* string or float, leading to fabricated dates or copied subtotals inside valid JSON. Adding cross-field arithmetic checks, explicit nullable types, and required verbatim quote spans catches hallucinations at the cost of extra tokens and human-review routing.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/prompt-engineering",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-token-overhead-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "Constrained JSON decoding inserts 28 formatting tokens (braces, keys, quotes) per record alongside 12 content tokens. On 50,000 daily records at $4.00 per million output tokens, what is the monthly (30-day) output cost of the formatting tokens alone? (USD.)",
+      "context": "Assume 30 days per month, zero retries, and flat per-token output billing for generated schema scaffolding.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "28 formatting tokens × 50,000 records/day × 30 days = 42,000,000 tokens = 42 million tokens, so 42 × $4.00 = **$168** per month for JSON scaffolding alone. Constrained decoding still steps every key, quote, and colon through the autoregressive decode loop (unless engine jump-forward skips deterministic literals), so bandwidth and output token billing apply to syntax just like prose. Deeply nested verbose keys like `extracted_customer_billing_street_address` across high-volume short records more than triple output spend and cut serving throughput. Using compact keys or flat TSV arrays trims token cost at the cost of weaker self-documentation in logs.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/calling-the-llm-api",
+      "kind": "calculation",
+      "numericAnswer": 168,
+      "tolerance": 0,
+      "unit": "USD"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-truncation-max-tokens",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "A strict-schema extraction call suddenly returns `Unterminated string` in `json.loads` on 3% of long customer emails. The provider returned HTTP 200. What do you inspect first?",
+      "context": "Average output is 180 tokens, `max_tokens` is set to 512, and failures cluster on emails with 15 or more line items.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Inspect `stop_reason` (or `finish_reason`) first: `length` or `max_tokens` indicates generation hit the 512-token ceiling mid-response. Grammar constraints ensure every prefix up to step *t* is a valid partial JSON string, yet a hard output limit aborts decoding before the finite-state machine reaches its accepting closing `}`. On emails with 18 line items, generation runs past token 512 inside item 14 and returns HTTP 200 with a cut-off JSON string. Raising `max_tokens` or paginating long inputs prevents silent truncation, at the cost of higher worst-case latency and KV-cache memory reservation per request.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/calling-the-llm-api",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Increase temperature so the model closes strings earlier.",
+          "why": "Higher temperature adds randomness and tends to lengthen outputs, worsening truncation."
+        },
+        {
+          "text": "Switch from JSON Schema to XML tags.",
+          "why": "XML hits the exact same hard token cap mid-tag when output exceeds 512 tokens."
+        },
+        {
+          "text": "Check `stop_reason` or `finish_reason` for `length` (`max_tokens`), because decoding stopped mid-JSON before the closing brace.",
+          "why": "Constrained decoding restricts only the next token; it cannot force the object to close before the hard `max_tokens` cut-off."
+        },
+        {
+          "text": "Lower the JSON parser recursion limit.",
+          "why": "Recursion depth raises `RecursionError`, not an unterminated string on flat line-item arrays."
+        }
+      ],
+      "correctOption": 2
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-few-shot-order-bias",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "Your structured ticket classifier gets 92% accuracy in staging, yet in production it assigns `billing_dispute` to 68% of unrelated tickets after you add four few-shot examples. What caused the skew?",
+      "context": "The prompt ends with three `billing_dispute` examples and one `bug_report` example across four total shots, with strict enum output.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Unbalanced few-shot label counts and recency bias shifted the model's prior toward `billing_dispute`. In-context learning conditions next-token probabilities on label frequencies and prompt order, giving repeated and final-position labels higher logits even before reading the ticket; strict enum decoding sharpens that bias by renormalizing probabilities exclusively over the allowed strings. Putting three `billing_dispute` shots at the end pulls borderline shipping or account tickets into `billing_dispute`, flooding escalation queues. Balancing classes evenly, ordering shots consistently, and adding explicit abstain examples restores calibration while adding slight prefix cost (amortized with prompt caching).",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/prompt-engineering",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-retry-cost-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "An unconstrained extraction prompt passes Pydantic validation on 85% of first attempts, and each independent retry (up to 3 total attempts) also passes with probability 0.85. What percentage of requests still fail after 3 attempts? (Two decimals.)",
+      "context": "Assume independent failures across retries triggered by validation errors at temperature 0.4.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Each attempt fails with probability 1 − 0.85 = 0.15, so failing all 3 independent attempts is 0.15³ = 0.003375 = **0.34%**. Validator-guided retries feed the Pydantic traceback back so the model can repair missing fields or bad types, cutting random formatting drops. In practice, failures caused by unreadable PDFs or contradictory source tables are correlated rather than independent, so three retries repeat the exact same invalid output and burn 3× latency and tokens without clearing the error. Constrained decoding eliminates syntax retries up front, whereas bounded semantic retries handle value rules at the cost of tail-latency spikes.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ml-and-llm-testing",
+      "kind": "calculation",
+      "numericAnswer": 0.3375,
+      "tolerance": 0.02,
+      "unit": "%"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-fsm-throughput-debug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "After enabling dynamic regex-constrained JSON schemas per user request on your vLLM cluster, p99 time-to-first-token spikes from 180 ms to 2.4 s while GPU utilization drops. What is the bottleneck?",
+      "context": "Each request sends a slightly different JSON Schema generated dynamically from user table columns across a 40,000-token vocabulary.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "CPU-side finite-state machine compilation and cache misses on unique schemas stall requests before GPU prefill begins. Constrained decoders intersect the schema grammar with the tokenizer's full vocabulary (40k–128k tokens) to build per-state token bitmasks; when every tenant sends distinct dynamic property names, the FSM cache misses and CPU construction starves GPU scheduling. A multi-tenant table-extraction tool generating bespoke schemas per upload triggers multi-second TTFT spikes under load. Normalizing to a small set of static parameterized schemas (such as key-value arrays) restores cache hits and fast TTFT at the cost of moving per-column type checks into post-decode validation.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/llm-inference-engines",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Compiling each unique JSON Schema into a vocabulary token-mask finite-state machine on CPU blocks the request before prefill and misses the FSM cache.",
+          "why": "Intersecting a grammar with 40,000 vocabulary tokens per DFA state is CPU-bound whenever every request changes field names."
+        },
+        {
+          "text": "Structured decoding doubles the size of the KV cache per token.",
+          "why": "KV-cache memory depends on layers, KV heads, and sequence length, not logit masking."
+        },
+        {
+          "text": "Constrained decoding disables continuous batching across all requests.",
+          "why": "Serving engines still batch decode steps, though per-step bitmask application adds small overhead."
+        },
+        {
+          "text": "JSON Schema forces greedy decoding, which is slower than nucleus sampling.",
+          "why": "Argmax is at least as fast as sampling; the delay here occurs before decoding starts."
+        }
+      ],
+      "correctOption": 0
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-cot-before-field-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "Your structured output schema forces the model to emit `decision` (`approve` or `reject`) as the first JSON key, and accuracy on complex claims drops 11 points compared to free text. How do you redesign the schema?",
+      "context": "Claims require verifying three policy clauses before deciding, and downstream callers require strict JSON.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Place structured `clause_checks` or `reasoning_steps` fields before `decision` in the JSON schema and enforce key order. Autoregressive models decode left-to-right, conditioning each token only on earlier tokens; emitting `decision` first forces the model to commit to `\"approve\"` or `\"reject\"` in one forward pass before checking the three clauses, then rationalize that choice in subsequent keys. On borderline claims, locking `decision` early causes an 11-point accuracy drop as the model invents matching clause explanations afterward. Putting evidence fields first lets attention compute the verdict from explicit checks, trading extra output tokens and higher latency for better accuracy.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/prompt-engineering",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-logit-bias-ceiling-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "A structured extractor uses jump-forward grammar decoding: an average JSON output has 60 tokens total, of which 24 deterministic boilerplate tokens skip GPU decode passes, and 36 tokens take 18 ms/token on GPU. Including a fixed 90 ms prefill and 15 ms schema lookup, what is the end-to-end latency in ms?",
+      "context": "Assume skipped literal tokens add negligible CPU time and the GPU decodes one variable token per 18 ms pass.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "End-to-end latency is 90 ms prefill + 15 ms lookup + (36 variable tokens × 18 ms/token = 648 ms) = **753 ms**, down from 90 + (60 × 18) = 1,170 ms without jump-forward compression. When a finite-state grammar transition allows only a single literal sequence (fixed key names, colons, quotes), serving engines append all deterministic tokens at once into the KV cache rather than paying memory-bandwidth-bound decode passes per token. Allowing optional whitespace or flexible key aliases introduces ambiguity that disables jump-forward skipping and restores the full 1,170 ms delay. Rigid key ordering maximizes speedup at the cost of engine coupling and strict prompt templates.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/evaluation-and-serving",
+      "kind": "calculation",
+      "numericAnswer": 753,
+      "tolerance": 0,
+      "unit": "ms"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-tool-vs-response-format-debug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "You enforce strict JSON output via `response_format` on a chat model that also has two callable tools. Suddenly the model stops invoking tools and prints tool-call JSON inside the user-facing response. Why, and how do you fix it?",
+      "context": "The model must look up customer account status via `get_account` before emitting the final `{status, summary}` JSON object.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "The global `response_format` grammar masked out the model's special tool-call tokens (`<tool_use>` or function role transitions), trapping every assistant turn inside the final JSON schema. When the finite-state mask forces output to start with `{` for `{status, summary}`, the model cannot emit the tool-invocation delimiter and instead serializes `\"call get_account\"` as plain JSON values, breaking downstream parsers with no lookup executed. Decoupling intermediate tool turns from final formatting—allowing tool calls freely during the loop and applying `response_format` only on the terminal pass, or defining `submit_final_answer` itself as a required tool—fixes the conflict at the cost of one explicit termination step.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agents/agent-fundamentals",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-nullable-optional-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "Design a strict-schema clinical entity extractor for messy doctor notes where 40% of fields are genuinely absent in any given note, without inducing fabricated defaults.",
+      "context": "Downstream billing code rejects unparseable JSON and treats false-positive diagnoses as patient-safety incidents.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Make optional fields explicitly nullable (for example `[\"string\", \"null\"]` or an enum containing `\"not_documented\"`), require a `source_quote` span alongside every extracted entity, and verify quotes deterministically against the note. Without `null`, strict schemas force the grammar decoder to choose some non-empty token when evidence is absent, turning missing clinical facts into plausible-looking fabricated diagnoses (`\"Penicillin\"` allergies or invented dates). Adding nullable schemas gives the model a low-loss escape path, while checking that `source_quote` is a literal substring of the input catches remaining hallucinations before billing runs. The trade-off is ~35% more output tokens and routing unmatched quotes to human review.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ml-and-llm-testing",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:so-streaming-partial-json-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Structured Outputs & Constrained Decoding",
+      "title": "Design a real-time UI that streams structured JSON fields (`title`, `bullets`, `confidence`) to users under 300 ms TTFT while guaranteeing final schema validity and preventing partial-field XSS.",
+      "context": "Outputs average 450 tokens; the UI renders `title` and `bullets` progressively as tokens arrive.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Pair server-side strict JSON Schema decoding with a state-aware streaming parser that auto-closes unclosed brackets locally for display previews while gating rendering and side effects per completed field. Strict decoding guarantees the complete output conforms to schema, while incremental parsing lets the client display `title` within 300 ms instead of buffering 450 tokens for 5 seconds; meanwhile, action-critical fields like `confidence` wait for their closing delimiter before triggering logic. Rendering raw partial strings mid-escape (`\\\"`) or before HTML sanitization leaks unescaped `<script>` payloads or breaks layouts when aborted mid-stream. Progressive field buffering cuts perceived latency at the cost of waiting until `stop_reason === \"end_turn\"` before persisting records.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/calling-the-llm-api",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-bleu-rouge-trap",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "Against the reference \"Refunds arrive within 5 business days\", Model A outputs \"Money is returned in five working days\" and Model B outputs \"Refunds arrive within 30 business days\". Why do BLEU and ROUGE-L score Model B far higher?",
+      "context": "Model A is factually accurate using synonyms; Model B changes 5 to 30, multiplying the refund delay by six.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "BLEU (clipped n-gram precision) and ROUGE-L (longest common subsequence) measure literal token overlap rather than semantic equivalence. Because they ignore meaning, Model B keeps nearly every unigram, bigram, and trigram of the reference despite changing `5` to `30`, whereas Model A (`Money`, `returned`, `five`, `working`) shares almost zero surface tokens. In practice, a wrong `30 business days` reply can score over 75 BLEU / 0.90 ROUGE-L while a right paraphrase scores under 5 BLEU / 0.20 ROUGE-L, promoting a policy regression. Lexical scores are cheap and reproducible for drift checks or verbatim extraction, at the cost of missing paraphrases and critical single-token factual flips.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/llm-evaluation-and-ragops",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "BLEU and ROUGE penalize numbers written out in words.",
+          "why": "Both treat all tokens as plain surface strings with no numeric semantics."
+        },
+        {
+          "text": "Model A is longer, and ROUGE penalizes longer outputs exponentially.",
+          "why": "ROUGE-L computes precision-recall F1 over longest common subsequence; Model A simply shares few literal words."
+        },
+        {
+          "text": "BLEU uses dense embeddings that ignore digits.",
+          "why": "BLEU computes clipped n-gram precision over exact string matches, without embeddings."
+        },
+        {
+          "text": "BLEU and ROUGE measure literal surface n-gram overlap, so one wrong digit inside copied phrasing outscores an accurate paraphrase.",
+          "why": "Model B matches nearly every n-gram except a single digit, while Model A rewords almost the entire sentence."
+        }
+      ],
+      "correctOption": 3
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-exact-match-normalization",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "Your QA evaluator uses raw string equality (`pred == ref`) and reports 41% accuracy on a model that human raters score at 78%. What normalization bugs cause this gap, and where can normalization go too far?",
+      "context": "Questions ask for dates, dollar amounts, and short entity names (`\"Dr. Alice Smith.\"` versus `\"Alice Smith\"`).",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Raw `pred == ref` penalizes harmless formatting variations—casing, trailing punctuation, whitespace, articles, Markdown bolding, and numeric commas (`$1,200` vs `1200`). Standard QA Exact Match normalizes both strings (lowercasing, stripping outer punctuation and articles, converting number words or date formats into typed values) before matching. Without it, `\"The answer is **42**.\"` scores 0 against `\"42\"`, hiding 37 points of real capability; conversely, blindly stripping all punctuation or negations collapses `\"-5\"` into `\"5\"` or `\"not guilty\"` into `\"guilty\"`, creating silent false passes. Typed parsers paired with restrained text cleanup avoid formatting false negatives without erasing polarity, at the cost of maintaining per-type normalizers.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/llm-evaluation-and-ragops",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-pass-at-k-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "Using the unbiased `pass@k` estimator `1 - comb(n - c, k) / comb(n, k)`, you draw n = 10 samples for a coding task and c = 2 pass all unit tests. What is `pass@3`? (Three decimals.)",
+      "context": "Use the finite-sample hypergeometric estimator rather than the biased `1 - (1 - c/n)^k` formula.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "With *n* = 10 total samples, *c* = 2 passing samples, and *k* = 3, the number of 3-sample subsets containing zero passing completions is C(8, 3) = 56 out of C(10, 3) = 120 subsets, so pass@3 = 1 − (56 ÷ 120) = 64 ÷ 120 = **0.533**. Drawing *n* greater than *k* and using combinations without replacement yields a low-variance, unbiased estimate. Using the naive plug-in `1 − (1 − 0.2)³ = 0.488` underestimates true `pass@3` by 4.5 points, while misreading `pass@3 = 53%` as single-shot user reliability (`pass@1 = 20%`) ships a brittle assistant. Increasing *n* lowers variance at *n*× sampling cost.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ml-and-llm-testing",
+      "kind": "calculation",
+      "numericAnswer": 0.5333333333333333,
+      "tolerance": 0.01,
+      "unit": ""
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-semantic-negation-bug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "You switch from ROUGE to dense embedding cosine similarity (and BERTScore) to score support answers. Now \"Your warranty does NOT cover water damage\" scores 0.94 against \"Your warranty covers water damage.\" Why?",
+      "context": "Both sentences use the same domain terms and phrasing, differing only by negation.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Dense similarity and BERTScore cluster text by topic rather than logical entailment or polarity. BERTScore greedily pairs contextual token embeddings and averages cosine similarity, while sentence encoders pool all token vectors; flipping `\"covers\"` to `\"does NOT cover\"` leaves most topical content unchanged, keeping cosine scores near 0.94. In policy, medical, or legal QA, pure embedding scoring cheerfully passes opposite advice (`\"take two pills\"` vs `\"never take two pills\"`). Semantic similarity solves synonym paraphrasing cheaply without an LLM judge, at the cost of missing contradictions—requiring NLI entailment checks or claim-level rubrics whenever polarity is safety-critical.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/llm-evaluation-and-ragops",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Contextual embeddings and BERTScore match topical word distributions closely, so single-token negations or antonym flips barely lower similarity.",
+          "why": "Sentences about the exact same topic occupy nearly identical vector regions even when truth polarity flips."
+        },
+        {
+          "text": "Cosine similarity was computed without normalizing vector lengths.",
+          "why": "Cosine similarity divides by L2 norms automatically, and dot products share the same topical overlap issue."
+        },
+        {
+          "text": "BERTScore strips stop words like \"not\" during tokenization.",
+          "why": "BERTScore embeds every token, yet averaging across 7 matching content tokens drowns out one negated token."
+        },
+        {
+          "text": "The reference string was truncated before encoding.",
+          "why": "A 7-word sentence fits easily inside any encoder's context window."
+        }
+      ],
+      "correctOption": 0
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-auc-ties-concept",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "When computing ROC-AUC as a pairwise ranking probability over a model outputting quantized buckets (`0.1`, `0.5`, `0.9`), how must tied positive-negative scores be scored, and what fails if ties are broken by row order?",
+      "context": "A scorer assigns 3 discrete levels across 10,000 examples, producing thousands of positive-negative ties.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Exact ties between a positive and a negative example must receive 0.5 credit in the pairwise sum, matching the diagonal segment of the trapezoidal ROC curve. Mathematically, ROC-AUC equals `P(score_pos > score_neg) + 0.5 × P(score_pos == score_neg)`, guaranteeing a constant classifier predicting `0.5` for every input scores exactly 0.50. If a custom evaluator sorts rows without tie correction on a dataset ordered with positives before negatives, ties receive 1.0 credit and a useless constant model can score 1.0 AUC, falsely passing CI gates. Proper tie handling ensures honest ranking comparison, though heavy bucket quantization still obscures probability calibration and top-k precision under class imbalance (where PR-AUC is sharper).",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/machine-learning/model-evaluation-metrics",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-bleu-brevity-penalty-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "A translation candidate has c = 6 words against a reference of r = 12 words, achieving geometric mean n-gram precision 0.80. Using BLEU's brevity penalty `exp(1 - r/c)` for `c < r`, what is the final BLEU score (0 to 1 scale)? (Three decimals.)",
+      "context": "Compute `BLEU = BP × 0.80`, where `exp(-1) ≈ 0.3679`.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Because candidate length *c* = 6 is shorter than reference *r* = 12, the brevity penalty is BP = exp(1 − 12 ÷ 6) = exp(−1) ≈ 0.3679, giving BLEU = 0.3679 × 0.80 = **0.294** (29.4 on a 0–100 scale). Because BLEU measures n-gram precision (matched n-grams divided by candidate length) rather than recall, emitting a single common word like `\"the\"` would get 1.0 precision without BP; the exponential penalty suppresses clipped fragments. Over-aggressive `max_tokens` caps or terse system prompts cut candidate length below references and halve BLEU even on accurate answers. BLEU prevents length-truncation gaming without computing recall, at the cost of punishing legitimately concise summaries.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/llm-evaluation-and-ragops",
+      "kind": "calculation",
+      "numericAnswer": 0.2943035529371539,
+      "tolerance": 0.02,
+      "unit": ""
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-auc-pairwise-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "An eval scorer assigns scores `0.8` and `0.5` to two positive items, and `0.7`, `0.5`, `0.2` to three negative items. Counting ties as 0.5, what is the exact ROC-AUC?",
+      "context": "Evaluate all 2 × 3 = 6 positive-negative pairs using Mann-Whitney pairwise probability.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Across all 2 × 3 = 6 positive-negative pairs: positive `0.8` outranks all 3 negatives (3.0 points), while positive `0.5` loses to `0.7` (0), ties with `0.5` (0.5), and beats `0.2` (1.0), totaling 4.5 ÷ 6 = **0.75**. ROC-AUC directly measures the probability a randomly sampled positive ranks above a randomly sampled negative, making it invariant to monotonic rescaling of probabilities. When models output coarse quantized scores or binary labels, excessive ties pull ROC-AUC downward and mask fine ranking differences. Pairwise ROC-AUC avoids arbitrary threshold selection, at the cost of ignoring probability calibration and underweighting false alarms when positives are rare.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/machine-learning/model-evaluation-metrics",
+      "kind": "calculation",
+      "numericAnswer": 0.75,
+      "tolerance": 0.01,
+      "unit": ""
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-rouge-tokenizer-mismatch-debug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "Your RAG summarization score drops from 0.44 ROUGE-L to 0.19 overnight after a model swap, even though human reviewers rate the new summaries slightly better. Neither the reference set nor the prompt changed. What do you inspect?",
+      "context": "The new model wraps key terms in Markdown bolding and Unicode punctuation while the scoring helper splits on plain spaces.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Inspect the scorer's text normalization and tokenization first: Markdown formatting (`**5 days**`), smart quotes, Unicode differences, or whitespace splitting break literal n-gram matching. Standard `rouge_score` uses a specific regex tokenizer and Porter stemmer, whereas naive `.split()` leaves punctuation attached so `\"days.\"` fails to match `\"days\"` and `\"**refund**\"` misses `\"refund\"`. Swapping to a model that outputs clean Markdown bullets silently collapses unnormalized ROUGE-L from 0.44 to 0.19 and triggers false CI rollbacks. Locking a consistent pre-stripper and tokenizer keeps scores comparable over time, at the cost of ignoring intentional Markdown formatting bugs unless schema checks test formatting separately.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-evaluation/evaluation-fundamentals",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Human reviewers suffer from length bias and missed a real factual collapse.",
+          "why": "A 25-point ROUGE drop paired with higher human quality scores signals a surface mismatch, not sudden factual collapse."
+        },
+        {
+          "text": "Formatting or tokenizer mismatch (Markdown asterisks, smart quotes, or whitespace splitting) broke literal token matching against plain references.",
+          "why": "ROUGE compares tokenized strings verbatim; `**refund**` fails to match `refund` if Markdown isn't stripped cleanly."
+        },
+        {
+          "text": "The reference summaries leaked into pretraining of the new model.",
+          "why": "Benchmark contamination inflates overlap metrics rather than crashing them by 25 points."
+        },
+        {
+          "text": "ROUGE-L compares cryptographic hashes of paragraphs.",
+          "why": "ROUGE-L computes longest common token subsequences, not hashes."
+        }
+      ],
+      "correctOption": 1
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-exec-vs-lexical-code-eval",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "Why did code-generation benchmarks abandon BLEU and CodeBLEU as primary pass metrics in favor of execution-based `pass@k`, and when can execution scoring itself mislead?",
+      "context": "Tasks generate 30-line Python functions graded against hidden unit tests inside a sandbox.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Execution grading tests functional equivalence across any valid algorithm, whereas BLEU and CodeBLEU penalize valid variable renames, helper functions, or iterative vs recursive rewrites that differ lexically from a single reference. Running candidate code inside a sandbox against unit tests verifies true input-output behavior. CodeBLEU can score 0.85 on code with a flipped `<` comparator that fails every boundary case while scoring 0.35 on a working clean rewrite; conversely, weak execution suites mislead when models hardcode visible examples or skip untested edge cases (empty inputs, concurrency, SQL injection). Execution `pass@k` reflects real software correctness at the cost of sandbox infra, slower CI runs, and needing property/adversarial tests.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/ml-and-llm-testing",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-passk-vs-passhatk-debug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "Your coding agent boasts `pass@5 = 88%` on an internal SQL benchmark, yet production users see correct queries on under half of first runs and frequent retries. What scoring fallacy hid this problem?",
+      "context": "Benchmark evaluation generates 5 independent samples at temperature 0.7 and marks a task solved if any 1 of 5 passes.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Evaluating best-of-5 potential (`pass@5`) instead of single-shot accuracy (`pass@1`) or multi-run consistency (`pass^k`) masked a ~35% first-try pass rate behind five samples. Under independent sampling with per-try probability *p*, `pass@5 = 1 − (1 − p)⁵ = 0.88` implies `p ≈ 0.346`, meaning two out of three initial queries fail—and requiring reliability across 5 consecutive runs (`pass^5 = p⁵`) drops under 0.5%. Production users pay 4× wasted tokens and latency or abandon after the first broken SQL query rather than sampling five times. Reporting `pass@1` alongside `pass@k` and `pass^k` exposes variance versus peak capability at the cost of running multi-trial CI suites.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agents/agent-fundamentals",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-hybrid-eval-pipeline-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "Design a reference-scoring pipeline for medical-record summarization where missing a medication dose is critical, phrasing varies widely, and 2,000 test cases must run nightly in CI under $15.",
+      "context": "Each summary includes a structured medication list plus a 150-word clinical narrative with ground-truth chart notes.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Tier deterministic entity checks ahead of targeted NLI and selective LLM-as-judge scoring rather than running ROUGE alone or judging every word with a frontier model. First, parse drugs, doses, and allergies from reference and candidate summaries into normalized records to compute exact precision/recall at zero API cost and zero negation blindness. Second, run fast local NLI entailment over narrative claims against source notes to flag contradictions or unsupported additions. Third, route only flagged or stratified sample subsets to a calibrated LLM rubric judge, keeping 2,000 nightly cases under $15. Relying on ROUGE misses `\"50 mg\"` vs `\"500 mg\"`, while judging everything breaks budget and adds variance. Tiering balances safety recall and cost while requiring maintenance of entity extractors.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-evaluation/llm-rag-agent-evaluation",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:rs-judge-vs-ref-calibration-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Reference Scoring: Exact, Lexical & Semantic",
+      "title": "Your team wants to replace human reference grading with a semantic LLM-as-judge for open-ended customer emails. How do you validate the judge and choose the calibration metric before turning off human scoring?",
+      "context": "Historical human pass rate is 86% (`pass` vs `fail`); false passes risk regulatory fines.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Measure **validity** against blind expert labels using chance-corrected Cohen's kappa (not raw percent agreement), verify **reliability** across order/paraphrase perturbations, and gate on false-pass precision. On an 86%-pass set, a lazy judge always outputting `\"pass\"` gets 86% raw agreement with `κ = 0`; computing `κ = (p_o − p_e) ÷ (1 − p_e)` (targeting `κ ≥ 0.7`) proves genuine discrimination, while swapping pairwise order and testing length correlation exposes presentation bias. A judge with 0.96 test-retest consistency (`reliability`) can still systematically approve polished emails that omit mandatory legal disclosures. Ongoing stratified expert audits on 5–10% of production traffic catch rubric drift at the cost of continuing human labeling overhead.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-evaluation/llm-rag-agent-evaluation",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-lethal-triad-concept",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "A support agent can read incoming external emails, query the internal customer billing database, and call an outbound `send_webhook` tool. Why is this combination high-risk even if the model has safety training?",
+      "context": "External emails arrive from untrusted senders; the billing tool has strictly read-only database permissions.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Combining untrusted input, private data access, and an outbound communication path in one agent creates an indirect prompt-injection exfiltration channel. Because instructions and email content share the same context window, an attacker's hidden text inside an incoming email can hijack control flow, query the read-only billing database, and forward sensitive rows through `send_webhook` (or rendered Markdown image URLs). Safety fine-tuning reduces attack success rates yet cannot act as a hard security boundary. Breaking the triad—parsing untrusted emails in a data-only worker without private tools, stripping external links, and requiring human approval for outbound calls—bounds blast radius at the cost of extra handoffs or confirmation friction.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agents/agent-fundamentals",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Read-only database tools consume too many context tokens.",
+          "why": "Context length is a cost and recall concern, not the structural security vulnerability here."
+        },
+        {
+          "text": "Having three tools slows down tool selection latency.",
+          "why": "Three tools is a tiny schema list; latency is not the risk."
+        },
+        {
+          "text": "Combining untrusted external input, private data access, and an outbound exfiltration path lets indirect prompt injection steal billing records.",
+          "why": "Even with read-only database access, an adversarial email can instruct the model to fetch billing rows and send them out via `send_webhook`."
+        },
+        {
+          "text": "Webhooks cannot validate JSON Schema arguments.",
+          "why": "JSON Schema checks payload shape, not whether values inside a valid payload contain leaked customer data."
+        }
+      ],
+      "correctOption": 2
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-hard-step-budget-concept",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "Why must an autonomous agent's step count, dollar spend, and wall-clock timeout be enforced by deterministic harness code outside the model rather than instructed in the system prompt?",
+      "context": "An unattended coding agent runs repository refactors billed at API token rates.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Prompt ceilings are soft probabilistic suggestions that degrade over long traces, whereas outer harness counters enforce hard deterministic termination. In code around the model loop, the supervisor increments `turns`, accumulates actual API input/output token spend, and tracks `monotonic()` wall-clock seconds, halting execution immediately when any threshold is exceeded without asking the LLM. A system prompt saying `\"Stop after 10 steps or $2\"` frequently fails once 30 compiler tracebacks dilute attention or the model rationalizes `\"one more fix will make tests pass\"`, burning $100+ overnight. Outer deterministic caps guarantee bounded spend and duration, trading off occasional mid-task interruption that requires saved checkpoints to resume cleanly.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/harness-engineering/autonomous-loops-and-supervisors",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-compounding-reliability-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "An autonomous workflow executes 15 sequential tool steps without mid-run human recovery. Each step independently succeeds with probability 0.94. What percentage of full 15-step runs finish without any step failure? (One decimal.)",
+      "context": "Assume independent step failures and no fallback recovery inside a step.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "With independent steps, end-to-end success is 0.94¹⁵ ≈ 0.3953 = **39.5%**. Because step reliability multiplies across a trajectory (`pⁿ`), a 94% single-step success rate that looks solid in isolated unit tests fails more than 60% of 15-step autonomous chains. An agent with a 6% chance of malformed tool arguments or transient API errors breaks three out of five multi-step runs and may leave partial database or git state behind. Shortening trajectories into fewer coarse-grained tools, adding schema validation plus local retries, and placing verification gates before commits lifts completion rate at the cost of reduced free-form step granularity.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agents/agent-fundamentals",
+      "kind": "calculation",
+      "numericAnswer": 39.529179875968154,
+      "tolerance": 0.01,
+      "unit": "%"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-fork-bomb-timeout-debug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "Your coding agent runs bash commands with `subprocess.run(cmd, shell=True, timeout=10)`. When the agent spawns a background server (`python server.py & sleep 60`), `subprocess.run` raises `TimeoutExpired`, yet container CPU stays pinned at 100%. Why?",
+      "context": "Commands execute inside a Linux container without custom process-group isolation.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Running `subprocess.run(..., shell=True)` creates an intermediate `/bin/sh` parent whose timeout kills only the shell, leaving grandchild processes alive and reparented to PID 1. Production harnesses launch commands in a dedicated session (`start_new_session=True` / `os.setsid()`) and send `SIGKILL` to the entire process group via `os.killpg()`, inside a `cgroups` v2 sandbox capping `pids.max` and `memory.max`. When an agent spawns an unguarded dev server or accidental fork loop without process-group teardown, orphaned processes survive timeouts and freeze host CPUs across subsequent tasks. Enforcing process-group kills plus cgroup limits guarantees clean cleanup at the cost of disallowing detached background daemons unless tracked explicitly.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/harness-engineering/harness-architecture",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Python's timeout argument is measured in minutes rather than seconds.",
+          "why": "Python `timeout=10` enforces a 10-second wait."
+        },
+        {
+          "text": "Killing the intermediate `shell=True` parent leaves grandchild processes orphaned and reparented to PID 1 (`init`), so they keep running.",
+          "why": "Without `start_new_session=True` (`os.setsid()`), `os.killpg()`, and `cgroups` `pids.max`, signaling the shell misses detached children."
+        },
+        {
+          "text": "The LLM automatically retries the command before raising `TimeoutExpired`.",
+          "why": "The CPU spike occurs from the single running background child process left behind."
+        },
+        {
+          "text": "Python cannot signal child processes on Linux without root privileges.",
+          "why": "An unprivileged user can terminate its own process group via `os.killpg()` without root."
+        }
+      ],
+      "correctOption": 1
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-sandbox-tier-selection",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "Compare OS-level namespace jails (`bwrap`), user-space kernel containers (`gVisor`), and hardware MicroVMs (`Firecracker`) for executing agent-generated code. When is `bwrap` insufficient?",
+      "context": "You operate both a local developer CLI coding assistant and a multi-tenant cloud sandbox running untrusted third-party repository webhooks.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Bubblewrap (`bwrap`) isolates mounts and networks using unprivileged Linux namespaces in ~8–15 ms, gVisor (`runsc`) intercepts syscalls in a user-space Sentry kernel (~150–250 ms), and Firecracker boots a KVM hardware MicroVM (~120–180 ms) with an isolated guest kernel. Because `bwrap` shares the host Linux kernel directly, any kernel-syscall vulnerability lets adversarial code escape across the host boundary. Running untrusted multi-tenant webhook code inside `bwrap` (or standard Docker) exposes other tenants and host credentials, whereas `bwrap` fits local CLI workflows where sub-15 ms startup matters and host risk is single-user. Cloud multi-tenant sandboxes trade ~120–250 ms boot overhead and higher RAM footprint for gVisor or Firecracker kernel boundaries.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/harness-engineering/harness-architecture",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-worst-case-runaway-cost-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "A bounded agent loop allows up to 12 turns. Each turn appends 1,500 tokens of tool output to a 3,000-token initial prompt (turn 1 sends 3,000 input tokens, turn 2 sends 4,500, etc.) and ignores prompt caching. How many total input tokens are billed across a full 12-turn run?",
+      "context": "Input tokens on turn t (for t = 1..12) equal `3,000 + (t - 1) × 1,500`, summed across all 12 turns.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Input tokens form an arithmetic progression from 3,000 on turn 1 to 3,000 + (11 × 1,500) = 19,500 on turn 12, so total input = 12 × (3,000 + 19,500) ÷ 2 = **135,000 tokens** (quadratic growth in turn count). Stateless LLM APIs re-read the entire accumulated transcript every iteration, multiplying cost and filling context windows rapidly. Dumping raw 1,500-token build logs on repeated failed turns turns a cheap single lookup into massive spend and causes context rot before a turn cap fires. Adding cumulative token/dollar ceilings, truncating noisy tool output, and enabling prefix caching caps runaway cost at the cost of pruning older verbose logs.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agents/agent-fundamentals",
+      "kind": "calculation",
+      "numericAnswer": 135000,
+      "tolerance": 0,
+      "unit": "tokens"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-ping-pong-cycle-debug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "Your autonomous coding agent has a hard 25-turn limit, yet logs show it oscillating 12 times between editing `router.py` (breaking `handler.py`) and reverting `router.py` (breaking `handler.py` imports) until turn 25 expires. What guard is missing?",
+      "context": "Context compaction drops turns older than 6 steps, so the prompt shows only the most recent failure.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "A deterministic cycle detector tracking normalized state hashes outside the prompt is missing. Once context compaction discards earlier steps (\"Markovian amnesia\"), the model sees only the immediate import error in `handler.py`, re-introduces the patch that breaks `router.py`, and ping-pongs forever. Hashing `(edited_file, diff_text, error_signature)` or sorted tool-call signatures and tripping a circuit breaker at `repeat_threshold = 2` halts the loop immediately on turn 3 instead of burning all 25 turns with a broken workspace. External cycle detection saves tokens and time cleanly, at the cost of needing smart fingerprint normalization and an architectural-replan prompt or human handoff when tripped.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/harness-engineering/autonomous-loops-and-supervisors",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Increase the turn limit from 25 to 50 so the agent finishes the refactor.",
+          "why": "With older turns compacted out, the agent continues oscillating indefinitely up to turn 50."
+        },
+        {
+          "text": "Raise temperature to 1.2 so the model picks different edits.",
+          "why": "Higher randomness introduces syntax errors without solving structural amnesia across compacted turns."
+        },
+        {
+          "text": "Hide the compiler error message from tool output.",
+          "why": "Removing error traces leaves the agent blind to what failed."
+        },
+        {
+          "text": "A deterministic state-fingerprint cycle detector that hashes recent `(file, diff, error)` states and trips a circuit breaker on repetition.",
+          "why": "An external hash history catches A → B → A loops after compacted logs disappear from context and halts or forces escalation."
+        }
+      ],
+      "correctOption": 3
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-least-privilege-tool-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "A finance-ops agent answers questions about customer invoices and issues refunds up to $50. Today it uses one shared admin Postgres role and a generic `run_sql` tool. Redesign the permission boundary.",
+      "context": "Read queries run 2,000 times/day; refunds run 40 times/day; refunds above $50 require manager sign-off.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Replace the shared admin `run_sql` tool with narrow, task-shaped tools backed by separate least-privilege credentials and code-enforced limits. Route reads through a parameterized `lookup_invoice(invoice_id)` tool running on a read-only database role scoped strictly to non-sensitive invoice views. Route writes through `request_refund(invoice_id, amount_cents, reason)` whose server code verifies caller-tenant ownership, enforces `amount_cents <= 5000` deterministically, logs an immutable audit row, and transitions amounts over $50 into a human approval queue. Keeping generic `run_sql` allows an indirect injection inside a customer note to run `DROP TABLE` or read other tenants. Narrow typed tools eliminate SQL-level abuse at the cost of maintaining explicit endpoints per action.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-security/owasp-llm-top-10-and-prompt-attacks",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-subagent-blast-radius-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "An orchestrator sets a $2.00 limit per user request, yet allows spawning sub-agents with an independent $2.00 cap each up to depth 3 (1 root orchestrator spawns 3 level-1 sub-agents, and each level-1 spawns 3 level-2 sub-agents). What is the worst-case spend for one request if caps are not shared?",
+      "context": "Count the root orchestrator plus all spawned level-1 and level-2 sub-agents, assuming each exhausts its $2.00 limit.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "The hierarchy contains 1 (root) + 3 (level-1) + (3 × 3 = 9 level-2) = 13 active agents; with unshared $2.00 local limits, worst-case spend is 13 × $2.00 = **$26** (13× the intended cap). Without a shared trace-scoped budget ledger, delegating subtasks multiplies allowances exponentially by branching factor and depth. A stuck planning tree where workers recursively delegate subtasks to fresh sub-agents silently blows past org spending limits within minutes. Enforcing one atomic `BudgetLedger` keyed by root `trace_id` (plus reserving estimated spend before parallel dispatch) bounds total spend strictly, at the cost of gracefully aborting incomplete leaf branches when shared allowance hits zero.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/harness-engineering/autonomous-loops-and-supervisors",
+      "kind": "calculation",
+      "numericAnswer": 26,
+      "tolerance": 0,
+      "unit": "USD"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-self-grading-sycophancy-debug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "Your single-agent coding loop ends every edit by prompting itself \"Double-check that your patch satisfies all edge cases and tests pass.\" Logs show it approves 96% of its own broken patches without running `pytest`. Why, and what fixes it?",
+      "context": "The agent has a `run_tests` tool available, and the harness accepts verbal completion without checking test exit codes.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Autoregressive confirmation bias makes a generator model trust its own recent patch trajectory, while missing deterministic harness gates allow verbal claims to bypass verification. Attention over the model's preceding edits biases the next tokens toward `\"Everything is sound\"`, and assistant post-training rewards confident closure rather than calling a slow test runner. Accepting self-attestation ships 96% of broken patches straight to code review. Enforcing a deterministic verification gate (blocking completion until linting and `pytest` return exit code 0) paired with an isolated **Maker-Checker** Evaluator spinning up in a fresh context on only the `git diff` and spec eliminates sycophancy at the cost of extra test runtime and 1–2 checker calls.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/harness-engineering/autonomous-loops-and-supervisors",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-hitl-checkpoint-resume-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "Design a bounded-autonomy approval flow for an enterprise infrastructure agent that proposes Terraform changes, waits up to 24 hours for human sign-off, and guarantees the approved plan matches what executes.",
+      "context": "Cloud state can drift during the 24-hour wait; workers must not hold idle containers or locks overnight.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Persist durable workflow checkpoints and bind human approval to a cryptographic hash of the exact serialized Terraform plan before releasing worker compute. First, the agent generates the plan inside a read-only sandbox, saves the plan binary plus its `SHA-256` digest and structured resource-change summary, and yields cleanly into `AWAITING_APPROVAL`. Second, the approval token records `(trace_id, plan_sha256, approver_id, expiry)`. Third, on resume within 24 hours, a stateless worker verifies the signature, checks `plan_sha256`, confirms zero state drift against live infrastructure, and applies via scoped credentials. Re-running `terraform plan` after approval without hash verification risks executing unreviewed deletions caused by concurrent drift, while hash-bound checkpoints drop idle compute to zero at the cost of requiring re-approval if state drifts.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/agents/agent-architectures",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:ba-mcp-untrusted-tool-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Bounded Autonomy: Limits, Permissions & Sandboxes",
+      "title": "Your agent connects to third-party MCP tool servers to read tickets and update Jira. How do you enforce bounded autonomy against rug-pull tool description updates, oversized tool outputs, and argument injection?",
+      "context": "External MCP servers can mutate metadata over time; tool outputs can reach 100k tokens containing user-submitted HTML.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Treat third-party MCP servers as untrusted dependencies: pin tool schemas by hash, cap and delimit returned payloads, and enforce RBAC and policy checks outside the model before execution. First, compute and pin `SHA-256` digests of approved tool names, descriptions, and JSON Schemas—halting and alerting if a server silently modifies descriptions (\"tool-poisoning rug pull\"). Second, truncate tool responses to strict byte limits, strip invisible formatting or HTML tags, and wrap text in untrusted-data markers. Third, validate Jira project and ticket IDs against the caller's actual RBAC scope before executing mutations. Without schema pinning and RBAC checks, a mutated tool description can trick the agent into copying private tickets into public comments, trading manual approval on server updates for strong supply-chain containment.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-security/owasp-llm-top-10-and-prompt-attacks",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-input-vs-output-checks",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "A healthcare chatbot runs a PII redaction guardrail only on the LLM's output before showing text to the patient. Why is relying solely on an output guardrail insufficient when calling a third-party model API?",
+      "context": "Patients paste names, SSNs, and lab values into chat messages; the LLM runs on an external hosted API.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Running PII redaction only on outputs lets raw patient identifiers cross the external trust boundary on every inbound API request. Input guardrails operate inside your VPC before calling external models—detecting and replacing SSNs, names, or keys with reversible tokens (`<SSN_1>`) or blocking banned payloads—while output guardrails validate generated text for policy compliance, grounding, and leakage before rendering to users. Even if an output filter scrubs an echoed SSN, transmitting the raw prompt externally already violates data-minimization and HIPAA logging boundaries, and models can paraphrase sensitive facts past simple output regexes. Pre-model PII tokenization keeps raw secrets local at the cost of ~10–40 ms added TTFT and occasional over-masking of benign numeric IDs.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/evaluation-and-serving",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Raw PII has already crossed the trust boundary to the external provider (and its telemetry) before output filtering runs, and paraphrases can slip past output checks.",
+          "why": "Masking or tokenizing sensitive fields in an input guardrail inside your VPC keeps raw PII out of third-party requests."
+        },
+        {
+          "text": "Output guardrails increase the LLM's input token bill.",
+          "why": "Output checks run after generation and do not change input token counts."
+        },
+        {
+          "text": "Output guardrails cannot catch any prompt injection, whereas input regexes catch 100% of attacks.",
+          "why": "No regex catches 100% of prompt injections; the primary exposure here is sending raw PII outbound."
+        },
+        {
+          "text": "Input guardrails make model weights forget memorized training data.",
+          "why": "Runtime guardrails filter traffic at inference boundaries and never modify model weights."
+        }
+      ],
+      "correctOption": 0
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-classifier-fp-vs-fn",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "Your input safety guardrail achieves 99% recall on prompt attacks and a 4% false-positive rate on normal support queries. Why is this a severe product bug, and how do you measure and tune it?",
+      "context": "The support bot serves 50,000 customer messages daily, of which roughly 99% are benign questions.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Because benign queries vastly outnumber attacks, a 4% false-positive rate blocks roughly 1,980 legitimate paying customers every day, turning safety tuning into a major availability outage. Guardrail classifiers trade recall against false refusals via threshold calibration, and balanced lab test sets hide how severely the benign base rate multiplies false positives in production. A rigid keyword or over-sensitive jailbreak classifier rejects normal requests like `\"how do I kill a stalled background job?\"` or `\"ignore my previous invoice\"`. Build a dedicated benign-adversarial eval slice (safe queries using trigger words) alongside attack suites, raise the hard-block threshold to keep false refusals under 0.5%, and route medium-risk scores to strict-mode prompts rather than instant blocks—trading tiny recall margin for customer usability.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/evaluation-and-serving",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-fp-volume-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "A financial assistant serves 200,000 requests/day. Real attacks are 0.5% of traffic (1,000 requests) and benign traffic is 99.5% (199,000 requests). Your input guardrail achieves 95% true-positive rate on attacks and a 2% false-positive rate on benign queries. How many benign user requests are wrongly blocked per day?",
+      "context": "Compute the daily blocked benign count directly from the 199,000 benign base.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "199,000 benign requests/day × 0.02 false-positive rate = **3,980 wrongly blocked benign requests per day** (more than 4× the 950 real attacks caught!). Under a 199:1 benign-to-attack base rate, the positive predictive value of a guardrail block is only 950 ÷ (950 + 3,980) ≈ 19.3%, meaning four out of five blocked users are legitimate customers. Calibrating guardrail thresholds on 50/50 balanced test sets misses this base-rate collapse completely. Routing medium-confidence flags through a second-stage verifier or safer degraded prompt cuts customer lockouts dramatically at the cost of added latency on the ~2.5% flagged slice.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/machine-learning/model-evaluation-metrics",
+      "kind": "calculation",
+      "numericAnswer": 3980,
+      "tolerance": 0,
+      "unit": "requests"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-fail-open-vs-closed-debug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "During a traffic spike, your external guardrail classifier starts timing out after 500 ms. A developer sets `fail_open: true` globally on the API gateway. What fails in production, and when is `fail_open` the wrong default?",
+      "context": "The gateway serves both a public marketing FAQ bot and an internal medical-records assistant.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Global `fail_open: true` silently strips all PII and policy enforcement whenever the guardrail service slows down, giving attackers a trivial timeout-based bypass on sensitive routes. Gateways should apply risk-tiered policies: **fail-closed** (returning a safe fallback error or queuing) on regulated, PII-bearing, and tool-executing paths like medical records, while allowing bounded fail-open (backed by fast local regex checks plus async audit logging) only on low-risk public FAQ endpoints. During a traffic surge under global fail-open, raw patient data and unscreened tool calls flow unchecked for the entire outage window. Risk-tiered fail-closed defaults preserve compliance boundaries at the cost of partial service degradation (`503`) during upstream classifier outages.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/software-system-design/rate-limiter",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Fail-open rejects all requests immediately with HTTP 503.",
+          "why": "Rejecting on dependency timeouts is fail-closed; fail-open lets traffic proceed without the check."
+        },
+        {
+          "text": "Fail-open doubles the LLM's output token limit.",
+          "why": "Skipping a timed-out guardrail does not alter generation parameters."
+        },
+        {
+          "text": "Fail-open exposes guardrail model weights in error headers.",
+          "why": "Timeouts bypass evaluation; they never serialize model parameters."
+        },
+        {
+          "text": "Fail-open disables safety and PII enforcement under overload, allowing attackers to force unguarded LLM calls by stalling the guardrail.",
+          "why": "On regulated endpoints like medical records, timeouts turn into an intentional policy-bypass vulnerability."
+        }
+      ],
+      "correctOption": 3
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-streaming-latency-conflict",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "Why do output guardrails conflict with low-latency token streaming, and how do production gateways resolve that tension without buffering the entire response?",
+      "context": "Users expect first tokens under 400 ms; a 500-token response takes 6 seconds to finish while an output filter checks PII and policy.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Waiting for complete responses to run output classifiers inflates TTFT from 300 ms to 6 seconds, while flushing every single token immediately exposes banned text or split PII before checks finish. Production gateways use **sliding micro-window buffering**: hold back small chunks (roughly 20–40 tokens or sentence boundaries, adding ~150–250 ms), execute fast deterministic PII/regex scanners synchronously and rolling-context classifiers per window before flushing to the SSE stream, and immediately terminate and replace the client bubble if a violation fires mid-stream. Flushing tokens raw lets half a credit card number appear on screen for seconds before post-hoc deletion. Micro-window buffering preserves sub-500 ms streaming feel while catching token-boundary leaks at the cost of slightly chunkier UI updates.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/calling-the-llm-api",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-defense-in-depth-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "A system guards against indirect prompt injection using three independent defense layers: input delimiter plus classifier (catches 70% of attacks), tool-argument validator (catches 80% of remaining), and outbound domain allowlist (catches 90% of remaining). What percentage of attacks succeed past all three layers? (One decimal.)",
+      "context": "Assume each layer acts independently on attacks surviving earlier layers.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Survival rates multiply across independent layers: (1 − 0.70) × (1 − 0.80) × (1 − 0.90) = 0.30 × 0.20 × 0.10 = 0.006 = **0.6%** attack pass-through (99.4% blocked). Combining heterogeneous layers across distinct trust boundaries—semantic text classifiers, deterministic schema/value validators, and network allowlists—prevents any single evasion trick from compromising the application. In practice, if two layers rely on the same LLM family or shared regex list, failures correlate strongly so an encoding bypass fools both layers simultaneously. Orthogonal defense in depth drives residual bypass rates below 1% at the cost of ~30–80 ms cumulative gateway latency and maintaining rules at each boundary.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-security/owasp-llm-top-10-and-prompt-attacks",
+      "kind": "calculation",
+      "numericAnswer": 0.6,
+      "tolerance": 0.01,
+      "unit": "%"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-canary-blast-radius-calc",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "A new prompt and guardrail update rolls out as a 5% canary on 80,000 uniform daily requests, checked every 15-minute window before auto-rollback triggers. If a bug causes 12% of canary responses to emit unsafe text, how many unsafe responses occur in one 15-minute window before rollback?",
+      "context": "Assume uniform traffic across 24 hours (96 windows of 15 minutes per day).",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "80,000 requests/day ÷ 96 windows/day = 833.33 requests per 15-minute window; 5% canary share = 41.67 canary requests; 12% defect rate × 41.67 = **5 unsafe responses** per 15-minute window (versus 100 unsafe responses at 100% traffic). Canary rollouts bound blast radius (`traffic_share × window_volume × defect_rate`) while gathering enough events to trigger automated rollback on safety regressions. Sizing a canary too small (0.1%, under 1 event per window) delays anomaly detection for hours, whereas skipping staged rollouts exposes 20× more users immediately. Automated safety canaries limit user harm at the cost of slower deployment velocity and maintaining segmented telemetry pipelines.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-safety/scalable-oversight-and-frontier-safety",
+      "kind": "calculation",
+      "numericAnswer": 5,
+      "tolerance": 0,
+      "unit": "responses"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-unicode-normalization-debug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "Your input guardrail blocks exact banned phrases and regex PII patterns cleanly in unit tests, yet red-teamers bypass it using zero-width spaces, base64 strings, or visually identical Cyrillic letters (`а` for `a`). Why, and what fixes the mismatch?",
+      "context": "The LLM executes the obfuscated instructions easily while the regex guardrail reports zero matches.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Parser mismatch happens when deterministic guardrails scan raw byte strings while LLMs generalize across homoglyphs, invisible codepoints, and base64 encodings. Apply deterministic input sanitization before rules evaluate: Unicode NFKC normalization, stripping zero-width joiners and bidi-override characters, collapsing odd whitespace, and flagging or decoding unexpected base64/hex payloads—paired with semantic classifiers trained on adversarial paraphrases. Inserting one U+200B character inside `\"ignore previous instructions\"` skips literal regex rules while the LLM obeys it without trouble. Aggressive normalization shuts down naive evasion cleanly, at the cost of careful exemptions for legitimate multilingual content or valid developer code payloads containing encodings.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-security/ai-red-teaming",
+      "kind": "choice",
+      "options": [
+        {
+          "text": "Switch from Python `re` to Rust regex for faster matching.",
+          "why": "Regex engine speed does not resolve invisible Unicode characters, homoglyphs, or base64 encoding."
+        },
+        {
+          "text": "Truncate incoming user prompts to 100 characters.",
+          "why": "Short obfuscated attacks still fit inside 100 characters while legitimate queries break."
+        },
+        {
+          "text": "Normalize text (Unicode NFKC, strip zero-width/bidi controls, decode or flag obfuscated encodings) before deterministic rules run, paired with semantic classifiers.",
+          "why": "Because modern tokenizers map obfuscated variants toward the same semantics, guardrails must inspect the normalized representation."
+        },
+        {
+          "text": "Lower the LLM's temperature to 0.",
+          "why": "Temperature adjusts sampling randomness and does not stop the model from following obfuscated prompt instructions."
+        }
+      ],
+      "correctOption": 2
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-policy-when-fired-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "When an output guardrail fires in production, returning a blunt `\"I cannot help with that\"` breaks downstream callers or leaks which rule triggered. Compare the four response policies when a guardrail triggers and when to use each.",
+      "context": "Your gateway serves consumer chat, strict JSON extraction APIs, and internal support agents.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Match the trigger action to caller contract and risk level across four policies: (1) **In-place redaction** (mask detected PII/tokens while keeping safe prose—best for partial leaks in otherwise valid answers); (2) **Constrained regeneration** (retry once with violation feedback or escalate to a stricter model—best for recoverable tone or citation slips); (3) **Neutral fallback message** (return a helpful domain redirect without echoing the exact triggered rule—best for consumer chat); (4) **Structured error payload plus escalation** (emit valid schema `{blocked: true, reason_code}` and log an alert—mandatory for programmatic APIs and compliance triggers). Returning plain refusal prose on a JSON endpoint crashes callers, while verbose rule explanations become probing oracles for attackers. Tiered actions preserve contracts and security at the cost of maintaining fallback paths.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/llms-genai/evaluation-and-serving",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-rag-vs-guardrail-false-refusal-debug",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "After enabling a strict faithfulness/grounding guardrail on a RAG assistant, useful answers drop 22% because the guardrail flags harmless connective reasoning (\"Because your plan renewed in March...\") as unsupported hallucinations. How do you debug and recalibrate this?",
+      "context": "The guardrail runs `all_claims_supported` using a small NLI classifier; user satisfaction fell sharply post-launch.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Slice blocked traces by failure mode to separate true fabrications from cross-chunk synthesis and minor date/math inferences, then adjust NLI scope and enforcement policy. Small NLI models score `\"neutral\"` when an answer combines facts across two separate chunks or derives simple arithmetic (`\"March + 30 days\"`), causing hard blocks when evaluated chunk-by-chunk. Evaluating claims against the concatenated retrieved context, separating verifiable factual claims (amounts, dates, names) from connective prose, and switching uncertain claims from full deletion to inline source citations or soft caution tags recovers the lost 22% utility. Hard-blocking every NLI neutral score destroys helpfulness, while soft-flagging plus citation checks trades minor unverified prose risk for reliable user answers.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/llm-evaluation-and-ragops",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-async-vs-sync-guardrail-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "Design a guardrail pipeline for a high-throughput enterprise assistant with a strict 150 ms guardrail latency budget, where full LLM-as-judge checks take 700 ms synchronously.",
+      "context": "Traffic is 1,000 QPS; 35% of queries are benign FAQs, while 5% trigger sensitive write tools.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Split guardrails into a sub-150 ms synchronous fast-path and conditional/asynchronous deep evaluation reserved for uncertain or high-risk requests. On every request, run parallel checks under 40 ms: text normalization, deterministic regex/allowlist rules, and lightweight quantized encoder classifiers (safety + PII NER). Invoke the 700 ms deep judge synchronously *only* when the fast classifier scores in an ambiguous band or before the 5% of requests executing sensitive write tools; run deep hallucination/compliance judges asynchronously on sampled read-only logs to drive alerts and daily threshold updates. Running a 700 ms judge synchronously on all 1,000 QPS breaches every latency SLO and doubles GPU cost, while tiered gating hits budget on 95% of traffic at the cost of post-hoc detection on subtle read-only misses.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/mlops/production-reliability",
+      "kind": "explanation"
+    },
+    {
+      "id": "llm-outputs-eval-and-safety-questions:gr-multi-turn-escalation-design",
+      "bank": "llm-outputs-eval-and-safety-questions",
+      "area": "LLM Outputs, Evaluation, Autonomy & Guardrails",
+      "section": "Guardrails: Input, Output & Policy Enforcement",
+      "title": "Red-teamers bypass your single-turn input guardrail by spreading a prohibited request across six innocent-looking conversation turns. How do you design stateful guardrails without blowing latency or context limits?",
+      "context": "Conversations reach 30 turns; current filters inspect only the newest user message.",
+      "criteria": [
+        "Answer the question directly and accurately.",
+        "Explain the mechanism or calculation behind your answer.",
+        "Address the assumptions and trade-offs that matter here."
+      ],
+      "answer": "Evaluate a compact rolling conversation risk state alongside recent turns instead of scanning only `messages[-1]` or feeding full 30-turn logs into heavy classifiers on every request. Store per-session state containing a cumulative risk score (with slow decay), count of prior borderline flags, and a concise 150-token rolling intent summary updated asynchronously; on each turn, classify `[intent_summary + last 2-3 turns]` inside ~250 tokens, and inspect accumulated model outputs too since partial earlier compliance weakens later refusals. Scanning only the newest message lets turn 6 (`\"Now adapt those steps for target X\"`) slip past innocently after turns 1–5 built the scaffold. Stateful rolling risk triggers progressive friction (disabling tools before hard blocking), trading minimal session state for multi-turn defense without locking out long benign chats.",
+      "followup": "What assumptions does your answer depend on, and when would you choose a different approach?",
+      "sourceRoute": "/docs/ai-security/ai-red-teaming",
+      "kind": "explanation"
+    },
+    {
       "id": "llm-serving-and-fine-tuning-questions:srv-decode-bound",
       "bank": "llm-serving-and-fine-tuning-questions",
       "area": "LLM Serving and Fine-Tuning",
@@ -6362,6 +7442,13 @@
       "description": "Checkable interview questions on serving and adapting LLMs: KV-cache memory, prefill and decode, batching, quantisation, speculative decoding, LoRA, and when to fine-tune instead of using RAG.",
       "route": "/docs/interview-prep/llm-serving-and-fine-tuning-questions",
       "position": 5.33
+    },
+    {
+      "slug": "llm-outputs-eval-and-safety-questions",
+      "title": "LLM Outputs, Evaluation, Autonomy & Guardrails Interview Questions",
+      "description": "48 interview questions on structured outputs, reference scoring, bounded agent autonomy, and guardrails — 24 checkable drills and 24 debugging and system-design scenarios.",
+      "route": "/docs/interview-prep/llm-outputs-eval-and-safety-questions",
+      "position": 5.34
     },
     {
       "slug": "technology-comparisons",

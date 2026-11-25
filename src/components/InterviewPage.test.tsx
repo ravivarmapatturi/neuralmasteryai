@@ -43,7 +43,7 @@ it('retains original choice grading and exposes all preparation guides', () => {
   fireEvent.click(screen.getByLabelText(/Limit the tree/));
   fireEvent.click(screen.getByRole('button',{name:'Review my answer →'}));
   expect(screen.getByText('Correct choice.')).toBeInTheDocument();
-  expect(screen.getByText('Preparation library · 14 guides')).toBeInTheDocument();
+  expect(screen.getByText('Preparation library · 15 guides')).toBeInTheDocument();
 });
 it('answer-shape starters insert each move and light it up', () => {
   render(<MemoryRouter><InterviewPage /></MemoryRouter>);
@@ -110,4 +110,17 @@ it('exposes the software architecture bank with specific criteria and its teachi
   fireEvent.click(screen.getByRole('button', {name:'Review my answer →'}));
   expect(screen.getByText('Computes six surviving instances after the largest-zone failure.')).toBeInTheDocument();
   expect(screen.getByRole('link',{name:/original study guide/})).toHaveAttribute('href','/docs/software-system-design/foundations');
+});
+
+it('exposes the LLM outputs, evaluation, autonomy, and guardrails bank with numeric checking and criteria', () => {
+  render(<MemoryRouter><InterviewPage /></MemoryRouter>);
+  fireEvent.change(screen.getByLabelText('Topic'), {target:{value:'llm-outputs-eval-and-safety-questions'}});
+  fireEvent.change(screen.getByLabelText('Search interview questions'), {target:{value:'pass@3'}});
+  fireEvent.click(screen.getByRole('button', {name:/pass@3/}));
+  expect(screen.getByText(/finite-sample hypergeometric estimator/i)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText(/Your numerical answer/), {target:{value:'0.533'}});
+  fireEvent.click(screen.getByRole('button',{name:'Review my answer →'}));
+  expect(screen.getByText('Correct calculation.')).toBeInTheDocument();
+  expect(screen.getByText(/Computes 1 minus C\(8, 3\)/)).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:/original study guide/})).toHaveAttribute('href','/docs/mlops/ml-and-llm-testing');
 });
