@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import Navbar from './layout/Navbar';
-import LiveComputation from './home/LiveComputation';
+import PlaygroundShowcase from './home/PlaygroundShowcase';
 import DailyInterviewQuestion from './home/DailyInterviewQuestion';
 import { LiveStatsTicker } from './home/LiveStats';
 import AgentGraphSketch from './notebook/AgentGraphSketch';
@@ -78,7 +78,7 @@ export default function ChooserPage() {
                   background: 'color-mix(in srgb, var(--nb-paper-alt) 60%, transparent)',
                 }}
               >
-                <LiveComputation />
+                <PlaygroundShowcase />
               </div>
             </div>
           </div>
