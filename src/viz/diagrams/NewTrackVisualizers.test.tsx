@@ -11,10 +11,10 @@ describe('New Track Visualizers', () => {
         <ContextBudgetWaterfallVisualizer />
       </ThemeProvider>
     );
-    expect(screen.getByText('Token Budgeting & Allocation Breakdown')).toBeDefined();
+    expect(screen.getByText(/Why pasting everything into a prompt breaks an AI's working memory/i)).toBeDefined();
     const unmanagedBtn = screen.getByRole('button', { name: /2\. Unmanaged Context/i });
     fireEvent.click(unmanagedBtn);
-    expect(screen.getByText(/40 Inlined Tool Schemas/i)).toBeDefined();
+    expect(screen.getByText(/40 pasted tool schemas/i)).toBeDefined();
   });
 
   it('renders AgentTraceWaterfallVisualizer and switches views', () => {
