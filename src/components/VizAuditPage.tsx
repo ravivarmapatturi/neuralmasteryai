@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-const diagramModules = import.meta.glob<{ default: React.ComponentType<any> }>('../viz/diagrams/*.tsx');
-const topVizModules = import.meta.glob<{ default: React.ComponentType<any> }>('../viz/*.tsx');
+const diagramModules = import.meta.glob<{ default: React.ComponentType<any> }>(['../viz/diagrams/*.tsx', '!../viz/diagrams/*.test.tsx']);
+const topVizModules = import.meta.glob<{ default: React.ComponentType<any> }>(['../viz/*.tsx', '!../viz/*.test.tsx']);
 
 export default function VizAuditPage() {
   const [params, setParams] = useSearchParams();
