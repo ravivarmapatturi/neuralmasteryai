@@ -12,8 +12,8 @@ const SLIDES = [
   {
     slug: 'attention-step-through',
     kicker: 'Attention',
-    hook: 'Watch every word look at every other word at once.',
-    Comp: lazyWithRetry(() => import('../../viz/diagrams/RnnVsAttentionComparison')),
+    hook: 'See which words each word pays attention to, and by how much.',
+    Comp: lazyWithRetry(() => import('../../viz/AttentionStepThrough')),
   },
   {
     slug: 'kv-cache-explorer',
@@ -28,15 +28,17 @@ const SLIDES = [
     Comp: lazyWithRetry(() => import('../../viz/diagrams/EmbeddingSimilaritySearchDiagram')),
   },
   {
-    slug: 'decision-boundary-playground',
-    kicker: 'Decision boundary',
-    hook: 'A model bends its boundary as it learns.',
-    focus: 'canvas',
-    Comp: lazyWithRetry(() => import('../../viz/DecisionBoundaryPlayground')),
+    slug: 'gradient-descent-explorer',
+    kicker: 'Gradient descent',
+    hook: 'Watch an optimizer roll downhill to the minimum.',
+    Comp: lazyWithRetry(() => import('../../viz/GradientDescentExplorer')),
   },
 ] as const;
 
 const SLIDE_MS = 3000;
+
+// Start fetching the first slide as soon as the home chunk loads, so the stage is never blank for long.
+if (typeof window !== 'undefined') void import('../../viz/AttentionStepThrough');
 
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -51,49 +53,42 @@ function usePrefersReducedMotion() {
   return reduced;
 }
 
-/** Renders a tool at a fixed design width, then scales it down to the stage. */
-function ScaledSlide({ children, active, focus }: { children: React.ReactNode; active: boolean; focus?: string }) {
+/**
+ * Renders a tool at a fixed design width, then fits the WHOLE tool (width and height) into the stage.
+ * Uses CSS zoom, not transform: scale, so text is re-laid out crisply instead of blurred.
+ */
+function ScaledSlide({ children, active }: { children: React.ReactNode; active: boolean }) {
   const outer = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
-  const [offset, setOffset] = useState(0);
-  // Start the slide at its main visual (the first large svg/canvas), not at its form controls.
-  useEffect(() => {
-    if (!focus || !active) return undefined;
-    let tries = 0;
-    const t = window.setInterval(() => {
-      const box = inner.current;
-      const target = box && Array.from(box.querySelectorAll<Element>(focus)).find((e) => e.getBoundingClientRect().height > 100);
-      if (box && target) {
-        const top = target.getBoundingClientRect().top - box.getBoundingClientRect().top;
-        const s = box.getBoundingClientRect().width / box.offsetWidth || 1;
-        setOffset(Math.max(0, top / s - 24));
-        window.clearInterval(t);
-      } else if (++tries > 20) window.clearInterval(t);
-    }, 150);
-    return () => window.clearInterval(t);
-  }, [focus, active]);
-  const [scale, setScale] = useState(0.6);
-  const [design, setDesign] = useState(980);
+  const zoomRef = useRef(1);
+  const [zoom, setZoom] = useState(1);
+  const [design, setDesign] = useState(760);
   useLayoutEffect(() => {
     const el = outer.current;
-    if (!el) return undefined;
+    const box = inner.current;
+    if (!el || !box) return undefined;
     const host = (el.closest('.nm-pgs-stage') as HTMLElement | null) ?? el;
     const fit = () => {
-      // Measure the always-visible stage (minus padding), not the slide, which is display:none while waiting.
-      const w = host.clientWidth - 19;
-      if (w === 0) return; // hidden slide: keep the last good size, no tiny flash
-      const d = w < 640 ? 620 : 980;
+      const w = host.clientWidth - 24;
+      const h = host.clientHeight - 24;
+      if (w <= 0 || h <= 0 || !active) return; // hidden slide: keep the last good size
+      const d = w < 560 ? 560 : 760;
+      // offsetHeight is the natural (unzoomed) height of the tool.
+      const natural = box.offsetHeight;
+      const z = Math.min(1, w / d, natural > 0 ? h / natural : 1);
+      zoomRef.current = z;
       setDesign(d);
-      setScale(Math.min(1, w / d));
+      setZoom(Math.round(z * 1000) / 1000);
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(host);
+    ro.observe(box);
     return () => ro.disconnect();
-  }, []);
+  }, [active]);
   return (
     <div ref={outer} className="nm-pgs-scale" aria-hidden={!active}>
-      <div ref={inner} style={{ width: design, transform: `scale(${scale}) translateY(${-offset}px)`, transformOrigin: 'top left', transition: 'transform 400ms ease' }}>{children}</div>
+      <div ref={inner} className="nm-pgs-zoom" style={{ width: design, zoom }}>{children}</div>
     </div>
   );
 }
@@ -172,8 +167,8 @@ export default function PlaygroundShowcase() {
               aria-roledescription="slide"
               aria-label={`${i + 1} of ${SLIDES.length}: ${s.kicker}`}
             >
-              <ScaledSlide active={active} focus={'focus' in s ? s.focus : undefined}>
-                <Suspense fallback={<div className="nm-pgs-loading" role="status">Loading {s.kicker}…</div>}>
+              <ScaledSlide active={active}>
+                <Suspense fallback={<div className="nm-pgs-loading" role="status"><span className="nm-pgs-sketch" aria-hidden="true"><i /><i /><i /></span>Drawing the {s.kicker.toLowerCase()} playground…</div>}>
                   <Comp />
                 </Suspense>
               </ScaledSlide>

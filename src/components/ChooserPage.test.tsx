@@ -29,16 +29,16 @@ describe('ChooserPage', () => {
     renderChooser()
     expect(screen.getByRole('heading', { name: /Learn AI from\s*First Principles/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /Understand it\. See it work\. Make the decision\./i })).toBeInTheDocument()
-    const learnLink = screen.getByRole('link', { name: /Explore the curriculum/i })
-    const practiceLink = screen.getByRole('link', { name: /Explore Labs/i })
+    const learnLink = screen.getAllByRole('link', { name: /Start learning/i })[0]
+    const playgroundLink = screen.getByRole('link', { name: /Open the Playground/i })
     expect(learnLink).toHaveAttribute('href', '/learn')
-    expect(practiceLink).toHaveAttribute('href', '/labs')
+    expect(playgroundLink).toHaveAttribute('href', '/playground')
   })
 
   it('states exact page and problem counts, with no inflating "+"', () => {
     renderChooser()
     const counts = screen.getByRole('list', { name: 'What is on the site' })
-    for (const label of ['Learn pages', 'practice problems', 'interview questions', 'study plans']) {
+    for (const label of ['Learn pages', 'live playgrounds', 'practice problems', 'interview questions']) {
       expect(counts.textContent).toMatch(new RegExp(`\\d+ ?${label}`))
     }
     expect(screen.getByRole('link', { name: /interview questions/ })).toHaveAttribute('href', '/interview/questions')

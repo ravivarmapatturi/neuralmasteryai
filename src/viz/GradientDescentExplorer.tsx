@@ -1,189 +1,768 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { scaleLinear } from 'd3';
-import { useVizTokens, SPACING } from '../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, VisualizationCanvas, Slider, PillSelect, VizButton, ControlRow } from './primitives';
-
-// The same elongated ("ravine") bowl used in the site's static/animated
-// optimizer-race chart: f(x, y) = 0.1x^2 + 2y^2 -- steep in one direction,
-// shallow in the other, which is exactly what makes plain SGD struggle and
-// motivates momentum/Adam.
-const A = 0.1;
-const B = 2.0;
-const f = (x: number, y: number) => A * x * x + B * y * y;
-const grad = (x: number, y: number): [number, number] => [2 * A * x, 2 * B * y];
-
-const X_DOMAIN: [number, number] = [-5, 5];
-const Y_DOMAIN: [number, number] = [-3, 3];
-
-type Optimizer = 'sgd' | 'momentum' | 'adam';
+import { FONT_FAMILY, RADIUS, useVizTokens } from '../theme/vizTokens';
+import { SketchArrow } from '../components/notebook/RoughShape';
+import {
+  PillSelect,
+  Slider,
+  VisualizationContainer,
+  VisualizationHeader,
+  VizButton,
+  usePrefersReducedMotion,
+  useVizVisible,
+} from './primitives';
+import {
+  buildStepRecord,
+  computeContourSegments,
+  createInitialRecord,
+  DEFAULT_LR,
+  explainOptimizationStep,
+  makeStepper,
+  OPTIMIZER_META,
+  runTrajectory,
+  SURFACES,
+  X_DOMAIN,
+  Y_DOMAIN,
+  type Optimizer,
+  type OptState,
+  type OptStepRecord,
+  type Point2D,
+  type SurfaceId,
+} from './lib/gradientDescent';
 
 const OPTIMIZERS: { value: Optimizer; label: string }[] = [
   { value: 'sgd', label: 'SGD' },
-  { value: 'momentum', label: 'SGD + Momentum' },
+  { value: 'momentum', label: 'Momentum' },
+  { value: 'rmsprop', label: 'RMSProp' },
   { value: 'adam', label: 'Adam' },
 ];
 
-interface OptState {
-  x: number;
-  y: number;
-  vx?: number;
-  vy?: number;
-  mx?: number;
-  my?: number;
-  t?: number;
-}
+const SURFACE_OPTIONS: { value: SurfaceId; label: string }[] = [
+  { value: 'ravine', label: 'Ravine' },
+  { value: 'bowl', label: 'Round bowl' },
+  { value: 'saddle', label: 'Saddle' },
+];
 
-function makeStepper(optimizer: Optimizer, lr: number): (s: OptState) => OptState {
-  // Returns a function (state) -> nextState, where state carries whatever
-  // per-optimizer accumulators (velocity, moment estimates) it needs,
-  // mirroring the exact update rules from optimizers.md / the static chart.
-  if (optimizer === 'sgd') {
-    return (s) => {
-      const [gx, gy] = grad(s.x, s.y);
-      return { ...s, x: s.x - lr * gx, y: s.y - lr * gy };
-    };
-  }
-  if (optimizer === 'momentum') {
-    const beta = 0.85;
-    return (s) => {
-      const [gx, gy] = grad(s.x, s.y);
-      const vx = beta * (s.vx ?? 0) - lr * gx;
-      const vy = beta * (s.vy ?? 0) - lr * gy;
-      return { ...s, x: s.x + vx, y: s.y + vy, vx, vy };
-    };
-  }
-  // adam
-  const b1 = 0.9;
-  const b2 = 0.999;
-  const eps = 1e-8;
-  return (s) => {
-    const [gx, gy] = grad(s.x, s.y);
-    const t = (s.t ?? 0) + 1;
-    const mx = b1 * (s.mx ?? 0) + (1 - b1) * gx;
-    const my = b1 * (s.my ?? 0) + (1 - b1) * gy;
-    const vx = b2 * (s.vx ?? 0) + (1 - b2) * gx * gx;
-    const vy = b2 * (s.vy ?? 0) + (1 - b2) * gy * gy;
-    const mxHat = mx / (1 - b1 ** t);
-    const myHat = my / (1 - b1 ** t);
-    const vxHat = vx / (1 - b2 ** t);
-    const vyHat = vy / (1 - b2 ** t);
-    return {
-      ...s,
-      x: s.x - (lr * mxHat) / (Math.sqrt(vxHat) + eps),
-      y: s.y - (lr * myHat) / (Math.sqrt(vyHat) + eps),
-      mx,
-      my,
-      vx,
-      vy,
-      t,
-    };
-  };
-}
+const PREDICT_OPTIONS = [
+  'Bounces across the steep w₂ wall',
+  'Glides straight to (0, 0) in 2 steps',
+  'Stalls immediately at start',
+];
 
-const DEFAULT_LR: Record<Optimizer, number> = { sgd: 0.15, momentum: 0.1, adam: 0.4 };
+const MAX_AUTO_STEPS = 55;
 
 export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as Optimizer } = {}) {
   const t = useVizTokens();
+  const reducedMotion = usePrefersReducedMotion();
+  const visible = useVizVisible();
+
+  const [surface, setSurface] = useState<SurfaceId>('ravine');
   const [optimizer, setOptimizer] = useState<Optimizer>(defaultOptimizer);
-  const [lr, setLr] = useState(DEFAULT_LR[defaultOptimizer]);
-  const [start, setStart] = useState({ x: -4, y: 2 });
-  const [path, setPath] = useState<{ x: number; y: number }[]>([{ x: -4, y: 2 }]);
-  const [playing, setPlaying] = useState(false);
-  const stateRef = useRef<OptState>({ x: -4, y: 2 });
+  const [lr, setLr] = useState<number>(DEFAULT_LR[defaultOptimizer]);
+  const [start, setStart] = useState<Point2D>(SURFACES.ravine.defaultStart);
+  const [compareAll, setCompareAll] = useState(true);
+  const [playing, setPlaying] = useState(!reducedMotion);
+  const [autoLoop, setAutoLoop] = useState(!reducedMotion);
+  const [prediction, setPrediction] = useState<number | null>(null);
 
-  const stepper = useMemo(() => makeStepper(optimizer, lr), [optimizer, lr]);
+  const [records, setRecords] = useState<OptStepRecord[]>(() =>
+    reducedMotion
+      ? runTrajectory({ optimizer: defaultOptimizer, lr: DEFAULT_LR[defaultOptimizer], start: SURFACES.ravine.defaultStart, surface: 'ravine', steps: 28 })
+      : [createInitialRecord('ravine', SURFACES.ravine.defaultStart)],
+  );
+  const stateRef = useRef<OptState>(
+    reducedMotion
+      ? { x: SURFACES.ravine.defaultStart.x, y: SURFACES.ravine.defaultStart.y }
+      : { x: SURFACES.ravine.defaultStart.x, y: SURFACES.ravine.defaultStart.y },
+  );
 
-  const reset = (newStart = start) => {
-    setPlaying(false);
+  const svgHostRef = useRef<HTMLDivElement>(null);
+  const [hostWidth, setHostWidth] = useState(700);
+
+  useEffect(() => {
+    const el = svgHostRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 700;
+      if (w > 0) setHostWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const stepper = useMemo(() => makeStepper(optimizer, lr, surface), [optimizer, lr, surface]);
+
+  const restartFrom = (newStart: Point2D, newSurface = surface, keepPlaying = false) => {
     stateRef.current = { x: newStart.x, y: newStart.y };
-    setPath([{ x: newStart.x, y: newStart.y }]);
+    setRecords([createInitialRecord(newSurface, newStart)]);
+    setPlaying(keepPlaying);
   };
 
-  const step = () => {
-    const next = stepper(stateRef.current);
-    stateRef.current = next;
-    setPath((p) => (p.length > 400 ? p : [...p, { x: next.x, y: next.y }]));
+  const stepOnce = () => {
+    setRecords((prev) => {
+      const last = prev[prev.length - 1];
+      if (!last || last.diverged || prev.length > 250) return prev;
+      const nextState = stepper(stateRef.current);
+      stateRef.current = nextState;
+      return [...prev, buildStepRecord(nextState, last, surface)];
+    });
   };
 
-  useEffect(() => {
-    if (!playing) return undefined;
-    const id = setInterval(step, 60);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, stepper]);
+  // Live animation loop: runs automatically on mount, pauses off screen, and loops
+  // gracefully in showcase mode until the learner pauses or clicks manually.
+  const current = records[records.length - 1];
+  const prevRec = records.length > 1 ? records[records.length - 2] : undefined;
+  const finishedRun = current.converged || current.diverged || current.step >= MAX_AUTO_STEPS;
 
   useEffect(() => {
-    reset(start);
+    if (!reducedMotion) return;
+    setPlaying(false);
+    setAutoLoop(false);
+    const traj = runTrajectory({ optimizer, lr, start, surface, steps: 28 });
+    setRecords(traj);
+    const last = traj[traj.length - 1];
+    stateRef.current = { x: last.x, y: last.y };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [optimizer]);
+  }, [reducedMotion]);
 
-  const last = path[path.length - 1];
-  const loss = f(last.x, last.y);
-  const converged = loss < 0.01;
+  useEffect(() => {
+    if (!playing || !visible || reducedMotion) return undefined;
+    if (finishedRun) {
+      if (!autoLoop) {
+        setPlaying(false);
+        return undefined;
+      }
+      const restartTimer = window.setTimeout(() => {
+        stateRef.current = { x: start.x, y: start.y };
+        setRecords([createInitialRecord(surface, start)]);
+      }, 1400);
+      return () => window.clearTimeout(restartTimer);
+    }
+    const id = window.setInterval(stepOnce, 110);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, visible, reducedMotion, finishedRun, autoLoop, stepper, start, surface]);
+
+  // Synchronized comparison trajectories for SGD and Momentum/Adam from the exact same start
+  const racePaths = useMemo(() => {
+    if (!compareAll) return [];
+    const targetSteps = Math.max(12, current.step);
+    const competitors: { id: Optimizer; color: string; label: string }[] = [
+      { id: 'sgd', color: t.accentDanger, label: 'SGD' },
+      { id: 'momentum', color: t.accentWarn, label: 'Mom' },
+      { id: 'adam', color: t.accentSecondary, label: 'Adam' },
+    ];
+    return competitors
+      .filter((c) => c.id !== optimizer)
+      .map((c) => ({
+        ...c,
+        records: runTrajectory({ optimizer: c.id, lr, start, surface, steps: targetSteps }),
+      }));
+  }, [compareAll, current.step, optimizer, lr, start, surface, t.accentDanger, t.accentWarn, t.accentSecondary]);
+
+  const saddleContours = useMemo(() => {
+    if (surface !== 'saddle') return [];
+    return SURFACES.saddle.levels.map((level) => ({
+      level,
+      segs: computeContourSegments('saddle', level),
+    }));
+  }, [surface]);
+
+  const surfDef = SURFACES[surface];
+  const caption = explainOptimizationStep(current, prevRec, optimizer, lr, surface);
+  const statusLabel = current.diverged
+    ? 'Diverged'
+    : current.converged
+      ? 'Converged'
+      : current.oscillating
+        ? 'Oscillating'
+        : 'Descending';
+  const statusColor = current.diverged
+    ? t.accentDanger
+    : current.converged
+      ? t.accentPrimary
+      : current.oscillating
+        ? t.accentWarn
+        : t.accentSecondary;
+
+  const isCompactPhone = hostWidth < 540;
+
+  // Contour plot renderer inside SVG
+  const renderContourPanel = (panelW: number, panelH: number) => {
+    const padL = 46;
+    const padR = 12;
+    const padT = 22;
+    const padB = 30;
+    const xScale = scaleLinear().domain(X_DOMAIN).range([padL, panelW - padR]);
+    const yScale = scaleLinear().domain(Y_DOMAIN).range([panelH - padB, padT]);
+
+    const handlePlotClick = (e: React.MouseEvent<SVGSVGElement | SVGGElement>) => {
+      const svg = e.currentTarget.ownerSVGElement ?? (e.currentTarget as SVGSVGElement);
+      const rect = svg.getBoundingClientRect();
+      const viewBoxW = isCompactPhone ? 340 : 700;
+      const viewBoxH = isCompactPhone ? 225 : 232;
+      const vx = ((e.clientX - rect.left) / rect.width) * viewBoxW;
+      const vy = ((e.clientY - rect.top) / rect.height) * viewBoxH;
+      if (vx < padL || vx > panelW - padR || vy < padT || vy > panelH - padB) return;
+      const nx = Number(Math.max(-4.8, Math.min(4.8, xScale.invert(vx))).toFixed(2));
+      const ny = Number(Math.max(-2.8, Math.min(2.8, yScale.invert(vy))).toFixed(2));
+      const nextStart = { x: nx, y: ny };
+      setAutoLoop(false);
+      setStart(nextStart);
+      restartFrom(nextStart, surface, true);
+    };
+
+    const clampPx = (x: number, y: number): [number, number] => [
+      Math.max(padL, Math.min(panelW - padR, xScale(x))),
+      Math.max(padT, Math.min(panelH - padB, yScale(y))),
+    ];
+
+    const mainPoints = records.map((r) => clampPx(r.x, r.y).join(',')).join(' ');
+    const [curPx, curPy] = clampPx(current.x, current.y);
+    const gScale = 0.25;
+    const negGradTip = clampPx(
+      current.x - Math.max(-1.8, Math.min(1.8, current.gx * gScale)),
+      current.y - Math.max(-1.2, Math.min(1.2, current.gy * gScale)),
+    );
+
+    return (
+      <g onClick={handlePlotClick} style={{ cursor: 'crosshair' }}>
+        <rect x={padL} y={padT} width={panelW - padL - padR} height={panelH - padT - padB} fill={t.background} rx={4} />
+
+        {/* Axes */}
+        <line x1={padL} y1={panelH - padB} x2={panelW - padR} y2={panelH - padB} stroke={t.border} strokeWidth={1.5} />
+        <line x1={padL} y1={padT} x2={padL} y2={panelH - padB} stroke={t.border} strokeWidth={1.5} />
+
+        {[-4, -2, 0, 2, 4].map((tick) => (
+          <g key={`xt-${tick}`}>
+            <line x1={xScale(tick)} y1={panelH - padB} x2={xScale(tick)} y2={panelH - padB + 4} stroke={t.border} />
+            <text x={xScale(tick)} y={panelH - padB + 16} textAnchor="middle" fontSize={13} fontFamily={FONT_FAMILY} fill={t.textMuted}>
+              {tick}
+            </text>
+          </g>
+        ))}
+        {[-2, 0, 2].map((tick) => (
+          <g key={`yt-${tick}`}>
+            <line x1={padL - 4} y1={yScale(tick)} x2={padL} y2={yScale(tick)} stroke={t.border} />
+            <text x={padL - 8} y={yScale(tick) + 4} textAnchor="end" fontSize={13} fontFamily={FONT_FAMILY} fill={t.textMuted}>
+              {tick}
+            </text>
+          </g>
+        ))}
+        <text x={(padL + panelW - padR) / 2} y={panelH - 2} textAnchor="middle" fontSize={13} fontWeight={600} fontFamily={FONT_FAMILY} fill={t.textSecondary}>
+          Weight w₁ (click plot to move start)
+        </text>
+        <text x={14} y={padT + 8} textAnchor="middle" fontSize={13} fontWeight={600} fontFamily={FONT_FAMILY} fill={t.textSecondary}>
+          w₂
+        </text>
+
+        {/* Contours */}
+        {surfDef.ellipseRadii
+          ? surfDef.levels.map((level) => {
+              const [rxDom, ryDom] = surfDef.ellipseRadii!(level);
+              const rx = Math.abs(xScale(rxDom) - xScale(0));
+              const ry = Math.abs(yScale(0) - yScale(ryDom));
+              return (
+                <ellipse
+                  key={level}
+                  cx={xScale(0)}
+                  cy={yScale(0)}
+                  rx={rx}
+                  ry={ry}
+                  fill="none"
+                  stroke={t.border}
+                  strokeWidth={1.1}
+                  opacity={0.7}
+                />
+              );
+            })
+          : saddleContours.map((group) =>
+              group.segs.map(([p1, p2], idx) => (
+                <line
+                  key={`${group.level}-${idx}`}
+                  x1={xScale(p1[0])}
+                  y1={yScale(p1[1])}
+                  x2={xScale(p2[0])}
+                  y2={yScale(p2[1])}
+                  stroke={t.border}
+                  strokeWidth={1.1}
+                  opacity={0.75}
+                />
+              )),
+            )}
+
+        {/* Minima & saddle markers */}
+        {surfDef.minima.map((m, i) => (
+          <g key={`min-${i}`}>
+            <circle cx={xScale(m.x)} cy={yScale(m.y)} r={5} fill="none" stroke={t.accentPrimary} strokeWidth={2} />
+            <text x={xScale(m.x) + 8} y={yScale(m.y) + 4} fontSize={13} fontWeight={700} fontFamily={FONT_FAMILY} fill={t.accentPrimary}>
+              Min
+            </text>
+          </g>
+        ))}
+        {surfDef.saddle && (
+          <text x={xScale(surfDef.saddle.x) + 6} y={yScale(surfDef.saddle.y) - 6} fontSize={13} fontWeight={600} fontFamily={FONT_FAMILY} fill={t.accentWarn}>
+            Saddle
+          </text>
+        )}
+
+        {/* Comparison trajectories */}
+        {racePaths.map((race) => (
+          <g key={race.id} opacity={0.78}>
+            <polyline
+              points={race.records.map((r) => clampPx(r.x, r.y).join(',')).join(' ')}
+              fill="none"
+              stroke={race.color}
+              strokeWidth={1.7}
+              strokeDasharray="4 3"
+            />
+            {race.records.length > 0 && (
+              <circle
+                cx={clampPx(race.records[race.records.length - 1].x, race.records[race.records.length - 1].y)[0]}
+                cy={clampPx(race.records[race.records.length - 1].x, race.records[race.records.length - 1].y)[1]}
+                r={4}
+                fill={race.color}
+              />
+            )}
+          </g>
+        ))}
+
+        {/* Active optimizer trajectory */}
+        <rect x={xScale(start.x) - 4} y={yScale(start.y) - 4} width={8} height={8} fill={t.textSecondary} />
+        <text x={xScale(start.x)} y={yScale(start.y) - 8} textAnchor="middle" fontSize={13} fontFamily={FONT_FAMILY} fill={t.textSecondary}>
+          Start
+        </text>
+        {records.length > 1 && (
+          <polyline points={mainPoints} fill="none" stroke={t.accentPrimary} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+        )}
+
+        {/* Negative gradient vector (-∇L) */}
+        {!current.converged && !current.diverged && Math.hypot(negGradTip[0] - curPx, negGradTip[1] - curPy) > 6 && (
+          <SketchArrow
+            points={[
+              [curPx, curPy],
+              negGradTip,
+            ]}
+            color={t.accentDanger}
+            strokeWidth={1.8}
+            roughness={0.8}
+            id="gd-neg-grad"
+          />
+        )}
+
+        <circle cx={curPx} cy={curPy} r={6.5} fill={statusColor} stroke={t.background} strokeWidth={1.5} />
+
+        {/* Legend top row */}
+        <text x={padL} y={14} fontSize={13} fontWeight={700} fontFamily={FONT_FAMILY} fill={t.textPrimary}>
+          {surfDef.formulaLabel}
+        </text>
+        <text x={panelW - padR} y={14} textAnchor="end" fontSize={13} fontFamily={FONT_FAMILY} fill={t.accentDanger}>
+          Arrow = −∇L slope
+        </text>
+      </g>
+    );
+  };
+
+  // Loss curve + live update numbers panel inside SVG
+  const renderLossPanel = (offsetX: number, panelW: number, panelH: number) => {
+    const plotX0 = offsetX + 46;
+    const plotX1 = offsetX + panelW - 10;
+    const plotY0 = 96;
+    const plotY1 = panelH - 30;
+    const maxStep = Math.max(15, current.step, MAX_AUTO_STEPS * (playing ? 0.5 : 0));
+    const maxLoss = Math.max(1, records[0]?.loss ?? 10, ...records.map((r) => (Number.isFinite(r.loss) ? Math.min(30, r.loss) : 30)));
+    const sx = scaleLinear().domain([0, maxStep]).range([plotX0, plotX1]);
+    const sy = scaleLinear().domain([0, maxLoss]).range([plotY1, plotY0]);
+
+    const mainCurve = records
+      .filter((r) => Number.isFinite(r.loss))
+      .map((r) => `${sx(Math.min(maxStep, r.step))},${sy(Math.min(maxLoss, r.loss))}`)
+      .join(' ');
+
+    return (
+      <g>
+        {/* Live computed numbers */}
+        <text x={offsetX + 8} y={16} fontSize={13.5} fontWeight={700} fontFamily={FONT_FAMILY} fill={t.textPrimary}>
+          Live numbers (step {current.step}):
+        </text>
+        <text x={offsetX + 8} y={36} fontSize={13} fontFamily="monospace" fill={t.textPrimary}>
+          w = ({current.x.toFixed(2)}, {current.y.toFixed(2)})
+        </text>
+        <text x={offsetX + 8} y={54} fontSize={13} fontFamily="monospace" fill={t.accentDanger}>
+          ∇L = ({current.gx.toFixed(2)}, {current.gy.toFixed(2)})
+        </text>
+        <text x={offsetX + 8} y={72} fontSize={13} fontFamily="monospace" fontWeight={700} fill={t.accentPrimary}>
+          Loss L = {current.loss.toFixed(4)}
+        </text>
+
+        {/* Loss curve chart */}
+        <line x1={plotX0} y1={plotY0} x2={plotX0} y2={plotY1} stroke={t.border} strokeWidth={1.3} />
+        <line x1={plotX0} y1={plotY1} x2={plotX1} y2={plotY1} stroke={t.border} strokeWidth={1.3} />
+        <text x={plotX0 - 6} y={plotY0 + 8} textAnchor="end" fontSize={13} fontFamily={FONT_FAMILY} fill={t.textMuted}>
+          {maxLoss.toFixed(0)}
+        </text>
+        <text x={plotX0 - 6} y={plotY1 + 4} textAnchor="end" fontSize={13} fontFamily={FONT_FAMILY} fill={t.textMuted}>
+          0
+        </text>
+        <text x={(plotX0 + plotX1) / 2} y={panelH - 6} textAnchor="middle" fontSize={13} fontWeight={600} fontFamily={FONT_FAMILY} fill={t.textSecondary}>
+          Loss vs Step (0 → {Math.round(maxStep)})
+        </text>
+
+        {racePaths.map((race) => (
+          <polyline
+            key={`loss-${race.id}`}
+            points={race.records
+              .filter((r) => Number.isFinite(r.loss))
+              .map((r) => `${sx(Math.min(maxStep, r.step))},${sy(Math.min(maxLoss, r.loss))}`)
+              .join(' ')}
+            fill="none"
+            stroke={race.color}
+            strokeWidth={1.5}
+            strokeDasharray="4 3"
+            opacity={0.85}
+          />
+        ))}
+        {records.length > 1 && (
+          <polyline points={mainCurve} fill="none" stroke={t.accentPrimary} strokeWidth={2.4} strokeLinecap="round" />
+        )}
+        <circle cx={sx(Math.min(maxStep, current.step))} cy={sy(Math.min(maxLoss, current.loss))} r={4.5} fill={statusColor} />
+
+        {/* Colour legend above the loss plot so names never collide */}
+        {compareAll && (
+          <g transform={`translate(${plotX0}, ${plotY0 - 6})`}>
+            <text x={0} y={0} fontSize={13} fontWeight={700} fontFamily={FONT_FAMILY} fill={t.accentPrimary}>
+              ● {OPTIMIZER_META[optimizer].shortLabel}
+            </text>
+            {racePaths.map((r, idx) => (
+              <text key={r.id} x={56 + idx * 58} y={0} fontSize={13} fontFamily={FONT_FAMILY} fill={r.color}>
+                -- {OPTIMIZER_META[r.id].shortLabel}
+              </text>
+            ))}
+          </g>
+        )}
+      </g>
+    );
+  };
 
   return (
-    <VisualizationContainer footer="Click anywhere on the bowl to set a starting point, pick an optimizer, and watch it descend -- the exact update rules from Optimizers, running live.">
-      <VisualizationHeader eyebrow="Interactive" title="Gradient Descent Explorer" />
-      <ControlRow>
-        <PillSelect<Optimizer> label="Optimizer" value={optimizer} onChange={setOptimizer} options={OPTIMIZERS} />
-        <div style={{ minWidth: 200 }}>
-          <Slider label="Learning rate" value={lr} onChange={setLr} min={0.01} max={optimizer === 'adam' ? 1.0 : 0.3} step={0.01} format={(v) => v.toFixed(2)} />
+    <VisualizationContainer
+      title="Gradient Descent Optimizer Explorer"
+      footer="Exact SGD, Momentum, RMSProp, and Adam update rules running live on analytical loss surfaces. Click the plot or type w₁, w₂ to move the starting point."
+    >
+      {/* Header + transport on one compact row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+        <div style={{ marginBottom: -14 }}>
+          <VisualizationHeader title="Gradient Descent Explorer" />
         </div>
-        <VizButton onClick={() => setPlaying((p) => !p)}>{playing ? 'Pause' : 'Play'}</VizButton>
-        <VizButton variant="secondary" onClick={step}>
-          Step
-        </VizButton>
-        <VizButton variant="secondary" onClick={() => reset(start)}>
-          Reset
-        </VizButton>
-      </ControlRow>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <VizButton
+            onClick={() => {
+              if (!playing && finishedRun) {
+                restartFrom(start, surface, true);
+                return;
+              }
+              setAutoLoop(false);
+              setPlaying((p) => !p);
+            }}
+          >
+            {playing ? 'Pause' : 'Play'}
+          </VizButton>
+          <VizButton
+            variant="secondary"
+            onClick={() => {
+              setAutoLoop(false);
+              setPlaying(false);
+              stepOnce();
+            }}
+          >
+            Step
+          </VizButton>
+          <VizButton
+            variant="secondary"
+            onClick={() => {
+              setAutoLoop(false);
+              restartFrom(start, surface, false);
+            }}
+          >
+            Reset
+          </VizButton>
+        </div>
+      </div>
 
-      <VisualizationCanvas aspect={9 / 6} minHeight={320} maxHeight={420}>
-        {({ width, height }) => {
-          const margin = 24;
-          const xScale = scaleLinear().domain(X_DOMAIN).range([margin, width - margin]);
-          const yScale = scaleLinear().domain(Y_DOMAIN).range([height - margin, margin]);
+      {/* Controls row 1: Optimizer + Surface + Compare toggle */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
+        <div style={{ marginBottom: -8 }}>
+          <PillSelect<Optimizer>
+            value={optimizer}
+            onChange={(nextOpt) => {
+              const val = typeof nextOpt === 'function' ? nextOpt(optimizer) : nextOpt;
+              setAutoLoop(false);
+              setOptimizer(val);
+              setLr(DEFAULT_LR[val]);
+              restartFrom(start, surface, true);
+            }}
+            options={OPTIMIZERS}
+          />
+        </div>
+        <div style={{ marginBottom: -8 }}>
+          <PillSelect<SurfaceId>
+            value={surface}
+            onChange={(nextSurf) => {
+              const val = typeof nextSurf === 'function' ? nextSurf(surface) : nextSurf;
+              const s0 = SURFACES[val].defaultStart;
+              setAutoLoop(false);
+              setSurface(val);
+              setStart(s0);
+              restartFrom(s0, val, true);
+            }}
+            options={SURFACE_OPTIONS}
+          />
+        </div>
+        <button
+          type="button"
+          aria-pressed={compareAll}
+          onClick={() => setCompareAll((c) => !c)}
+          style={{
+            padding: '6px 10px',
+            borderRadius: RADIUS.sm,
+            border: `1px solid ${compareAll ? t.accentSecondary : t.border}`,
+            background: compareAll ? t.surfaceAlt : 'transparent',
+            color: compareAll ? t.accentSecondary : t.textPrimary,
+            fontFamily: FONT_FAMILY,
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          Race all: {compareAll ? 'ON' : 'OFF'}
+        </button>
+      </div>
 
-          const levels = [0.5, 1.5, 3, 5.5, 9, 14, 20];
+      {/* Controls row 2: Learning rate slider + Free numeric Start (w1, w2) inputs */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ flex: '1 1 180px', minWidth: 160 }}>
+          <Slider
+            label="Learning rate η"
+            value={lr}
+            onChange={(v) => {
+              setAutoLoop(false);
+              setLr(v);
+              restartFrom(start, surface, true);
+            }}
+            min={0.02}
+            max={0.8}
+            step={0.01}
+            format={(v) => v.toFixed(2)}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label htmlFor="gd-start-x" style={{ fontSize: 14, color: t.textSecondary }}>
+            Start w₁:
+            <input
+              id="gd-start-x"
+              type="number"
+              step={0.25}
+              min={-4.8}
+              max={4.8}
+              value={start.x}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                if (!Number.isFinite(val)) return;
+                const clamped = Math.max(-4.8, Math.min(4.8, val));
+                const next = { ...start, x: clamped };
+                setAutoLoop(false);
+                setStart(next);
+                restartFrom(next, surface, false);
+              }}
+              style={{
+                width: 66,
+                marginLeft: 6,
+                padding: '4px 6px',
+                borderRadius: RADIUS.sm,
+                border: `1px solid ${t.border}`,
+                background: t.background,
+                color: t.textPrimary,
+                fontFamily: 'monospace',
+                fontSize: 14,
+              }}
+            />
+          </label>
+          <label htmlFor="gd-start-y" style={{ fontSize: 14, color: t.textSecondary }}>
+            w₂:
+            <input
+              id="gd-start-y"
+              type="number"
+              step={0.25}
+              min={-2.8}
+              max={2.8}
+              value={start.y}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                if (!Number.isFinite(val)) return;
+                const clamped = Math.max(-2.8, Math.min(2.8, val));
+                const next = { ...start, y: clamped };
+                setAutoLoop(false);
+                setStart(next);
+                restartFrom(next, surface, false);
+              }}
+              style={{
+                width: 66,
+                marginLeft: 6,
+                padding: '4px 6px',
+                borderRadius: RADIUS.sm,
+                border: `1px solid ${t.border}`,
+                background: t.background,
+                color: t.textPrimary,
+                fontFamily: 'monospace',
+                fontSize: 14,
+              }}
+            />
+          </label>
+        </div>
+        <div style={{ fontSize: 14, color: t.textSecondary, fontVariantNumeric: 'tabular-nums' }} aria-live="polite">
+          Step <strong style={{ color: t.textPrimary }}>{current.step}</strong> · Loss{' '}
+          <strong style={{ color: t.textPrimary }}>{current.loss.toFixed(4)}</strong> ·{' '}
+          <strong style={{ color: statusColor }}>{statusLabel}</strong>
+        </div>
+      </div>
 
-          const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const px = e.clientX - rect.left;
-            const py = e.clientY - rect.top;
-            const nx = xScale.invert(px);
-            const ny = yScale.invert(py);
-            const newStart = { x: nx, y: ny };
-            setStart(newStart);
-            reset(newStart);
-          };
-
-          const pathPoints = path.map((p) => `${xScale(p.x)},${yScale(p.y)}`).join(' ');
-
-          return (
-            <svg width={width} height={height} onClick={handleClick} style={{ cursor: 'crosshair', display: 'block' }}>
-              <rect x={0} y={0} width={width} height={height} fill={t.background} />
-              {levels.map((c) => {
-                const rx = xScale(Math.sqrt(c / A)) - xScale(0);
-                const ry = yScale(0) - yScale(Math.sqrt(c / B));
-                return <ellipse key={c} cx={xScale(0)} cy={yScale(0)} rx={rx} ry={ry} fill="none" stroke={t.border} strokeWidth={1} opacity={0.9} />;
-              })}
-              {/* minimum marker */}
-              <text x={xScale(0)} y={yScale(0) + 4} textAnchor="middle" fontSize={14} fill={t.textPrimary}>
-               
-              </text>
-              {/* start marker */}
-              <rect x={xScale(start.x) - 4} y={yScale(start.y) - 4} width={8} height={8} fill={t.textSecondary} />
-              {path.length > 1 && <polyline points={pathPoints} fill="none" stroke={t.accentPrimary} strokeWidth={2} strokeLinecap="round" />}
-              <circle cx={xScale(last.x)} cy={yScale(last.y)} r={6} fill={converged ? t.accentPrimary : t.accentWarn} />
-            </svg>
-          );
+      {/* One-line plain-English explanation (highlighter strip, zero box border) */}
+      <div
+        style={{
+          padding: '6px 10px',
+          marginBottom: 8,
+          background: t.surfaceAlt,
+          borderLeft: `3px solid ${statusColor}`,
+          fontSize: 14.5,
+          lineHeight: 1.4,
+          color: t.textPrimary,
         }}
-      </VisualizationCanvas>
+        aria-live="polite"
+      >
+        {caption}
+      </div>
 
-      <div style={{ display: 'flex', gap: SPACING.md, fontSize: 13, color: t.textSecondary, marginTop: 4 }}>
-        <span>Step {path.length - 1}</span>
-        <span>Loss {loss.toFixed(4)}</span>
-        <span style={{ color: converged ? t.accentPrimary : t.textSecondary, fontWeight: converged ? 700 : 400 }}>{converged ? 'Converged' : 'Descending...'}</span>
+      {/* Main SVG (contour + loss chart side-by-side at 760px, stacked at 375px) */}
+      <div ref={svgHostRef} style={{ width: '100%' }}>
+        {!isCompactPhone ? (
+          <svg
+            width="100%"
+            viewBox="0 0 700 232"
+            role="img"
+            aria-label={`2D loss surface and loss curve for ${optimizer} on ${surfDef.label}`}
+            style={{ display: 'block', overflow: 'visible' }}
+          >
+            {renderContourPanel(418, 232)}
+            {renderLossPanel(422, 278, 232)}
+          </svg>
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <svg
+              width="100%"
+              viewBox="0 0 340 225"
+              role="img"
+              aria-label={`2D loss contours for ${surfDef.label}`}
+              style={{ display: 'block', overflow: 'visible' }}
+            >
+              {renderContourPanel(340, 225)}
+            </svg>
+            <svg
+              width="100%"
+              viewBox="0 0 340 200"
+              role="img"
+              aria-label={`Loss over steps for ${optimizer}`}
+              style={{ display: 'block', overflow: 'visible' }}
+            >
+              {renderLossPanel(0, 340, 200)}
+            </svg>
+          </div>
+        )}
+      </div>
+
+      {/* Inline Predict-then-run challenge (no nested card border) */}
+      <div
+        style={{
+          marginTop: 8,
+          paddingTop: 8,
+          borderTop: `1px dashed ${t.border}`,
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '6px 10px',
+          fontSize: 14,
+        }}
+      >
+        <span style={{ fontWeight: 700, color: t.accentWarn }}>Predict first:</span>
+        <span style={{ color: t.textPrimary }}>On Ravine from (−4, 2) with SGD at η = 0.45, what happens?</span>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {PREDICT_OPTIONS.map((opt, idx) => {
+            const picked = prediction === idx;
+            const correct = idx === 0;
+            const revealed = prediction !== null;
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setPrediction(idx)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: RADIUS.sm,
+                  border: `1px solid ${
+                    revealed && correct
+                      ? t.accentPrimary
+                      : revealed && picked
+                        ? t.accentDanger
+                        : t.border
+                  }`,
+                  background:
+                    revealed && correct
+                      ? t.accentPrimary
+                      : revealed && picked
+                        ? t.accentDanger
+                        : 'transparent',
+                  color: revealed && (correct || picked) ? t.background : t.textPrimary,
+                  fontFamily: FONT_FAMILY,
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+        {prediction !== null && (
+          <span style={{ color: prediction === 0 ? t.accentPrimary : t.accentWarn, fontSize: 13.5 }}>
+            {prediction === 0 ? 'Correct — ' : 'Watch — '}
+            the steep w₂ slope (4·w₂ = 8) makes η = 0.45 overshoot w₂ = 0 every step.{' '}
+            <button
+              type="button"
+              onClick={() => {
+                const s0 = SURFACES.ravine.defaultStart;
+                setAutoLoop(false);
+                setSurface('ravine');
+                setOptimizer('sgd');
+                setLr(0.45);
+                setStart(s0);
+                restartFrom(s0, 'ravine', true);
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                color: t.accentSecondary,
+                textDecoration: 'underline',
+                fontFamily: FONT_FAMILY,
+                fontSize: 13.5,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Run η = 0.45 SGD now
+            </button>
+          </span>
+        )}
       </div>
     </VisualizationContainer>
   );

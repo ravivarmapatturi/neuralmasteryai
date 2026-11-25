@@ -582,20 +582,20 @@
     },
     {
       "slug": "kv-cache-explorer",
-      "title": "KV Cache Computation Counter",
+      "title": "KV Cache Attention Playground",
       "section": "llms-genai",
       "sectionLabel": "LLMs & Generative AI",
-      "whatYouTry": "Switch Naive vs. KV cache over 5 generated tokens and count total K/V projections performed.",
-      "whatYouChange": "Mode toggle (Naive no cache vs. KV cache) and generated tokens slider (1 to 5)",
-      "whatYouSee": "Step-by-step recomputed vs. cached token grid and cumulative K/V projection counter",
+      "whatYouTry": "Type prompt and generated tokens, inspect each real Q/K/V projection and attention weight, then size the cache for a model.",
+      "whatYouChange": "Prompt text, generated text, model width, layers, KV heads, head dimension, sequence length, and bytes per value",
+      "whatYouSee": "K/V rows appended per token, query-key scores, softmax weights, attention output, exact projection FLOPs, and cache bytes",
       "ideaTaught": "Caching prior K/V tensors slashes prefix projection growth from O(T^2) down to O(T).",
       "component": "diagrams/KvCacheDiagram.tsx",
       "learnPath": "/docs/llms-genai/foundation-model-internals",
       "learnTitle": "Foundation Model & Transformer Internals",
       "tryThis": [
-        { "prompt": "Set Generated tokens to 5 in Naive mode and read total computations.", "check": "Total hits 1 + 2 + 3 + 4 + 5 = 15 recomputations because every old token gets projected again at each step." },
-        { "prompt": "Toggle to KV cache at 5 tokens.", "check": "Total drops cleanly from 15 down to 5 because only the single newly emitted token projects fresh K and V." },
-        { "prompt": "Watch the highlighted red squares vs. cached squares as step t climbs.", "check": "Notice that KV caching saves projection FLOPs at the price of storing cached keys and values in GPU VRAM." }
+        { "prompt": "Step from the first generated token to the third and watch the cache table.", "check": "Exactly one new K/V row is appended each step while every earlier row is reused." },
+        { "prompt": "Compare the with-cache and without-cache totals at the same visible token count.", "check": "Cached work is n K/V pairs; recomputing every prefix is n(n+1)/2 pairs." },
+        { "prompt": "Double Sequence tokens while keeping layers, heads, head dimension, and precision fixed.", "check": "The exact cache-byte readout doubles because K/V memory grows linearly with sequence length." }
       ]
     },
     {
@@ -1197,17 +1197,17 @@
       "title": "Embedding Vector Similarity Search",
       "section": "databases",
       "sectionLabel": "Databases",
-      "whatYouTry": "Move the query point and toggle Cosine vs. Euclidean distance to see how nearest neighbors change.",
-      "whatYouChange": "Query coordinates and distance metric selector (Cosine vs. Euclidean)",
-      "whatYouSee": "2D vector plane with ranked top matches and metric scores",
+      "whatYouTry": "Type a query label, edit both vector coordinates, and compare Cosine, Euclidean/L2, and Dot Product rankings.",
+      "whatYouChange": "Query label, two query coordinates, distance metric, selected document, and prediction",
+      "whatYouSee": "Labeled 2D vectors, a live ranked list, each metric's formula, and the selected document's formula filled with current numbers",
       "ideaTaught": "Cosine similarity compares direction angle only; L2 Euclidean mixes direction with vector norm.",
       "component": "diagrams/EmbeddingSimilaritySearchDiagram.tsx",
       "learnPath": "/docs/databases/vector/overview",
       "learnTitle": "Vector Databases",
       "tryThis": [
-        { "prompt": "Compare two vectors along the exact same angle with very different lengths under Cosine vs. L2.", "check": "Cosine returns maximum similarity 1.00 while Euclidean ranks them far apart." },
-        { "prompt": "Notice when Cosine, Dot Product, and normalized Euclidean become mathematically identical.", "check": "Once all database vectors are L2-normalized to unit length, ranking order matches identically across all three." },
-        { "prompt": "Move the query point across an angular boundary and watch neighbor swap.", "check": "Small angular shifts flip rankings cleanly along the Voronoi cell bisector." }
+        { "prompt": "Keep the default cat vector and compare Cosine with L2.", "check": "Kitten stays first because its direction and endpoint are both close to the query, while the formula explains the two different meanings of close." },
+        { "prompt": "Switch from Cosine to Dot Product without changing the query.", "check": "Tiger moves to first because its longer vector produces the largest raw dot product even though its direction is less similar." },
+        { "prompt": "Select puppy, edit both query dimensions, and compare the filled-in formula under all three metrics.", "check": "Every substitution and score changes from the typed vector; higher wins for Cosine and Dot Product, while lower wins for L2." }
       ]
     },
     {
