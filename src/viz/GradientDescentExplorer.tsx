@@ -574,7 +574,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
                 border: `1px solid ${t.border}`,
                 background: t.background,
                 color: t.textPrimary,
-                fontFamily: 'monospace',
+                fontVariantNumeric: 'tabular-nums',
                 fontSize: 14,
               }}
             />
@@ -605,7 +605,7 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
                 border: `1px solid ${t.border}`,
                 background: t.background,
                 color: t.textPrimary,
-                fontFamily: 'monospace',
+                fontVariantNumeric: 'tabular-nums',
                 fontSize: 14,
               }}
             />

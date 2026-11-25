@@ -120,7 +120,7 @@ export default function DiffusionForwardProcessDiagram() {
       <div style={{ fontSize: 15, lineHeight: 1.5, marginTop: 4 }}>
         <strong>x_t = √ᾱ · x₀ + √(1−ᾱ) · ε</strong>{' '}
         <span style={{ color: t.textSecondary }}>for pixel #{pixel + 1}:</span>{' '}
-        <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 14 }}>
+        <span style={{ fontSize: 14 }}>
           {a.toFixed(3)} × {x0[pixel].toFixed(2)} + {b.toFixed(3)} × {eps[pixel].toFixed(2)} = {xt[pixel].toFixed(3)}
         </span>
       </div>

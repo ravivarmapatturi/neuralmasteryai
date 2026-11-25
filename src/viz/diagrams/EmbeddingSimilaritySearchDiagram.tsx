@@ -198,7 +198,7 @@ function EmbeddingSimilaritySearchPlayground({ compact = false }: { compact?: bo
             <g key={document.id} opacity={revealed ? 1 : 0.24} onClick={() => playback.setStep(index)} style={{ cursor: 'pointer' }}>
               {active && <rect x={476} y={y - 18} width={266} height={26} rx={6} fill={`${selectedColor}18`} stroke="none" />}
               <text x={508} y={y} fontSize={15} fontWeight={active ? 700 : 400} fill={active ? selectedColor : t.textPrimary}>{document.rank}. {document.label} [{document.vector[0].toFixed(2)}, {document.vector[1].toFixed(2)}]</text>
-              <text x={752} y={y} textAnchor="end" fontSize={15} fontFamily="monospace" fill={active ? selectedColor : t.textSecondary}>{format(document.calculation.score)}</text>
+              <text x={752} y={y} textAnchor="end" fontSize={15} fill={active ? selectedColor : t.textSecondary}>{format(document.calculation.score)}</text>
             </g>
           );
         })}

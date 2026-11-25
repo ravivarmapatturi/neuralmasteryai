@@ -187,10 +187,10 @@ function KvCachePlayground({ compact = false }: { compact?: boolean }) {
               </text>
               {inCache && row && (
                 <>
-                  <text x={cols.key} y={y + 24} fontSize={15} fontFamily="monospace" fill={keyColor}>{vector(row.key)}</text>
-                  <text x={cols.value} y={y + 24} fontSize={15} fontFamily="monospace" fill={valueColor}>{vector(row.value)}</text>
-                  <text x={cols.score} y={y + 24} fontSize={15} fontFamily="monospace" fill={queryColor}>{step.scores[index].toFixed(3)}</text>
-                  <text x={cols.weight} y={y + 24} fontSize={15} fontFamily="monospace" fontWeight={isStrongest ? 700 : 400} fill={isStrongest ? goodColor : t.textSecondary}>{(step.weights[index] * 100).toFixed(1)}%</text>
+                  <text x={cols.key} y={y + 24} fontSize={15} fill={keyColor}>{vector(row.key)}</text>
+                  <text x={cols.value} y={y + 24} fontSize={15} fill={valueColor}>{vector(row.value)}</text>
+                  <text x={cols.score} y={y + 24} fontSize={15} fill={queryColor}>{step.scores[index].toFixed(3)}</text>
+                  <text x={cols.weight} y={y + 24} fontSize={15} fontWeight={isStrongest ? 700 : 400} fill={isStrongest ? goodColor : t.textSecondary}>{(step.weights[index] * 100).toFixed(1)}%</text>
                 </>
               )}
             </g>

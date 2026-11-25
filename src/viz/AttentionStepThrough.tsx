@@ -302,7 +302,7 @@ export default function AttentionStepThrough() {
                         textAnchor="middle"
                         fontSize={13}
                         fontWeight={isFocus ? 700 : 500}
-                        fontFamily="monospace"
+                       
                         fill={masked ? t.textMuted : isHigh ? t.background : t.textPrimary}
                       >
                         {cellText(i, j)}
@@ -383,7 +383,7 @@ export default function AttentionStepThrough() {
                 <g key={`q-${d}`}>
                   <rect x={bx} y={22} width={54} height={28} rx={4} fill={valueColor(t, 'query', Math.min(1, Math.abs(v) / 2))} />
                   <SketchRect x={bx} y={22} width={54} height={28} color={queryColor} strokeWidth={1.3} roughness={1} id={`qv-${d}`} />
-                  <text x={bx + 27} y={41} textAnchor="middle" fontSize={13} fontFamily="monospace" fontWeight={700} fill={Math.abs(v) > 1.1 ? t.background : t.textPrimary}>
+                  <text x={bx + 27} y={41} textAnchor="middle" fontSize={13} fontWeight={700} fill={Math.abs(v) > 1.1 ? t.background : t.textPrimary}>
                     {v.toFixed(2)}
                   </text>
                 </g>
@@ -400,7 +400,7 @@ export default function AttentionStepThrough() {
                 <g key={`k-${d}`}>
                   <rect x={bx} y={64} width={54} height={28} rx={4} fill={valueColor(t, 'key', Math.min(1, Math.abs(v) / 2))} />
                   <SketchRect x={bx} y={64} width={54} height={28} color={keyColor} strokeWidth={1.3} roughness={1} id={`kv-${d}`} />
-                  <text x={bx + 27} y={83} textAnchor="middle" fontSize={13} fontFamily="monospace" fontWeight={700} fill={Math.abs(v) > 1.1 ? t.background : t.textPrimary}>
+                  <text x={bx + 27} y={83} textAnchor="middle" fontSize={13} fontWeight={700} fill={Math.abs(v) > 1.1 ? t.background : t.textPrimary}>
                     {v.toFixed(2)}
                   </text>
                 </g>
@@ -420,7 +420,7 @@ export default function AttentionStepThrough() {
               rx={5}
               fill={attnColor}
             />
-            <text x={panelW - 80} y={148} fontSize={14} fontWeight={700} fontFamily="monospace" fill={attnColor}>
+            <text x={panelW - 80} y={148} fontSize={14} fontWeight={700} fill={attnColor}>
               {(summaryStats?.bestRaw ?? 0).toFixed(2)}
             </text>
           </g>
@@ -458,7 +458,7 @@ export default function AttentionStepThrough() {
                       fill={stage === 1 ? keyColor : attnColor}
                     />
                   )}
-                  <text x={76 + barMax + 8} y={18} fontSize={13} fontFamily="monospace" fontWeight={700} fill={masked ? t.textMuted : t.textPrimary}>
+                  <text x={76 + barMax + 8} y={18} fontSize={13} fontWeight={700} fill={masked ? t.textMuted : t.textPrimary}>
                     {labelStr}
                   </text>
                 </g>
@@ -478,7 +478,7 @@ export default function AttentionStepThrough() {
               .slice(0, 2)
               .map((item, idx) => (
                 <g key={item.j} transform={`translate(0, ${22 + idx * 34})`}>
-                  <text x={82} y={20} textAnchor="end" fontSize={13} fontWeight={700} fontFamily="monospace" fill={valueColorInk}>
+                  <text x={82} y={20} textAnchor="end" fontSize={13} fontWeight={700} fill={valueColorInk}>
                     {Math.round(item.w * 100)}%·V({shortTok(item.tok, 4)})
                   </text>
                   {result.V[item.j].map((v, d) => {
@@ -486,7 +486,7 @@ export default function AttentionStepThrough() {
                     return (
                       <g key={d}>
                         <rect x={bx} y={2} width={54} height={26} rx={4} fill={valueColor(t, 'value', Math.min(1, Math.abs(v) / 1.5))} />
-                        <text x={bx + 27} y={20} textAnchor="middle" fontSize={13} fontFamily="monospace" fontWeight={600} fill={t.textPrimary}>
+                        <text x={bx + 27} y={20} textAnchor="middle" fontSize={13} fontWeight={600} fill={t.textPrimary}>
                           {v.toFixed(2)}
                         </text>
                       </g>
@@ -510,7 +510,7 @@ export default function AttentionStepThrough() {
                   <g key={`out-${d}`}>
                     <rect x={bx} y={16} width={54} height={28} rx={4} fill={valueColor(t, 'output', Math.min(1, Math.abs(v) / 1.5))} />
                     <SketchRect x={bx} y={16} width={54} height={28} color={attnColor} strokeWidth={1.6} roughness={1} id={`ov-${d}`} />
-                    <text x={bx + 27} y={35} textAnchor="middle" fontSize={13} fontFamily="monospace" fontWeight={700} fill={Math.abs(v) > 0.8 ? t.background : t.textPrimary}>
+                    <text x={bx + 27} y={35} textAnchor="middle" fontSize={13} fontWeight={700} fill={Math.abs(v) > 0.8 ? t.background : t.textPrimary}>
                       {v.toFixed(2)}
                     </text>
                   </g>
