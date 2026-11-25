@@ -33,14 +33,14 @@ describe('BrowserLmLab', () => {
     render(<BrowserLmLab />);
 
     expect(screen.getByRole('group', { name: 'Run a real language model' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Load model (~130 MB, once)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Load model (~280 MB, once)' })).toBeInTheDocument();
     expect(MockWorker.instances).toHaveLength(0);
   });
 
   it('creates the worker only after the explicit load click', () => {
     render(<BrowserLmLab />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Load model (~130 MB, once)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Load model (~280 MB, once)' }));
 
     expect(MockWorker.instances).toHaveLength(1);
     expect(MockWorker.instances[0].postMessage).toHaveBeenCalledWith({ type: 'load' });

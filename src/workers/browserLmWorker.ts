@@ -99,11 +99,11 @@ async function loadForDevice(device: RuntimeDevice) {
   post({
     type: 'status',
     message: device === 'webgpu'
-      ? 'Starting the q8 model with WebGPU…'
-      : 'Starting the q8 model with WebAssembly…',
+      ? 'Starting the int8 model with WebGPU…'
+      : 'Starting the int8 model with WebAssembly…',
   });
   return AutoModelForCausalLM.from_pretrained(MODEL_ID, {
-    dtype: 'q8',
+    dtype: 'int8',
     device,
     progress_callback: reportProgress,
   } as any);
@@ -147,7 +147,7 @@ async function loadModel() {
         const detail = webGpuError
           ? `WebGPU: ${technicalMessage(webGpuError)}; WebAssembly: ${technicalMessage(wasmError)}`
           : technicalMessage(wasmError);
-        throw new Error(`The browser could not start the q8 GPT-2 model. ${detail}`);
+        throw new Error(`The browser could not start the int8 GPT-2 model. ${detail}`);
       }
     }
 
@@ -276,7 +276,7 @@ async function generate(runId: number, payload: GeneratePayload) {
       post({
         type: 'fallback',
         runId,
-        message: 'WebGPU failed during generation. Restarting this run with WebAssembly and the cached q8 files…',
+        message: 'WebGPU failed during generation. Restarting this run with WebAssembly and the cached int8 files…',
       });
       post({ type: 'generation-restarted', runId });
       await model?.dispose?.();

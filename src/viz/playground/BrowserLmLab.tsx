@@ -357,7 +357,7 @@ export default function BrowserLmLab() {
   return (
     <VisualizationContainer
       title="Run a real language model"
-      footer="This is Xenova/gpt2 running locally through q8 ONNX weights. Quantization can shift probabilities slightly, and GPT-2 is a small completion model rather than a factual authority."
+      footer="This is Xenova/gpt2 running locally through int8 ONNX weights. Quantization can shift probabilities slightly, and GPT-2 is a small completion model rather than a factual authority."
     >
       <div className="browser-lm">
         <VisualizationHeader
@@ -369,7 +369,7 @@ export default function BrowserLmLab() {
         <p className="browser-lm__runtime-line" role="status" aria-live="polite">
           <strong>Runtime:</strong>
           <span>{statusMessage}</span>
-          {runtimeDevice && <span>q8 · {runtimeDevice === 'webgpu' ? 'WebGPU' : 'WASM'} · browser cache enabled</span>}
+          {runtimeDevice && <span>int8 · {runtimeDevice === 'webgpu' ? 'WebGPU' : 'WASM'} · browser cache enabled</span>}
         </p>
 
         {modelState === 'loading' && (
@@ -443,7 +443,7 @@ export default function BrowserLmLab() {
             <div className="browser-lm__button-row">
               {modelState !== 'ready' ? (
                 <button type="button" className="browser-lm__button browser-lm__button--primary" onClick={loadModel} disabled={modelState === 'loading'}>
-                  {modelState === 'loading' ? 'Loading model…' : 'Load model (~130 MB, once)'}
+                  {modelState === 'loading' ? 'Loading model…' : 'Load model (~280 MB, once)'}
                 </button>
               ) : (
                 <button type="button" className="browser-lm__button browser-lm__button--primary" onClick={() => startGeneration()} disabled={generating || !prompt.trim()}>
