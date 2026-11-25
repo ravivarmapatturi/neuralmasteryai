@@ -71,6 +71,7 @@ export const PLAYGROUND_COMPONENTS: Record<string, PlaygroundComponentLoader> = 
   'sampling-nyquist': () => import('../viz/diagrams/SamplingNyquistDiagram'),
   'fourier-sum-of-sines': () => import('../viz/diagrams/FourierSumOfSinesDiagram'),
   'ctc-alignment': () => import('../viz/diagrams/CtcAlignmentDiagram'),
+  'browser-lm': () => import('../viz/playground/BrowserLmLab'),
   'llm-inference-flow': () => import('../viz/InferenceFlowVisualizer'),
   'rag-pipeline-simulator': () => import('../viz/RagPipelineSimulator'),
   'kv-cache-explorer': () => import('../viz/diagrams/KvCacheDiagram'),
