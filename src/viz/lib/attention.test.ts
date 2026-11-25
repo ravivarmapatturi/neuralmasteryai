@@ -124,8 +124,10 @@ describe('attention pure engine', () => {
 
     expect(s0).toContain("'cat'");
     expect(s0).toContain("'kitten'");
-    expect(s0).toContain('cosine 0.94');
-    expect(s1).toContain('√4');
+    // Step 1 is the real dot product Q·Kᵀ (not cosine), with its number.
+    expect(s0).toContain('Q·Kᵀ');
+    expect(s0).toContain(`scores ${result.rawScores[1][5].toFixed(2)}`);
+    expect(s1).toContain('√dₖ = 2');
     expect(s2).toContain('%');
     expect(s3).toContain('Output for');
   });
