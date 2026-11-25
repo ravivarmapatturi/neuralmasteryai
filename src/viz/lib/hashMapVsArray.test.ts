@@ -23,6 +23,25 @@ describe('hashMapVsArray pure computation', () => {
     expect(computeKeyHash('sat', 8).bucket).toBe(1);
   });
 
+  it('spot-checks by hand bucket packing and load factor when m = 4', () => {
+    // Hand-checked weighted sums mod 4:
+    // rat=656 (0), cat=641 (1), dog=631 (3), fox=684 (0), fig=621 (1), mat=651 (3), sat=657 (1), hat=646 (2)
+    // Bucket 1 holds ['cat', 'fig', 'sat']; load factor = 8 / 4 = 2.0
+    const trace = buildLookupTrace(DEFAULT_HASH_KEYS, 'sat', 4);
+    expect(trace.buckets[0].keys).toEqual(['rat', 'fox']);
+    expect(trace.buckets[1].keys).toEqual(['cat', 'fig', 'sat']);
+    expect(trace.buckets[2].keys).toEqual(['hat']);
+    expect(trace.buckets[3].keys).toEqual(['dog', 'mat']);
+    expect(trace.loadFactor).toBe(2);
+    // Searching 'sat' walks cat -> fig -> sat = 3 hash checks vs 7 array checks
+    expect(trace.hashTotalChecks).toBe(3);
+    expect(trace.arrayTotalChecks).toBe(7);
+    // Scale at n = 50,000 with alpha = 2.0: hashAvgOps = 1 + 2/2 = 2.0, speedup = 50,000 / 2 = 25,000
+    const scale = computeScaleComparison(50_000, trace.loadFactor);
+    expect(scale.hashAvgOps).toBe(2);
+    expect(scale.speedupWorst).toBe(25_000);
+  });
+
   it('builds a real array scan vs bucketed hash lookup trace', () => {
     const trace = buildLookupTrace(DEFAULT_HASH_KEYS, 'mat', 8);
     // DEFAULT_HASH_KEYS = ['rat','cat','dog','fox','fig','mat','sat','hat'] -> 'mat' at index 5 => 6 array checks

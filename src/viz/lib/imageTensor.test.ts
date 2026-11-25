@@ -17,6 +17,21 @@ describe('imageTensor pure computation', () => {
     expect(rgbToGrayscale([0, 0, 255])).toBeCloseTo(0.114 * 255, 6);
   });
 
+  it('spot-checks by hand Sunset pixel (0, 0) = [82, 138, 226] across all 4 modes', () => {
+    const px = IMAGE_PRESETS[0].grid[0][0];
+    expect(px).toEqual([82, 138, 226]);
+    // Grayscale: 0.299*82 + 0.587*138 + 0.114*226 = 24.518 + 81.006 + 25.764 = 131.288
+    expect(rgbToGrayscale(px)).toBeCloseTo(131.288, 6);
+    // Scaled [-1, 1]: 2*(82/255)-1 = -91/255, 2*(138/255)-1 = 21/255, 2*(226/255)-1 = 197/255
+    expect(scaleToSignedUnit(px[0])).toBeCloseTo(-91 / 255, 8);
+    expect(scaleToSignedUnit(px[1])).toBeCloseTo(21 / 255, 8);
+    expect(scaleToSignedUnit(px[2])).toBeCloseTo(197 / 255, 8);
+    // Z-score: (82/255 - 0.485)/0.229, (138/255 - 0.456)/0.224, (226/255 - 0.406)/0.225
+    expect(zscoreChannel(px[0], 0)).toBeCloseTo((82 / 255 - 0.485) / 0.229, 8);
+    expect(zscoreChannel(px[1], 1)).toBeCloseTo((138 / 255 - 0.456) / 0.224, 8);
+    expect(zscoreChannel(px[2], 2)).toBeCloseTo((226 / 255 - 0.406) / 0.225, 8);
+  });
+
   it('maps 0..255 bytes cleanly to [-1, 1] and ImageNet z-scores', () => {
     expect(scaleToSignedUnit(0)).toBe(-1);
     expect(scaleToSignedUnit(255)).toBe(1);

@@ -38,6 +38,9 @@ export interface TermBreakdown {
   N: number;
   idf: number;
   tfidf: number;
+  queryTf: number;
+  queryTfidf: number;
+  cosineContribution: number;
 }
 
 export interface DocumentScore {
@@ -59,10 +62,10 @@ export type TfidfVariant = 'classic' | 'cosine' | 'raw-count';
 export type TfidfStage = 0 | 1 | 2 | 3;
 
 export const TFIDF_STAGES: readonly { id: TfidfStage; label: string; shortLabel: string }[] = [
-  { id: 0, label: '1. Word counts', shortLabel: '1. Count' },
-  { id: 1, label: '2. TF ÷ length', shortLabel: '2. TF ÷ |d|' },
-  { id: 2, label: '3. IDF rarity', shortLabel: '3. IDF ln(N/df)' },
-  { id: 3, label: '4. Final rank', shortLabel: '4. Rank' },
+  { id: 0, label: '1. Count word hits', shortLabel: '1. Hits' },
+  { id: 1, label: '2. Divide by length (TF)', shortLabel: '2. Share TF' },
+  { id: 2, label: '3. Weight rare words (IDF)', shortLabel: '3. Rarity IDF' },
+  { id: 3, label: '4. Total score & rank', shortLabel: '4. Total & rank' },
 ];
 
 export interface ScoredDocument extends DocumentScore {
@@ -114,59 +117,17 @@ export function rankDocumentsTfidf(
   query: string[],
   docs: ToyDocument[] = TOY_TFIDF_DOCS,
 ): { queryStats: QueryStats[]; results: DocumentScore[] } {
-  const N = docs.length;
-  const corpusTokens = docs.map((d) => d.tokens);
-
-  const queryStats: QueryStats[] = query.map((term) => {
-    const df = computeDf(term, corpusTokens);
-    const idf = computeIdf(df, N);
-    return { term, df, N, idf };
-  });
-
-  const idfMap = new Map<string, { df: number; idf: number }>();
-  for (const qs of queryStats) {
-    idfMap.set(qs.term.toLowerCase(), { df: qs.df, idf: qs.idf });
-  }
-
-  const results: DocumentScore[] = docs.map((doc) => {
-    let score = 0;
-    const breakdown: TermBreakdown[] = [];
-
-    for (const term of query) {
-      const { count, tf } = computeTf(term, doc.tokens);
-      const stat = idfMap.get(term.toLowerCase()) ?? { df: 0, idf: 0 };
-      const tfidf = tf * stat.idf;
-      score += tfidf;
-      breakdown.push({
-        term,
-        count,
-        docLength: doc.tokens.length,
-        tf,
-        df: stat.df,
-        N,
-        idf: stat.idf,
-        tfidf,
-      });
-    }
-
-    return {
-      docId: doc.id,
-      text: doc.text,
-      docLength: doc.tokens.length,
+  const search = runTfidfSearch(query.join(' '), docs, 'classic');
+  return {
+    queryStats: search.queryStats,
+    results: search.results.map(({ docId, text, docLength, score, breakdown }) => ({
+      docId,
+      text,
+      docLength,
       score,
       breakdown,
-    };
-  });
-
-  // Sort descending by score; if tied, sort by docId ascending for deterministic order
-  results.sort((a, b) => {
-    if (Math.abs(b.score - a.score) > 1e-6) {
-      return b.score - a.score;
-    }
-    return a.docId.localeCompare(b.docId);
-  });
-
-  return { queryStats, results };
+    })),
+  };
 }
 
 /** Run classic TF*IDF, Cosine TF-IDF over full corpus vocabulary, or Raw Count scoring. */
@@ -207,11 +168,23 @@ export function runTfidfSearch(
   const scored: ScoredDocument[] = docs.map((doc) => {
     let classicScore = 0;
     let rawCountTotal = 0;
-    const breakdown: TermBreakdown[] = [];
 
+    const dVec = vocab.map((term) => {
+      const { tf } = computeTf(term, doc.tokens);
+      return tf * (vocabIdf.get(term) ?? 0);
+    });
+    const docNorm = Math.hypot(...dVec);
+    const dotProduct = qVec.reduce((sum, qv, idx) => sum + qv * dVec[idx], 0);
+    const cosineScore = queryNorm > 0 && docNorm > 0 ? dotProduct / (queryNorm * docNorm) : 0;
+
+    const breakdown: TermBreakdown[] = [];
     for (const qs of queryStats) {
       const { count, tf } = computeTf(qs.term, doc.tokens);
       const tfidf = tf * qs.idf;
+      const { tf: queryTf } = computeTf(qs.term, rawTerms);
+      const queryTfidf = queryTf * qs.idf;
+      const cosineContribution =
+        queryNorm > 0 && docNorm > 0 ? (queryTfidf * tfidf) / (queryNorm * docNorm) : 0;
       classicScore += tfidf;
       rawCountTotal += count;
       breakdown.push({
@@ -223,16 +196,11 @@ export function runTfidfSearch(
         N,
         idf: qs.idf,
         tfidf,
+        queryTf,
+        queryTfidf,
+        cosineContribution,
       });
     }
-
-    const dVec = vocab.map((term) => {
-      const { tf } = computeTf(term, doc.tokens);
-      return tf * (vocabIdf.get(term) ?? 0);
-    });
-    const docNorm = Math.hypot(...dVec);
-    const dotProduct = qVec.reduce((sum, qv, idx) => sum + qv * dVec[idx], 0);
-    const cosineScore = queryNorm > 0 && docNorm > 0 ? dotProduct / (queryNorm * docNorm) : 0;
 
     const activeScore =
       variant === 'raw-count' ? rawCountTotal : variant === 'cosine' ? cosineScore : classicScore;
@@ -281,40 +249,43 @@ export function explainTfidfStep(
     .join(', ');
 
   if (stage === 0) {
-    return `${doc.docId} has ${doc.docLength} words and uses ${termsSummary} — total raw count = ${doc.rawCountTotal}.`;
+    return `${doc.docId} has ${doc.docLength} words and contains ${termsSummary} — ${doc.rawCountTotal} raw match${doc.rawCountTotal === 1 ? '' : 'es'} total.`;
   }
 
   if (stage === 1) {
     if (variant === 'raw-count') {
-      return `Raw count mode skips dividing by length (${doc.docLength} words), so long or repetitive documents win easily.`;
+      return `Raw count skips dividing by length (${doc.docLength} words), so long or repetitive pages win easily.`;
     }
     const first = doc.breakdown[0];
-    return `Dividing by ${doc.docId}'s length (${doc.docLength} words) normalizes counts: TF("${first.term}") = ${first.count}/${doc.docLength} = ${first.tf.toFixed(4)}.`;
+    return `Dividing by ${doc.docId}'s length (${doc.docLength} words) keeps long pages fair: TF("${first.term}") = ${first.count}/${doc.docLength} = ${first.tf.toFixed(4)}.`;
   }
 
   if (stage === 2) {
     if (variant === 'raw-count') {
-      return `Raw count mode ignores IDF rarity, so a filler word like "is" (in every document) scores just as high as a rare word.`;
+      return `Raw count ignores rarity, so a filler word like "is" (in every document) scores as much as a rare word.`;
     }
     const rarest = [...queryStats].sort((a, b) => b.idf - a.idf)[0];
     const common = [...queryStats].sort((a, b) => a.idf - b.idf)[0];
     if (common.df === totalDocs) {
-      return `"${common.term}" appears in all ${totalDocs}/${totalDocs} docs, so IDF = ln(1) = 0.0000 and it adds zero to the score.`;
+      return `"${common.term}" appears in all ${totalDocs}/${totalDocs} docs, so its rarity weight IDF = ln(1) = 0.0000 and adds zero.`;
     }
-    return `"${rarest.term}" appears in ${rarest.df}/${totalDocs} docs → IDF = ln(${totalDocs}/${rarest.df}) = ${rarest.idf.toFixed(4)} (${rarest.df === 1 ? 'rare word gets top weight' : 'shared word gets moderated'}).`;
+    if (rarest.df === 0) {
+      return `"${rarest.term}" is not in any document (df = 0), so its rarity contribution is 0.`;
+    }
+    return `"${rarest.term}" appears in ${rarest.df} of ${totalDocs} docs, so IDF = ln(${totalDocs}/${rarest.df}) = ${rarest.idf.toFixed(4)} (${rarest.df === 1 ? 'rare word gets highest weight' : 'shared word gets moderate weight'}).`;
   }
 
   if (variant === 'cosine') {
     return `Cosine compares arrow direction rather than length: ${doc.docId} scores ${doc.cosineScore.toFixed(4)} (dot ${doc.dotProduct.toFixed(4)} ÷ (‖q‖·‖d‖)).`;
   }
   if (variant === 'raw-count') {
-    return `Under raw counts, ${doc.docId} scores ${doc.rawCountTotal} — repeating words or writing longer pages pushes it up without adding relevance.`;
+    return `Under raw counts, ${doc.docId} scores ${doc.rawCountTotal} — repeating words pushes it up even without adding new meaning.`;
   }
   const parts = doc.breakdown
     .slice(0, 3)
     .map((b) => `${b.tf.toFixed(2)}×${b.idf.toFixed(2)}`)
     .join(' + ');
-  return `Multiplying TF×IDF for ${doc.docId} (${parts}) sums to ${doc.classicScore.toFixed(4)}.`;
+  return `Multiplying TF × IDF for ${doc.docId} (${parts}) sums to ${doc.classicScore.toFixed(4)}.`;
 }
 
 /** General formula and the same formula filled in with current live numbers. */

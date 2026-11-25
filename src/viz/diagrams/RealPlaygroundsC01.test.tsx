@@ -21,16 +21,20 @@ function renderWithVis(ui: React.ReactElement, visible = true) {
   );
 }
 
-function assertCleanContainerAndFonts(container: HTMLElement) {
+function assertCleanContainerFontsAndKatex(container: HTMLElement, minKatexCount = 1) {
   const outer = container.querySelector('.nm-viz-frame');
   expect(outer).not.toBeNull();
   expect(outer!.querySelectorAll('.nm-viz-frame, .nm-pg__panel')).toHaveLength(0);
+
+  expect(container.querySelectorAll('.katex').length).toBeGreaterThanOrEqual(minKatexCount);
+  expect(container.querySelectorAll('.katex-error')).toHaveLength(0);
 
   const svgTexts = Array.from(container.querySelectorAll('svg text'));
   expect(svgTexts.length).toBeGreaterThan(4);
   for (const node of svgTexts) {
     const fs = Number(node.getAttribute('font-size'));
-    expect(fs).toBeGreaterThanOrEqual(13);
+    expect(fs).toBeGreaterThanOrEqual(14);
+    expect(fs).toBeLessThanOrEqual(16);
   }
 }
 
@@ -58,13 +62,13 @@ afterEach(() => {
 });
 
 describe('HashMapVsArrayDiagram live playground', () => {
-  it('autoplays, pauses off-screen, computes live hashes, handles predict challenge, and uses >=13px fonts', () => {
+  it('autoplays, pauses off-screen, computes live hashes with KaTeX sticky notes, handles predict challenge, and supports compact mode', () => {
     vi.useFakeTimers();
     const view = renderWithVis(<HashMapVsArrayDiagram />, true);
-    assertCleanContainerAndFonts(view.container);
+    assertCleanContainerFontsAndKatex(view.container, 2);
+    expect(view.container.querySelectorAll('clipPath').length).toBeGreaterThanOrEqual(1);
 
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
-    expect(screen.getByText(/bucket\(k\)/i)).toBeInTheDocument();
     expect(screen.getAllByText(/651 mod 8 = bucket 3/i).length).toBeGreaterThanOrEqual(1);
 
     act(() => vi.advanceTimersByTime(1350));
@@ -82,7 +86,7 @@ describe('HashMapVsArrayDiagram live playground', () => {
     expect(screen.getByText(/Step 2:/i)).toBeInTheDocument();
 
     // Free inputs + bucket change + predict action
-    fireEvent.change(screen.getByLabelText(/Lookup key:/i), { target: { value: 'sat' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Lookup key/i }), { target: { value: 'sat' } });
     expect(screen.getAllByText(/657 mod 8 = bucket 1/i).length).toBeGreaterThanOrEqual(1);
 
     fireEvent.click(screen.getByRole('button', { name: '4 buckets' }));
@@ -93,8 +97,11 @@ describe('HashMapVsArrayDiagram live playground', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Array: 100,000 · Hash: ~1–2/i }));
     expect(screen.getByText(/Right —/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Test missing "zebra" now/i }));
-    expect(screen.getByLabelText(/Lookup key:/i)).toHaveValue('zebra');
+    fireEvent.click(screen.getByRole('button', { name: /Test missing “zebra” now/i }));
+    expect(screen.getByRole('textbox', { name: /Lookup key/i })).toHaveValue('zebra');
+
+    const compactView = renderWithVis(<HashMapVsArrayDiagram compact />, true);
+    expect(compactView.container.querySelectorAll('.nm-sticky')).toHaveLength(2);
   });
 
   it('respects prefers-reduced-motion', () => {
@@ -107,30 +114,34 @@ describe('HashMapVsArrayDiagram live playground', () => {
 });
 
 describe('ImageTensorExplorerDiagram live playground', () => {
-  it('autoplays pixel inspection, edits RGB live, switches normalization formulas, and satisfies layout guards', () => {
+  it('autoplays pixel inspection, edits RGB live, switches mode via clickable formula sticky notes, and satisfies layout guards', () => {
     vi.useFakeTimers();
     const view = renderWithVis(<ImageTensorExplorerDiagram />, true);
-    assertCleanContainerAndFonts(view.container);
+    assertCleanContainerFontsAndKatex(view.container, 4);
 
     expect(screen.getByText(/Pixel \(0, 0\) stores \[82, 138, 226\]/i)).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(2050));
     expect(screen.getByText(/Pixel \(1, 2\) stores/i)).toBeInTheDocument();
 
-    // Switch to grayscale and type custom R,G,B
-    fireEvent.click(screen.getByRole('button', { name: 'Grayscale (Y)' }));
-    expect(screen.getByText(/0\.299·R \+ 0\.587·G \+ 0\.114·B/)).toBeInTheDocument();
+    // Click sticky formula note for Grayscale (Y) and edit R,G,B
+    fireEvent.click(screen.getByRole('button', { name: /Grayscale brightness \(Y\)/i }));
+    expect(screen.getByRole('button', { name: /Grayscale brightness \(Y\)/i })).toHaveAttribute('aria-pressed', 'true');
 
     fireEvent.change(screen.getByLabelText('R'), { target: { value: '255' } });
     fireEvent.change(screen.getByLabelText('G'), { target: { value: '255' } });
     fireEvent.change(screen.getByLabelText('B'), { target: { value: '0' } });
     expect(screen.getByText(/0\.299×255 \+ 0\.587×255 \+ 0\.114×0 = 225\.9/)).toBeInTheDocument();
 
-    // Switch z-score and predict challenge
-    fireEvent.click(screen.getByRole('button', { name: 'Z-score' }));
-    expect(screen.getByText(/z_c = \(x_c\/255 − μ_c\) \/ σ_c/)).toBeInTheDocument();
+    // Switch Z-score via PillSelect and verify clickable sticky active state updates
+    fireEvent.click(screen.getByRole('button', { name: /^Z-score$/ }));
+    expect(screen.getByRole('button', { name: /ImageNet Z-score/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/z_R = \(1\.000−0\.485\)\/0\.229 = 2\.25/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Blue = 0, Grayscale Y ≈ 226/i }));
     expect(screen.getByText(/Right —/i)).toBeInTheDocument();
+
+    const compactView = renderWithVis(<ImageTensorExplorerDiagram compact />, true);
+    expect(compactView.container.querySelectorAll('.nm-sticky')).toHaveLength(2);
   });
 
   it('pauses off-screen and respects prefers-reduced-motion', () => {
@@ -148,10 +159,11 @@ describe('ImageTensorExplorerDiagram live playground', () => {
 });
 
 describe('RewardHackingSimulationDiagram live playground', () => {
-  it('autoplays Goodhart collapse, tests KL tether mitigation, and satisfies layout guards', () => {
+  it('autoplays Goodhart collapse, tests KL tether mitigation, clips plots, and supports compact mode', () => {
     vi.useFakeTimers();
     const view = renderWithVis(<RewardHackingSimulationDiagram />, true);
-    assertCleanContainerAndFonts(view.container);
+    assertCleanContainerFontsAndKatex(view.container, 2);
+    expect(view.container.querySelectorAll('clipPath').length).toBeGreaterThanOrEqual(2);
 
     expect(screen.getByText(/Step 0 \(SFT start\)/i)).toBeInTheDocument();
     for (let i = 0; i < 10; i++) {
@@ -159,7 +171,6 @@ describe('RewardHackingSimulationDiagram live playground', () => {
     }
     expect(screen.getByText(/Step 10 \(Goodhart collapse!\)/i)).toBeInTheDocument();
 
-    // Switch to Unbiased judge & advance 1 step, then edit Ideal length
     fireEvent.click(screen.getByRole('button', { name: 'Unbiased judge' }));
     act(() => vi.advanceTimersByTime(760));
     expect(screen.getByText(/zero length bias/i)).toBeInTheDocument();
@@ -171,6 +182,9 @@ describe('RewardHackingSimulationDiagram live playground', () => {
     expect(screen.getByText(/Right —/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Test β = 2\.0 now/i }));
     expect(screen.getAllByText(/2\.00/).length).toBeGreaterThanOrEqual(1);
+
+    const compactView = renderWithVis(<RewardHackingSimulationDiagram compact />, true);
+    expect(compactView.container.querySelectorAll('.nm-sticky')).toHaveLength(2);
   });
 
   it('pauses off-screen and starts static on step 10 under prefers-reduced-motion', () => {
@@ -188,26 +202,28 @@ describe('RewardHackingSimulationDiagram live playground', () => {
 });
 
 describe('ScreeningFunnelDiagram live playground', () => {
-  it('autoplays stages, recomputes counts/recall/savings from free inputs, and passes layout guards', () => {
+  it('autoplays stages, recomputes counts/recall/savings from free inputs, clips histogram, and supports compact mode', () => {
     vi.useFakeTimers();
     const view = renderWithVis(<ScreeningFunnelDiagram />, true);
-    assertCleanContainerAndFonts(view.container);
+    assertCleanContainerFontsAndKatex(view.container, 2);
+    expect(view.container.querySelectorAll('clipPath').length).toBeGreaterThanOrEqual(1);
 
     expect(screen.getByText(/Start with 200,000 candidates/i)).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(2150));
-    expect(screen.getByText(/ML filter ≥ 0\.70 cuts 200,000 down to 17,110/i)).toBeInTheDocument();
+    expect(screen.getByText(/AI filter ≥ 0\.70 cuts 200,000 down to 17,110/i)).toBeInTheDocument();
 
-    // Edit library size, shortlist budget, and assay cost
     fireEvent.change(screen.getByLabelText(/Library N:/i), { target: { value: '50000' } });
     fireEvent.change(screen.getByLabelText(/Wet-lab slots K:/i), { target: { value: '40' } });
     fireEvent.change(screen.getByLabelText(/Assay \$\/test:/i), { target: { value: '1000' } });
-    expect(screen.getByText(/Top-40 wet lab/i)).toBeInTheDocument();
+    expect(screen.getByText(/Lab top-40: 40 tested/i)).toBeInTheDocument();
 
-    // Predict-then-run challenge
     fireEvent.click(screen.getByRole('button', { name: /Recall plunges/i }));
     expect(screen.getByText(/Right —/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Test τ = 0\.93 now/i }));
     expect(screen.getByText(/τ=0\.93/)).toBeInTheDocument();
+
+    const compactView = renderWithVis(<ScreeningFunnelDiagram compact />, true);
+    expect(compactView.container.querySelectorAll('.nm-sticky')).toHaveLength(2);
   });
 
   it('pauses off-screen and starts static on final ROI stage under prefers-reduced-motion', () => {

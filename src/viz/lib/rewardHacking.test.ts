@@ -20,6 +20,17 @@ describe('rewardHacking pure computation', () => {
     }
   });
 
+  it('spot-checks by hand Step 0 expected length and Step 10 proxy score at L=900', () => {
+    // Hand-check SFT reference expected length:
+    // 0.16*40 + 0.34*120 + 0.28*160 + 0.13*260 + 0.05*420 + 0.03*650 + 0.01*900
+    // = 6.4 + 40.8 + 44.8 + 33.8 + 21.0 + 19.5 + 9.0 = 175.3 words
+    const sim = simulateRewardHacking({ lengthBias: 1.6, klFloor: 0.25, idealLength: 150 });
+    expect(sim.trace[0].expectedLength).toBeCloseTo(175.3, 6);
+    expect(sim.trace[0].klDivergence).toBeCloseTo(0, 10);
+    // At L=900, trueQuality ≈ 10 * exp(-750^2 / 12800) ≈ 0, so proxyAtLength(900, 1.6, 150) ≈ 1.6 * 9 = 14.4
+    expect(proxyAtLength(900, 1.6, 150)).toBeCloseTo(14.4, 8);
+  });
+
   it('produces valid normalized probability distributions with KL=0 at reference', () => {
     const probs = solveOptimalPolicy([1, 2, 3, 2, 1, 0, 0], Infinity);
     expect(probs).toEqual([...REFERENCE_PROBS]);

@@ -9,7 +9,7 @@ export type ScreeningStage = 0 | 1 | 2 | 3;
 
 export const SCREENING_STAGES: readonly { id: ScreeningStage; label: string; shortLabel: string }[] = [
   { id: 0, label: '1. Candidate library', shortLabel: '1. Library' },
-  { id: 1, label: '2. ML filter ≥ τ', shortLabel: '2. ML filter' },
+  { id: 1, label: '2. ML filter ≥ τ', shortLabel: '2. AI filter' },
   { id: 2, label: '3. Top-K wet lab', shortLabel: '3. Top-K lab' },
   { id: 3, label: '4. Hits & savings', shortLabel: '4. Hits & ROI' },
 ];
@@ -28,6 +28,8 @@ export interface HistogramBin {
   max: number;
   totalCount: number;
   hitCount: number;
+  passedCount: number;
+  passedHitCount: number;
   passesThreshold: boolean;
 }
 
@@ -91,10 +93,12 @@ export function runScreeningFunnel(
 
   const counts = funnelCounts(scores, threshold, shortlistBudget);
 
-  // Build 10-bin score histogram (0.0..1.0) and collect passed indices for exact top-K ranking
+  // Build 10-bin score histogram (0.0..1.0) with exact passed counts per bin
   const binCount = 10;
   const binTotals = new Array<number>(binCount).fill(0);
   const binHits = new Array<number>(binCount).fill(0);
+  const binPassed = new Array<number>(binCount).fill(0);
+  const binPassedHits = new Array<number>(binCount).fill(0);
   const passedIndices: number[] = [];
   let totalTrueHits = 0;
   let hitsPassingMl = 0;
@@ -108,7 +112,11 @@ export function runScreeningFunnel(
     if (isHit) binHits[binIdx]++;
     if (s >= threshold) {
       passedIndices.push(i);
-      if (isHit) hitsPassingMl++;
+      binPassed[binIdx]++;
+      if (isHit) {
+        hitsPassingMl++;
+        binPassedHits[binIdx]++;
+      }
     }
   }
 
@@ -133,6 +141,8 @@ export function runScreeningFunnel(
     max: (b + 1) / binCount,
     totalCount: binTotals[b],
     hitCount: binHits[b],
+    passedCount: binPassed[b],
+    passedHitCount: binPassedHits[b],
     passesThreshold: (b + 1) / binCount > threshold,
   }));
 
@@ -169,18 +179,18 @@ export function formatUsdCompact(usd: number): string {
 /** One-line plain-English explanation of what just happened at `stage` and why. */
 export function explainScreeningStage(stage: ScreeningStage, res: ScreeningResult): string {
   if (stage === 0) {
-    return `Start with ${res.librarySize.toLocaleString('en-US')} candidates containing ${res.totalTrueHits.toLocaleString('en-US')} true hits (${res.baselineHitRatePct.toFixed(2)}%) — testing all physically would cost ${formatUsdCompact(res.naiveCostUsd)}.`;
+    return `Start with ${res.librarySize.toLocaleString('en-US')} candidates containing ${res.totalTrueHits.toLocaleString('en-US')} real hits (${res.baselineHitRatePct.toFixed(2)}%) — testing every candidate physically would cost ${formatUsdCompact(res.naiveCostUsd)}.`;
   }
   if (stage === 1) {
-    return `ML filter ≥ ${res.threshold.toFixed(2)} cuts ${res.librarySize.toLocaleString('en-US')} down to ${res.passedMl.toLocaleString('en-US')} (${res.passedPct.toFixed(2)}%), keeping ${res.recallPct.toFixed(1)}% of all true hits.`;
+    return `AI filter ≥ ${res.threshold.toFixed(2)} cuts ${res.librarySize.toLocaleString('en-US')} down to ${res.passedMl.toLocaleString('en-US')} (${res.passedPct.toFixed(2)}%), keeping ${res.recallPct.toFixed(1)}% of all real hits.`;
   }
   if (stage === 2) {
     if (res.passedMl < res.shortlistBudget) {
-      return `Threshold ${res.threshold.toFixed(2)} is so strict only ${res.shortlist} candidates survived (< ${res.shortlistBudget} wet-lab slots), leaving lab capacity unused.`;
+      return `Cutoff ${res.threshold.toFixed(2)} is so strict only ${res.shortlist} candidates survived (< ${res.shortlistBudget} wet-lab slots), leaving lab capacity unused.`;
     }
-    return `Rank the ${res.passedMl.toLocaleString('en-US')} survivors and synthesize only the top ${res.shortlist} in the wet lab for ${formatUsdCompact(res.mlFunnelCostUsd)}.`;
+    return `Rank the ${res.passedMl.toLocaleString('en-US')} survivors and test only the top ${res.shortlist} physically in the wet lab for ${formatUsdCompact(res.mlFunnelCostUsd)}.`;
   }
-  return `Physical tests confirm ${res.hitsInShortlist}/${res.shortlist} real hits (${res.hitRatePct.toFixed(1)}% hit rate = ${res.enrichmentFactor.toFixed(1)}× over random), saving ${formatUsdCompact(res.costSavedUsd)}.`;
+  return `Physical tests confirm ${res.hitsInShortlist}/${res.shortlist} real hits (${res.hitRatePct.toFixed(1)}% hit rate = ${res.enrichmentFactor.toFixed(1)}× better than random), saving ${formatUsdCompact(res.costSavedUsd)}.`;
 }
 
 /** General formula and substituted numbers for the active screening stage. */

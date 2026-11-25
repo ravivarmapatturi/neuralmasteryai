@@ -24,6 +24,15 @@ describe('screeningFunnel pure computation', () => {
     expect(res.passedMl).toBe(17_110);
     expect(res.shortlist).toBe(20);
     expect(res.histogram).toHaveLength(10);
+
+    // Hand-check consistency: histogram bins must sum strictly to total N, totalTrueHits, passedMl, and hitsPassingMl
+    expect(res.histogram.reduce((s, b) => s + b.totalCount, 0)).toBe(200_000);
+    expect(res.histogram.reduce((s, b) => s + b.hitCount, 0)).toBe(res.totalTrueHits);
+    expect(res.histogram.reduce((s, b) => s + b.passedCount, 0)).toBe(res.passedMl);
+    expect(res.histogram.reduce((s, b) => s + b.passedHitCount, 0)).toBe(res.hitsPassingMl);
+    // At threshold=0.70, recall = hitsPassingMl / totalTrueHits * 100 and costSaved = 200,000*2500 - 20*2500 = $499,950,000
+    expect(res.recallPct).toBeCloseTo((res.hitsPassingMl / res.totalTrueHits) * 100, 10);
+    expect(res.costSavedUsd).toBe(499_950_000);
   });
 
   it('computes recall drop as threshold rises and huge enrichment over random testing', () => {

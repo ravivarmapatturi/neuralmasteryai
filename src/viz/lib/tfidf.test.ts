@@ -131,6 +131,29 @@ describe('live TF-IDF playground extensions (free text, variants, step captions)
     expect(d1.activeScore).toBeCloseTo(0.25 * Math.log(4 / 3), 6);
   });
 
+  it('spot-checks by hand that per-term contributions sum exactly to cosineScore and classicScore', () => {
+    // Hand-check D1 = "machine learning is powerful" for query "machine learning"
+    // In TOY_TFIDF_DOCS: "machine" (df=3), "learning" (df=3), "is" (df=3, not in D3), "powerful" (df=1)
+    const idfML = Math.log(4 / 3);
+    const idfIs = Math.log(4 / 3);
+    const idfPow = Math.log(4);
+    const d1Norm = Math.hypot(0.25 * idfML, 0.25 * idfML, 0.25 * idfIs, 0.25 * idfPow);
+    const qNorm = Math.hypot(0.5 * idfML, 0.5 * idfML);
+    const dot = 0.5 * idfML * (0.25 * idfML) * 2;
+    const expectedCosineD1 = dot / (qNorm * d1Norm);
+
+    const cosRes = runTfidfSearch('machine learning', TOY_TFIDF_DOCS, 'cosine');
+    const d1 = cosRes.results.find((r) => r.docId === 'D1')!;
+    expect(d1.cosineScore).toBeCloseTo(expectedCosineD1, 8);
+    // Per-term cosineContribution must sum to exact cosineScore
+    const sumCosParts = d1.breakdown.reduce((acc, b) => acc + b.cosineContribution, 0);
+    expect(sumCosParts).toBeCloseTo(d1.cosineScore, 10);
+
+    // Classic sum check
+    const sumClassicParts = d1.breakdown.reduce((acc, b) => acc + b.tfidf, 0);
+    expect(sumClassicParts).toBeCloseTo(d1.classicScore, 10);
+  });
+
   it('computes length-invariant cosine similarity and exposes raw-count inflation', () => {
     const repeatedDocs = [
       ...TOY_TFIDF_DOCS,
@@ -153,9 +176,9 @@ describe('live TF-IDF playground extensions (free text, variants, step captions)
     expect(raw.rawCountTotal).toBe(6);
 
     // Step explanations and formulas include live numbers
-    const caption = explainTfidfStep(3, classicD1, [ { term: 'machine', df: 3, N: 4, idf: Math.log(4 / 3) } ], 'classic', 4);
+    const caption = explainTfidfStep(3, classicD1, [{ term: 'machine', df: 3, N: 4, idf: Math.log(4 / 3) }], 'classic', 4);
     expect(caption).toContain('0.1438');
-    const formula = formatTfidfFormula(2, classicD1, [ { term: 'machine', df: 3, N: 4, idf: Math.log(4 / 3) } ], 'classic');
+    const formula = formatTfidfFormula(2, classicD1, [{ term: 'machine', df: 3, N: 4, idf: Math.log(4 / 3) }], 'classic');
     expect(formula.general).toContain('ln(N / df');
     expect(formula.worked).toContain('0.2877');
   });
