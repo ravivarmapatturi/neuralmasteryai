@@ -120,8 +120,9 @@ function linkedHiddenPracticeRoutes() {
 // on the live site (real HTTP 404 status, confirmed via a real website
 // audit 2026-10-07), the identical bug this list exists to prevent.
 const GLOSSARY_SLUGS = [...readFileSync(join(ROOT, 'src', 'data', 'glossary.ts'), 'utf8').matchAll(/^  t\('([a-z0-9-]+)'/gm)].map((match) => match[1]);
+const PLAYGROUND_ROUTES = JSON.parse(readFileSync(join(ROOT, 'src', 'data', 'playgroundCatalog.json'), 'utf8')).tools.map((tool) => `/playground/${tool.slug}`);
 const INTERVIEW_TOPIC_ROUTES = JSON.parse(readFileSync(join(ROOT, 'src', 'data', 'interviewTopics.generated.json'), 'utf8')).map((t) => `/interview/topics/${t.slug}`);
-const APP_ROUTES = ['/', '/learn', '/focus', '/progress', '/labs', '/atlas', '/glossary', ...GLOSSARY_SLUGS.map((slug) => `/glossary/${slug}`), '/interview', '/interview/mock', ...interviewQuestionRoutes, '/interview/questions', '/interview/topics', ...INTERVIEW_TOPIC_ROUTES, '/practice', '/profile', '/leaderboard', '/about', '/changelog', '/privacy', '/terms', ...studyRoutes()];
+const APP_ROUTES = ['/', '/learn', '/focus', '/progress', '/labs', '/playground', ...PLAYGROUND_ROUTES, '/atlas', '/glossary', ...GLOSSARY_SLUGS.map((slug) => `/glossary/${slug}`), '/interview', '/interview/mock', ...interviewQuestionRoutes, '/interview/questions', '/interview/topics', ...INTERVIEW_TOPIC_ROUTES, '/practice', '/profile', '/leaderboard', '/about', '/changelog', '/privacy', '/terms', ...studyRoutes()];
 // The blog list and every post (src/data/blogMeta.generated.json).
 const BLOG_ROUTES = ['/blog', '/blog/write', ...JSON.parse(readFileSync(join(ROOT, 'src', 'data', 'blogMeta.generated.json'), 'utf8')).map((p) => `/blog/${p.slug}`)];
 

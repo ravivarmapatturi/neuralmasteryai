@@ -27,6 +27,8 @@ const ChangelogPage = lazyWithRetry(() => import('./components/changelog/Changel
 const SpeechTestPage = lazyWithRetry(() => import('./components/SpeechTestPage'));
 const VoiceTestPage = lazyWithRetry(() => import('./components/VoiceTestPage'));
 const VizAuditPage = lazyWithRetry(() => import('./components/VizAuditPage'));
+const PlaygroundPage = lazyWithRetry(() => import('./pages/PlaygroundPage'));
+const PlaygroundToolPage = lazyWithRetry(() => import('./pages/PlaygroundToolPage'));
 import PracticeTrackPage from './components/PracticeTrackPage';
 import ProgressPage from './components/ProgressPage';
 import FocusPage from './components/focus/FocusPage';
@@ -101,6 +103,8 @@ export default function App() {
                         <Route path="/" element={<ChooserPage />} />
                         <Route path="/learn" element={<Home />} />
                         <Route path="/labs" element={<ErrorBoundary level="route"><Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading labs…</p>}><PracticeListPage /></Suspense></ErrorBoundary>} />
+                        <Route path="/playground" element={<ErrorBoundary level="route"><Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading playground…</p>}><PlaygroundPage /></Suspense></ErrorBoundary>} />
+                        <Route path="/playground/:slug" element={<ErrorBoundary level="route"><Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading workbench…</p>}><PlaygroundToolPage /></Suspense></ErrorBoundary>} />
                         {(!import.meta.env.PROD || import.meta.env.VITE_ENABLE_LABS === 'true') && (
                           <>
                             <Route path="/lab/speech-test" element={<ErrorBoundary level="route"><Suspense fallback={<p role="status" style={{ padding: '3rem', textAlign: 'center' }}>Loading speech test lab…</p>}><SpeechTestPage /></Suspense></ErrorBoundary>} />

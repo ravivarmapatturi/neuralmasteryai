@@ -17,6 +17,7 @@ export const NAV_GROUPS = [
     items: [
       { to: '/learn', label: 'Learn', note: 'Lessons with diagrams and live code' },
       { to: '/labs', label: 'Labs', note: 'Practice problems in Python' },
+      { to: '/playground', label: 'Playground', note: 'Interactive visualizers across every section' },
       { to: '/focus', label: 'Focus', note: 'Your screen time on Neural Mastery' },
       { to: '/interview', label: 'Interview', note: 'Spoken mock interview and question bank' },
       { to: '/study-plans', label: 'Study plans', note: 'Named sheets of problems' },
@@ -200,6 +201,7 @@ export default function Navbar({
           >
             Labs
           </Link>
+          <Link to="/playground" className="nm-nav-link">Playground</Link>
           <Link to="/interview" className="nm-nav-link">Interview</Link>
           <Link to="/study-plans" className="nm-nav-link">Study plans</Link>
           <Link

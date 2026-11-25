@@ -26,6 +26,7 @@ function walk(dir) {
 // (src/data/practiceSlugs.generated.json, built from practiceCatalog.ts).
 // Hidden problems keep working URLs but aren't advertised to crawlers.
 const practiceSlugs = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'practiceSlugs.generated.json'), 'utf8'));
+const playgroundSlugs = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'playgroundCatalog.json'), 'utf8')).tools.map((tool) => tool.slug);
 const trackSlugs = [...readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'practiceCatalog.ts'), 'utf8').matchAll(/^    slug: '([a-z0-9-]+)',$/gm)].map((m) => m[1]);
 const glossarySlugs = [...readFileSync(resolve(import.meta.dirname, '..', 'src', 'data', 'glossary.ts'), 'utf8').matchAll(/^  t\('([a-z0-9-]+)'/gm)].map((m) => m[1]);
 
@@ -39,6 +40,8 @@ const urls = [
   { loc: `${SITE_URL}/learn`, lastmod: null },
   { loc: `${SITE_URL}/focus`, lastmod: null },
   { loc: `${SITE_URL}/labs`, lastmod: null },
+  { loc: `${SITE_URL}/playground`, lastmod: null },
+  ...playgroundSlugs.map((slug) => ({ loc: `${SITE_URL}/playground/${slug}`, lastmod: null })),
   { loc: `${SITE_URL}/atlas`, lastmod: null },
   ...studyRoutes().map((route) => ({ loc: `${SITE_URL}${route}`, lastmod: null })),
   { loc: `${SITE_URL}/interview/topics`, lastmod: null },

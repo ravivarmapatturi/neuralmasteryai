@@ -14,7 +14,15 @@ describe('Navbar menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     const products = screen.getByRole('region', { name: 'Products' });
     const resources = screen.getByRole('region', { name: 'Resources' });
-    for (const name of ['Learn', 'Labs', 'Interview', 'Study plans', 'Research', 'Projects', 'Atlas']) expect(within(products).getByRole('link', { name: new RegExp(`^${name}`) })).toBeInTheDocument();
+    for (const name of ['Learn', 'Labs', 'Playground', 'Interview', 'Study plans', 'Research', 'Projects', 'Atlas']) expect(within(products).getByRole('link', { name: new RegExp(`^${name}`) })).toBeInTheDocument();
     for (const name of ['Blog', 'Glossary', 'Leaderboard', 'Progress', 'Changelog', 'About']) expect(within(resources).getByRole('link', { name: new RegExp(`^${name}`) })).toBeInTheDocument();
+  });
+
+  it('places Playground directly next to Labs in the top navigation bar', () => {
+    render(<ThemeProvider><MemoryRouter><AuthProvider><ProgressProvider><GamificationProvider><FocusMusicProvider><Navbar /></FocusMusicProvider></GamificationProvider></ProgressProvider></AuthProvider></MemoryRouter></ThemeProvider>);
+    const navLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('.nm-navbar-nav a')).map((a) => a.textContent?.trim());
+    const labsIndex = navLinks.indexOf('Labs');
+    expect(labsIndex).toBeGreaterThan(-1);
+    expect(navLinks[labsIndex + 1]).toBe('Playground');
   });
 });
