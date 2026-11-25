@@ -13,6 +13,7 @@ import ShortTermVsLongTermMemoryDiagram from '../../../viz/diagrams/ShortTermVsL
 import ContextWindowBudgetDiagram from '../../../viz/diagrams/ContextWindowBudgetDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
 import PenFlow from '../../../components/notebook/PenFlow';
 import Worksheet from '../../../components/notebook/Worksheet';
 
@@ -116,6 +117,65 @@ Three consequences follow from the mechanism, and they explain most agent behavi
 - **Every result costs context.** Each tool result stays in the conversation for the rest of the loop. A tool that returns 20,000 tokens of raw HTML makes every later step slower, more expensive and less accurate.
 
 [The Model Context Protocol](/docs/agents/mcp/overview) standardizes how applications discover and call tools that live in other processes; the model-side mechanism is the same.
+
+### Constrained decoding masks illegal tokens
+
+A schema can shape generation before validation runs. During **constrained decoding**, the serving engine tracks the current grammar or JSON-Schema state, computes which vocabulary tokens can legally come next, sets every other token's probability to zero, and renormalizes the remaining mass. The model still supplies preferences among valid continuations; the decoder prevents a syntactically impossible continuation from being sampled.
+
+For vocabulary token $i$ with model probability $p_i$ and validity mask $m_i \in \{0,1\}$, the next-token distribution becomes:
+
+$$
+p'_i = \frac{m_i p_i}{\sum_j m_j p_j}
+$$
+
+where $m_i$ is 1 only when appending token $i$ keeps at least one valid completion possible. This is mask-then-renormalize, not a retry after malformed JSON has already been generated.
+
+<PredictFirst
+  question="At an enum value, the model assigns approve 0.40, maybe 0.30, a closing brace 0.15, reject 0.10, and end-of-text 0.05. The schema allows only approve or reject. What are their constrained probabilities?"
+  options={[
+    'approve 0.40 and reject 0.10; the missing mass stays unused',
+    'approve 0.80 and reject 0.20 after invalid tokens are masked and the valid 0.50 mass is renormalized',
+    'approve 0.50 and reject 0.50 because schemas make allowed choices uniform',
+    'approve 1.00 because it was already the largest token',
+  ]}
+  correctIndex={1}
+  explanation="Masking removes the 0.50 assigned to invalid continuations. The allowed mass is also 0.50, so approve becomes 0.40/0.50 = 0.80 and reject becomes 0.10/0.50 = 0.20. The model's relative preference is preserved; the schema does not make choices uniform or force the argmax."
+/>
+
+The runnable reproduces that one token step, then shows the boundary that matters for agents. The second tool call is valid JSON with the right field types, but its quantity violates the application's authorization policy. Syntax and semantics require separate gates.
+
+<RunnableCode code={`raw = {
+    '"approve"': 0.40,
+    '"maybe"': 0.30,
+    '}': 0.15,
+    '"reject"': 0.10,
+    '<eos>': 0.05,
+}
+allowed = {'"approve"', '"reject"'}
+allowed_mass = sum(prob for token, prob in raw.items() if token in allowed)
+constrained = {
+    token: (prob / allowed_mass if token in allowed else 0.0)
+    for token, prob in raw.items()
+}
+
+print('one constrained token step')
+for token, probability in constrained.items():
+    print(f'{token:10} {probability:.2f}')
+
+tool_call = {'order_id': 'A-1001', 'quantity': 999_999}
+schema_valid = (set(tool_call) == {'order_id', 'quantity'} and
+                isinstance(tool_call['order_id'], str) and
+                isinstance(tool_call['quantity'], int))
+policy_valid = (tool_call['order_id'] == 'A-1001' and
+                1 <= tool_call['quantity'] <= 5)
+print('schema valid:', schema_valid)
+print('business policy valid:', policy_valid)
+print('execute:', schema_valid and policy_valid)
+
+# Try it: change quantity to 3. The syntax result stays true, while the
+# separate policy gate changes and permits execution.`} />
+
+Constrained decoding can guarantee that output parses and, for supported schema features, that required keys, types, enums, and nesting are legal. It cannot guarantee that an order id exists, a quantity is sensible, a retrieved fact is true, or the user is allowed to perform the action. Validate the completed object again, authorize it against application state, and require confirmation for consequential side effects.
 
 ## 3. The Loop in Code
 
@@ -372,3 +432,6 @@ Next: [Context Engineering](/docs/agents/context-engineering), the discipline of
 - Schick et al., [Toolformer: Language Models Can Teach Themselves to Use Tools](https://arxiv.org/abs/2302.04761) (2023)
 - Packer et al., [MemGPT: Towards LLMs as Operating Systems](https://arxiv.org/abs/2310.08560) (2023), on paging memory in and out of context
 - Liu et al., [Lost in the Middle: How Language Models Use Long Contexts](https://arxiv.org/abs/2307.03172) (2023)
+- Scholak, Schucher and Bahdanau, [PICARD: Parsing Incrementally for Constrained Auto-Regressive Decoding from Language Models](https://arxiv.org/abs/2109.05093) (2021)
+- Geng et al., [Grammar-Constrained Decoding for Structured NLP Tasks without Finetuning](https://arxiv.org/abs/2305.13971) (2023)
+- JSON Schema, [Draft 2020-12 specification](https://json-schema.org/draft/2020-12) (2020)

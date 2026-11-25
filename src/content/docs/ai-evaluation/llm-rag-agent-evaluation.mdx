@@ -5,6 +5,7 @@ description: "LLM-as-judge position/verbosity bias, judge validation, and agent 
 ---
 
 import { ELI5 } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
 import PenFlow from '../../../components/notebook/PenFlow';
 import Worksheet from '../../../components/notebook/Worksheet';
 
@@ -12,7 +13,10 @@ import JudgePositionBiasDiagram from '../../../viz/diagrams/JudgePositionBiasDia
 import JudgeVerbosityBiasDiagram from '../../../viz/diagrams/JudgeVerbosityBiasDiagram';
 import JudgeValidationDiagram from '../../../viz/diagrams/JudgeValidationDiagram';
 import AgentTrajectoryDiagram from '../../../viz/diagrams/AgentTrajectoryDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { Remember } from '../../../components/content/Remember';
+
+# LLM, RAG & Agent Evaluation
 
 <ELI5>
 
@@ -20,13 +24,71 @@ A judge can be biased by presentation, a RAG system can fail at different pipeli
 
 </ELI5>
 
-# LLM, RAG & Agent Evaluation
-
 Three progressively harder evaluation problems — a single text output, a text output grounded in retrieved context, and a multi-step sequence of decisions and tool calls — each needing a different evaluation approach because "correct" means something structurally different for each.
 
 ## Intuition: Every Evaluator Is Itself Something to Evaluate
 
 The theme connecting every section below: the thing doing the measuring (an LLM-judge, a coarse success metric) has its own failure modes, and trusting it without checking those failure modes just relocates the "is this measurement trustworthy" problem from [Evaluation Fundamentals](/docs/ai-evaluation/evaluation-fundamentals) one level down instead of solving it. An LLM-judge can be biased by irrelevant surface features. A single success/fail metric can hide exactly how an agent got there. Both are demonstrated below with real, computed numbers.
+
+## Success criteria before scores
+
+An evaluation cannot tell a team whether to ship until the team defines what “useful enough” means. A model score is evidence, not the decision itself. Start from the business outcome, split it into observable criteria, mark non-negotiable gates, and decide which production slices must pass before running the experiment.
+
+Use a criteria taxonomy so one attractive average cannot hide a disqualifying failure:
+
+| Criterion family | Question | Example measure |
+| --- | --- | --- |
+| Business outcome | Did the user finish the job? | Resolved requests without recontact |
+| Functional correctness | Is the answer or action right? | Unit tests, exact fields, task rubric |
+| Evidence and grounding | Is each material claim supported? | Claim-level citation support |
+| Safety and policy | Did any prohibited outcome occur? | Critical violations; often a zero-tolerance gate |
+| Experience | Was the result usable in time? | p95 latency, abandonment, repair rate |
+| Efficiency | Did it fit the operating budget? | Cost per successful task and tool calls per task |
+
+A **business usefulness threshold** turns those measures into a release rule. For an illustrative support assistant, the owner might require at least 85% resolved cases, at least 95% grounded material claims, zero critical privacy violations, p95 latency below 4 seconds, and cost below $0.04 per resolved case. These are example thresholds, not industry constants. The product owner, safety owner, and service owner must set them from user harm, baseline performance, and the service-level objective before results are visible.
+
+Keep component scores alongside the end-to-end gate. Retrieval recall, answer correctness, citation support, tool-call validity, latency, and cost point to different fixes. A weighted composite can rank experiments, but it must not average away a hard safety or correctness gate.
+
+<PredictFirst
+  question="System A scores 83% overall and System B scores 75%. Yet B is better on both simple cases (95% vs 90%) and hard cases (70% vs 60%). Which conclusion is justified?"
+  options={[
+    'A is better because its overall score is higher',
+    'B is better on the measured slices, but the systems must be reweighted to the same production mix before an overall decision',
+    'The slice results are impossible if A has the higher total',
+    'Average the three percentages for each system',
+  ]}
+  correctIndex={1}
+  explanation="The systems were evaluated on different mixtures: B saw many more hard cases. That can reverse the aggregate ranking even while B wins inside every slice, a form of Simpson's paradox. Reweight both systems to one declared production distribution; do not choose the favorable aggregate."
+/>
+
+The runnable computes that reversal from counts, then reweights both systems to a shared mix of 60% simple and 40% hard traffic. Counts remain visible so small or missing slices cannot hide behind percentages.
+
+<RunnableCode code={`systems = {
+    'A': {'simple': (90, 100), 'hard': (18, 30)},
+    'B': {'simple': (19, 20),   'hard': (56, 80)},
+}
+
+def rate(pair):
+    passed, total = pair
+    return passed / total
+
+for name, slices in systems.items():
+    passed = sum(pair[0] for pair in slices.values())
+    total = sum(pair[1] for pair in slices.values())
+    print(name, 'simple', f'{rate(slices["simple"]):.1%}',
+          'hard', f'{rate(slices["hard"]):.1%}',
+          'raw overall', f'{passed / total:.1%}', 'n=', total)
+
+production_mix = {'simple': 0.60, 'hard': 0.40}
+for name, slices in systems.items():
+    adjusted = sum(production_mix[slice_name] * rate(pair)
+                   for slice_name, pair in slices.items())
+    print(name, 'production-mix adjusted', f'{adjusted:.1%}')
+
+# Try it: change the production mix to 20% simple and 80% hard. B still
+# wins because it is better in both slices, while the adjusted totals move.`} />
+
+Report each criterion as a point estimate plus uncertainty, counts, and named slices: language, task type, customer tier, input length, risk level, and any group for which failure has a different cost. Freeze the slice definitions before comparing systems. If a slice is too small to support a decision, say that and collect more cases; do not merge it into a favorable average.
 
 ## LLM Evaluation and LLM-as-a-Judge, In Depth
 
@@ -163,3 +225,10 @@ The smoke test flags a possible verbosity bias when |r| exceeds 0.30 and p is be
 | --- | --- |
 | The task has no observable outcome | Define the evaluation target before choosing a judge |
 | The transformation is deterministic | Use direct unit tests instead of LLM judges |
+
+## Sources
+
+- Liang et al., [Holistic Evaluation of Language Models](https://arxiv.org/abs/2211.09110) (2022), on multi-metric, scenario-based evaluation
+- NIST, [Artificial Intelligence Risk Management Framework: Generative Artificial Intelligence Profile](https://doi.org/10.6028/NIST.AI.600-1) (2024), on measuring risk across the system lifecycle
+- Bickel, Hammel and O'Connell, [Sex Bias in Graduate Admissions: Data from Berkeley](https://www.science.org/doi/10.1126/science.187.4175.398) (1975), a documented Simpson's-paradox case
+- Zheng et al., [Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena](https://arxiv.org/abs/2306.05685) (2023)

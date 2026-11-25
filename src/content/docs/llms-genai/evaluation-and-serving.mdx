@@ -10,6 +10,7 @@ import SpeculativeDecodingDiagram from '../../../viz/diagrams/SpeculativeDecodin
 import PagedAttentionDiagram from '../../../viz/diagrams/PagedAttentionDiagram';
 import PredictFirst from '../../../viz/primitives/PredictFirst';
 import { ELI5, GoDeeper } from '../../../components/content/ExpandableDepth';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 import PenFlow from '../../../components/notebook/PenFlow';
 import Worksheet from '../../../components/notebook/Worksheet';
@@ -48,6 +49,74 @@ For a classifier, evaluation is mechanical: compare predicted labels with true l
 - **Outputs vary run to run.** Sampling makes the same prompt produce different answers, so one run is one sample from a distribution.
 
 So LLM evaluation needs three decisions: *what* to test on, *how* to grade each answer, and *how much* to trust the resulting number. The rest of the evaluation half of this page takes them in order.
+
+### Probability is not truth
+
+A language model is trained to predict the next token found in its data. That objective asks, “what text is likely after this prefix?” It never asks, “did the claim match the world?” A fluent answer can therefore receive high token probability because a pattern is frequent, internally consistent, or repeated in the prompt, even when the claim is false.
+
+The distinction matters at every generation step. Given tokens $x_1,\ldots,x_t$, an autoregressive model assigns the next token a conditional probability $P(x_{t+1}\mid x_{\le t})$. The probability of a whole answer is the product of those local choices:
+
+$$
+P(x_{1:T}) = \prod_{t=1}^{T} P(x_t \mid x_{<t})
+$$
+
+where $x_t$ is the token generated at position $t$, and $x_{<t}$ is every earlier token. One plausible but wrong choice becomes part of the next prefix, so later tokens are conditioned on the error and can make it sound increasingly coherent. This is **error compounding**: a local mistake changes the distribution used for every later step.
+
+<PredictFirst
+  question="A tiny next-token model sees the false sentence 'Australia's capital is Sydney' six times and the true sentence ending in 'Canberra' twice. With no external evidence, which city will it prefer after 'Australia's capital is'?"
+  options={[
+    'Canberra, because truth is a stronger training signal',
+    'Sydney, because it is the more frequent continuation in the training text',
+    'Both cities with equal probability',
+    'It must abstain because the examples conflict',
+  ]}
+  correctIndex={1}
+  explanation="Next-token training rewards matching the observed continuation, not checking the claim against a fact source. The six-to-two frequency makes Sydney the likely continuation. Truth would win only if the data, retrieval context, tool result, or a separate verifier supplied that signal; conflict alone does not force abstention."
+/>
+
+This experiment trains a real count-based trigram language model on eight sentences. It is tiny enough to inspect completely, but it uses the same autoregressive contract: estimate the next-token distribution from text, choose a token, append it, and repeat.
+
+<RunnableCode code={`from collections import Counter, defaultdict
+
+true_line = 'the capital of australia is canberra according to the atlas'
+false_line = 'the capital of australia is sydney according to the memo'
+training_text = [false_line] * 6 + [true_line] * 2
+
+counts = defaultdict(Counter)
+for sentence in training_text:
+    words = ['<s>', '<s>', *sentence.split(), '</s>']
+    for i in range(2, len(words)):
+        counts[tuple(words[i-2:i])][words[i]] += 1
+
+def distribution(context):
+    row = counts[tuple(context[-2:])]
+    total = sum(row.values())
+    return {word: count / total for word, count in row.items()}
+
+context = 'the capital of australia is'.split()
+city_probs = distribution(context)
+print('next-token distribution after "australia is":', city_probs)
+
+generated = context[:]
+path_probability = 1.0
+for _ in range(5):
+    probs = distribution(generated)
+    token, probability = max(probs.items(), key=lambda item: item[1])
+    generated.append(token)
+    path_probability *= probability
+    if token == '</s>':
+        break
+
+print('greedy continuation:', ' '.join(generated))
+print(f'probability of chosen continuation: {path_probability:.3f}')
+print('truth check from an external atlas: Canberra')
+
+# Try it: change the corpus to 7 true lines and 1 false line. The preferred
+# city flips because the model follows its text distribution, not the world.`} />
+
+The printed $0.75$ for “Sydney” is calibrated only to this model's training continuation: six of eight matching prefixes ended that way. It is not a 75% probability that Sydney is Australia's capital. **Calibration** must name the event being calibrated. Next-token calibration measures token frequencies; application calibration needs labelled events such as “the final claim is supported by the cited source.”
+
+Mitigation changes the evidence path rather than asking the same model to sound more certain. Retrieve a current source and require claim-level citations; use a calculator, database, or search tool for facts the system can check; train and test abstention on unanswerable cases; and run a separate verifier against the evidence before high-impact output leaves the system. Lower temperature can reduce variation, but it cannot turn a frequently learned false continuation into a true one.
 
 ## 2. What to Evaluate On
 
@@ -384,3 +453,7 @@ LLMs and GenAI core content complete. Continue to [Multimodal and Generative Mod
 - Ainslie et al., [GQA: Training Generalized Multi-Query Transformer Models](https://arxiv.org/abs/2305.13245) (2023)
 - Frantar et al., [GPTQ](https://arxiv.org/abs/2210.17323) (2022) and Lin et al., [AWQ](https://arxiv.org/abs/2306.00978) (2023)
 - Meta, [Llama 3.1 model card](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md), for the architecture numbers used above
+- Lin, Hilton and Evans, [TruthfulQA: Measuring How Models Mimic Human Falsehoods](https://arxiv.org/abs/2109.07958) (2021)
+- Kadavath et al., [Language Models (Mostly) Know What They Know](https://arxiv.org/abs/2207.05221) (2022), on calibration and self-evaluation
+- Lewis et al., [Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks](https://arxiv.org/abs/2005.11401) (2020)
+- Manakul, Liusie and Gales, [SelfCheckGPT: Zero-Resource Black-Box Hallucination Detection for Generative Large Language Models](https://arxiv.org/abs/2303.08896) (2023)

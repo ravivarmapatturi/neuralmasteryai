@@ -9,6 +9,8 @@ import ModelCardChecklistDiagram from '../../../viz/diagrams/ModelCardChecklistD
 import ActiveVsTotalParamsDiagram from '../../../viz/diagrams/ActiveVsTotalParamsDiagram';
 import BenchmarkDimensionsSelectorDiagram from '../../../viz/diagrams/BenchmarkDimensionsSelectorDiagram';
 import UsageWorkflowDiagram from '../../../viz/diagrams/UsageWorkflowDiagram';
+import PredictFirst from '../../../viz/primitives/PredictFirst';
+import RunnableCode from '../../../components/content/RunnableCode';
 
 # Model Catalog & Benchmarking Framework
 
@@ -77,6 +79,81 @@ What to actually measure, by the kind of system being built — durable regardle
 
 <BenchmarkDimensionsSelectorDiagram />
 
+## Freeze the workload before benchmarking
+
+A benchmark is a comparison only when every candidate performs the same job. Changing prompt length, output length, concurrency, precision, hardware, or warm-up changes the bottleneck. A model can appear faster simply because it received shorter prompts or ran with fewer simultaneous requests.
+
+Write a **workload plan** before running either candidate. It fixes the following fields and makes the result reproducible:
+
+| Field | Record before the run | Why it changes the result |
+| --- | --- | --- |
+| Model | id, revision, tokenizer, serving engine | A moving model or engine is a different system |
+| Precision | weight, activation, and KV-cache dtypes | Memory traffic, capacity, and quality change |
+| Lengths | measured input and requested output-token distributions | Prefill and decode stress different resources |
+| Load | concurrency or arrival-rate schedule | Queueing changes latency and throughput |
+| Warm-up | discarded requests or duration | First-run compilation and cache fills distort results |
+| Repeats | requests per cell and random seed | Small runs hide tail events |
+| Percentiles | p50, p95, and p99 for TTFT, TPOT, and end-to-end latency | A mean hides user-visible stalls |
+| Hardware | accelerator, count, memory, interconnect, CPU, and software versions | Results do not transfer across machines unchanged |
+| Units | requests/s, output tokens/s, milliseconds, GiB, and cost/request | Ambiguous “tokens/s” can mean incompatible quantities |
+
+<PredictFirst
+  question="Model A reports 120 output tokens/s at concurrency 1 with 128-token prompts. Model B reports 95 output tokens/s at concurrency 32 with 2,048-token prompts. Which model is faster for your service?"
+  options={[
+    'Model A, because 120 is greater than 95',
+    'Model B, because concurrency 32 is harder',
+    'The records are not comparable; rerun both on the same length and load matrix',
+    'Average the two numbers and pick the cheaper model',
+  ]}
+  correctIndex={2}
+  explanation="The measurements use different prompt lengths and concurrency, so they exercise different prefill, decode, queueing, and batching regimes. The higher number does not identify a winner. Fixing the workload matrix is necessary before price or quality can break the tie."
+/>
+
+The planner below treats the workload as data, validates the fields that people most often omit, and emits a decision record. Its candidate results are explicitly illustrative; replace them with measurements from one controlled run. The final line records what evidence would overturn the choice, so the decision can be revisited instead of becoming folklore.
+
+<RunnableCode code={`plan = {
+    'model_revision': 'candidate revision pinned by digest',
+    'precision': 'int8 weights, bf16 activations, bf16 KV cache',
+    'input_tokens': [128, 2048],
+    'output_tokens': [128, 512],
+    'concurrency': [1, 16, 64],
+    'warmup_requests': 20,
+    'repeats_per_cell': 50,
+    'percentiles': [50, 95, 99],
+    'hardware': '1 accelerator; exact SKU, memory, driver recorded with run',
+    'units': ['ms TTFT', 'ms TPOT', 'requests/s', 'output tokens/s', 'GiB', 'cost/request'],
+}
+
+required = set(plan)
+expected = {'model_revision', 'precision', 'input_tokens', 'output_tokens',
+            'concurrency', 'warmup_requests', 'repeats_per_cell',
+            'percentiles', 'hardware', 'units'}
+assert required == expected and plan['warmup_requests'] > 0
+cells = len(plan['input_tokens']) * len(plan['output_tokens']) * len(plan['concurrency'])
+print(f'workload cells: {cells}; measured requests: {cells * plan["repeats_per_cell"]}')
+
+# Illustrative results from the SAME workload plan; replace with measured data.
+results = {
+    'small-int8': {'quality': 0.87, 'p95_ttft_ms': 410, 'p95_tpot_ms': 22, 'cost': 0.18},
+    'large-fp16': {'quality': 0.91, 'p95_ttft_ms': 790, 'p95_tpot_ms': 38, 'cost': 0.44},
+}
+limits = {'quality': 0.88, 'p95_ttft_ms': 800, 'p95_tpot_ms': 40, 'cost': 0.50}
+
+def passes(row):
+    return (row['quality'] >= limits['quality'] and
+            row['p95_ttft_ms'] <= limits['p95_ttft_ms'] and
+            row['p95_tpot_ms'] <= limits['p95_tpot_ms'] and row['cost'] <= limits['cost'])
+
+eligible = [name for name, row in results.items() if passes(row)]
+decision = min(eligible, key=lambda name: results[name]['cost'])
+print('decision:', decision, '- cheapest candidate that passes every gate')
+print('overturn if: small-int8 quality reaches 0.88, or large-fp16 exceeds 800 ms TTFT, 40 ms TPOT, or $0.50/request')
+
+# Try it: raise small-int8 quality to 0.89. It passes every gate and becomes
+# the decision because its illustrative cost/request is lower.`} />
+
+Store the plan, raw request-level results, summary script, decision, date, and owner together. Do not compare a provider's advertised token rate with your measured goodput; units and load shape differ. Re-run when the model revision, serving engine, hardware, traffic distribution, or acceptance threshold changes.
+
 ## How to Use This Page
 
 When choosing a model for a real system: pull the current, specific candidates from primary sources (the model provider's own documentation, the inference engine's supported-models list, current leaderboards — treated with the [benchmark design](/docs/ai-evaluation/evaluation-fundamentals#benchmark-design) skepticism this site teaches, not at face value) and evaluate them against the attribute checklist and benchmark dimensions above. The checklist and dimensions are what stay true regardless of which specific models exist when you're reading this — that durability is the point.
@@ -84,3 +161,10 @@ When choosing a model for a real system: pull the current, specific candidates f
 <UsageWorkflowDiagram />
 
 Next: [ML System Design Roadmap](/docs/ml-system-design/roadmap) — where model selection fits into the full 9-step system design framework.
+
+## Sources
+
+- MLCommons, [MLPerf Inference benchmark](https://mlcommons.org/benchmarks/inference/), including scenario, latency, accuracy, and reproducibility rules
+- vLLM, [Benchmarking suite](https://docs.vllm.ai/en/latest/contributing/benchmarks.html), for serving throughput and latency workloads
+- NVIDIA, [GenAI-Perf documentation](https://docs.nvidia.com/deeplearning/triton-inference-server/user-guide/docs/perf_analyzer/genai-perf/README.html), for TTFT, inter-token latency, request latency, and percentile reporting
+- Gray, [The Benchmark Handbook for Database and Transaction Processing Systems](https://www.microsoft.com/en-us/research/publication/the-benchmark-handbook-for-database-and-transaction-processing-systems-2nd-edition/) (1993), on reproducible workload and metric definitions
