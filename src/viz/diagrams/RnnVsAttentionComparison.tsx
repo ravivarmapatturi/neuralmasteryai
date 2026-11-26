@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useVizTokens } from '../../theme/vizTokens';
 import { VisualizationContainer, VizButton, usePrefersReducedMotion } from '../primitives';
 import { DIAGRAM_TYPE, DIAGRAM_OPACITY, getConceptColor } from './diagramSystem';
+import { useAutoplayDefault } from '../primitives/autoplayDefault';
 
 const WORDS = ['The', 'cat', 'sat', 'down'];
 const NODE_R = 18;
@@ -22,7 +23,8 @@ export default function RnnVsAttentionComparison() {
   // Live by default: the RNN lights up one word at a time while attention connects
   // all words at once, then it loops. Any click hands control to the reader.
   const [step, setStep] = useState(reducedMotion ? WORDS.length : 0);
-  const [playing, setPlaying] = useState(!reducedMotion);
+  const autoplayDefault = useAutoplayDefault();
+  const [playing, setPlaying] = useState(() => autoplayDefault && !reducedMotion);
   const [auto, setAuto] = useState(true);
   const [selectedToken, setSelectedToken] = useState<number | null>(1); // "cat" selected by default, so the arcs mean something on first paint
 

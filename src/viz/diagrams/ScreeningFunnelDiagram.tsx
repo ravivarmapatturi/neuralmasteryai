@@ -20,6 +20,7 @@ import {
   runScreeningFunnel,
   type ScreeningStage,
 } from '../lib/screeningFunnel';
+import { useAutoplayDefault } from '../primitives/autoplayDefault';
 
 const BASE_LIBRARY = generateLibraryWithHits(MAX_SCREENING_N);
 
@@ -56,7 +57,8 @@ function ScreeningFunnelPlayground({ compact = false, outerVisible = true }: { c
   const [prediction, setPrediction] = useState<number | null>(null);
 
   const [stage, setStage] = useState<ScreeningStage>(() => (reducedMotion ? 3 : 0));
-  const [playing, setPlaying] = useState(() => !reducedMotion);
+  const autoplayDefault = useAutoplayDefault();
+  const [playing, setPlaying] = useState(() => autoplayDefault && !reducedMotion);
 
   useEffect(() => {
     if (reducedMotion) {

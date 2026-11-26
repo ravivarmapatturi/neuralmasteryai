@@ -11,6 +11,7 @@ import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import StickyNote, { type StickyColor } from '../viz/primitives/StickyNote';
 import TransformerBlockMap from '../viz/diagrams/TransformerBlockMap';
+import { AutoplayDefaultContext } from '../viz/primitives/autoplayDefault';
 import './playground.css';
 
 const TRY_COLORS: StickyColor[] = ['blue', 'green', 'pink', 'orange'];
@@ -65,6 +66,7 @@ export default function PlaygroundToolPage() {
           </header>
 
           <section className="playground-tool__stage" aria-label={`${tool.title} interactive workbench`}>
+            <AutoplayDefaultContext.Provider value={false}>
             <ErrorBoundary level="route">
               <Suspense
                 fallback={
@@ -83,6 +85,7 @@ export default function PlaygroundToolPage() {
                 )}
               </Suspense>
             </ErrorBoundary>
+            </AutoplayDefaultContext.Provider>
           </section>
 
           {tool.tryThis.length > 0 && (

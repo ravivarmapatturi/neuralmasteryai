@@ -22,6 +22,7 @@ import {
   type TfidfVariant,
   type ToyDocument,
 } from '../lib/tfidf';
+import { useAutoplayDefault } from '../primitives/autoplayDefault';
 
 const PRESET_QUERIES: { label: string; query: string }[] = [
   { label: 'machine learning', query: 'machine learning' },
@@ -146,7 +147,8 @@ function TfidfSearchPlayground({ compact = false, outerVisible = true }: { compa
   const [inspectedDocId, setInspectedDocId] = useState('D1');
   const [prediction, setPrediction] = useState<number | null>(null);
   const [stage, setStage] = useState<TfidfStage>(() => (reducedMotion ? 3 : 0));
-  const [playing, setPlaying] = useState(() => !reducedMotion);
+  const autoplayDefault = useAutoplayDefault();
+  const [playing, setPlaying] = useState(() => autoplayDefault && !reducedMotion);
 
   useEffect(() => {
     if (reducedMotion) {

@@ -20,6 +20,7 @@ import {
   qualityAtLength,
   simulateRewardHacking,
 } from '../lib/rewardHacking';
+import { useAutoplayDefault } from '../primitives/autoplayDefault';
 
 type ScenarioId = 'hacker' | 'tethered' | 'unbiased';
 
@@ -67,7 +68,8 @@ function RewardHackingPlayground({ compact = false, outerVisible = true }: { com
 
   const totalSteps = sim.trace.length;
   const [step, setStep] = useState(() => (reducedMotion ? TOTAL_OPT_STEPS : 0));
-  const [playing, setPlaying] = useState(() => !reducedMotion);
+  const autoplayDefault = useAutoplayDefault();
+  const [playing, setPlaying] = useState(() => autoplayDefault && !reducedMotion);
 
   useEffect(() => {
     if (reducedMotion) {

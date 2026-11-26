@@ -22,6 +22,7 @@ import {
   tokenize,
   type AttentionStage,
 } from './lib/attention';
+import { useAutoplayDefault } from './primitives/autoplayDefault';
 
 const HEADS = [makeHead(1), makeHead(2), makeHead(3)];
 const HEAD_OPTIONS: { value: number; label: string }[] = [
@@ -71,7 +72,8 @@ export default function AttentionStepThrough() {
     window.dispatchEvent(new CustomEvent(ATTENTION_STAGE_EVENT, { detail: { stage, masked: causalMask } }));
   }, [stage, causalMask]);
   const [temperature, setTemperature] = useState(1.0);
-  const [playing, setPlaying] = useState(!reducedMotion);
+  const autoplayDefault = useAutoplayDefault();
+  const [playing, setPlaying] = useState(() => autoplayDefault && !reducedMotion);
   const [autoAdvanceTokens, setAutoAdvanceTokens] = useState(true);
   const [prediction, setPrediction] = useState<number | null>(null);
 

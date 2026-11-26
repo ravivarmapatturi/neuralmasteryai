@@ -27,6 +27,7 @@ import {
   type TensorMemoryStats,
   type TensorMode,
 } from '../lib/imageTensor';
+import { useAutoplayDefault } from '../primitives/autoplayDefault';
 
 const PRESET_OPTIONS: { value: ImagePresetId; label: string }[] = IMAGE_PRESETS.map((p) => ({
   value: p.id,
@@ -170,7 +171,8 @@ function ImageTensorPlayground({ compact = false, outerVisible = true }: { compa
   const [prediction, setPrediction] = useState<number | null>(null);
 
   const [tourIdx, setTourIdx] = useState(() => (reducedMotion ? 1 : 0));
-  const [playing, setPlaying] = useState(() => !reducedMotion);
+  const autoplayDefault = useAutoplayDefault();
+  const [playing, setPlaying] = useState(() => autoplayDefault && !reducedMotion);
 
   useEffect(() => {
     if (reducedMotion) {

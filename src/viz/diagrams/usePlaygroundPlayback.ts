@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePrefersReducedMotion, useVizVisible } from '../primitives';
+import { useAutoplayDefault } from '../primitives/autoplayDefault';
 
 /** Autoplays a short teaching trace, loops, and suspends its timer whenever
  * the surrounding VisualizationContainer is outside the viewport. */
@@ -7,7 +8,8 @@ export function usePlaygroundPlayback(totalSteps: number, intervalMs: number) {
   const reducedMotion = usePrefersReducedMotion();
   const visible = useVizVisible();
   const [step, setStepState] = useState(0);
-  const [playing, setPlaying] = useState(() => !reducedMotion);
+  const autoplayDefault = useAutoplayDefault();
+  const [playing, setPlaying] = useState(() => autoplayDefault && !reducedMotion);
 
   useEffect(() => {
     setStepState((current) => Math.min(current, Math.max(0, totalSteps - 1)));

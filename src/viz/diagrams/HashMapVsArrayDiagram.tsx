@@ -20,6 +20,7 @@ import {
   explainLookupStep,
   parseKeyList,
 } from '../lib/hashMapVsArray';
+import { useAutoplayDefault } from '../primitives/autoplayDefault';
 
 const KEY_PRESETS: readonly { label: string; key: string }[] = [
   { label: 'mat (1 jump)', key: 'mat' },
@@ -87,7 +88,8 @@ function HashMapVsArrayPlayground({ compact = false, outerVisible = true }: { co
 
   const totalSteps = Math.max(1, trace.steps.length);
   const [step, setStep] = useState(() => (reducedMotion ? totalSteps - 1 : 0));
-  const [playing, setPlaying] = useState(() => !reducedMotion);
+  const autoplayDefault = useAutoplayDefault();
+  const [playing, setPlaying] = useState(() => autoplayDefault && !reducedMotion);
 
   useEffect(() => {
     setStep((curr) => Math.min(curr, totalSteps - 1));

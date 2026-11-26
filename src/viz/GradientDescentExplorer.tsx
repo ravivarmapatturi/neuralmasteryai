@@ -31,6 +31,7 @@ import {
   type Point2D,
   type SurfaceId,
 } from './lib/gradientDescent';
+import { useAutoplayDefault } from './primitives/autoplayDefault';
 
 const OPTIMIZERS: { value: Optimizer; label: string }[] = [
   { value: 'sgd', label: 'SGD' },
@@ -81,7 +82,8 @@ export default function GradientDescentExplorer({ defaultOptimizer = 'adam' as O
   const [lr, setLr] = useState<number>(DEFAULT_LR[defaultOptimizer]);
   const [start, setStart] = useState<Point2D>(SURFACES.ravine.defaultStart);
   const [compareAll, setCompareAll] = useState(true);
-  const [playing, setPlaying] = useState(!reducedMotion);
+  const autoplayDefault = useAutoplayDefault();
+  const [playing, setPlaying] = useState(() => autoplayDefault && !reducedMotion);
   const [autoLoop, setAutoLoop] = useState(!reducedMotion);
   const [prediction, setPrediction] = useState<number | null>(null);
 

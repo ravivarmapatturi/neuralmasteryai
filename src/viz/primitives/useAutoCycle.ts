@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePrefersReducedMotion } from './VisualizationCanvas';
 import { useVizVisible } from './vizVisibility';
+import { useAutoplayDefault } from './autoplayDefault';
 
 /**
  * Keeps a diagram alive: steps a value 0..n-1 on a timer, looping, until the
@@ -11,7 +12,8 @@ export function useAutoCycle(n: number, ms: number, start = 0) {
   const reduced = usePrefersReducedMotion();
   const visible = useVizVisible(); // paused while the diagram is off screen
   const [value, setValue] = useState(start);
-  const [auto, setAuto] = useState(true);
+  const autoplayDefault = useAutoplayDefault();
+  const [auto, setAuto] = useState(autoplayDefault);
   useEffect(() => {
     if (reduced || !auto || !visible || n < 2) return;
     const id = window.setInterval(() => setValue((v) => (v + 1) % n), ms);
