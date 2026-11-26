@@ -33,6 +33,19 @@ export function alphaBars(kind: ScheduleKind, T: number, betaT = 0.02): number[]
   return kind === 'linear' ? linearAlphaBars(T, 1e-4, betaT) : cosineAlphaBars(T);
 }
 
+/** alphaBar_t allowing t = 0 (clean image: alphaBar_0 = 1) through t = T. */
+export function alphaBarAtStep(bars: readonly number[], step: number): number {
+  if (step <= 0) return 1;
+  const idx = Math.min(bars.length - 1, Math.max(0, Math.round(step) - 1));
+  return bars[idx] ?? 1;
+}
+
+/** Evenly spaced step checkpoints from t = 0 (clean) to t = T (noise). */
+export function buildDiffusionCheckpoints(T: number, frameCount = 21): number[] {
+  const count = Math.max(2, frameCount);
+  return Array.from({ length: count }, (_, i) => Math.round((i / (count - 1)) * T));
+}
+
 /** A structured 1-D "image" so the loss of structure is visible. Values roughly in [-1, 1]. */
 export function makeSignal(kind: SignalKind, n: number): number[] {
   return Array.from({ length: n }, (_, i) => {
@@ -63,7 +76,7 @@ export function seededNoise(n: number, seed: number): number[] {
   });
 }
 
-export function diffuse(x0: number[], eps: number[], alphaBar: number): number[] {
+export function diffuse(x0: readonly number[], eps: readonly number[], alphaBar: number): number[] {
   const a = Math.sqrt(alphaBar);
   const b = Math.sqrt(1 - alphaBar);
   return x0.map((v, i) => a * v + b * eps[i]);
@@ -77,7 +90,7 @@ export function snrDb(alphaBar: number): number {
 }
 
 /** Pearson correlation; how much x_t still "looks like" x_0. */
-export function correlation(a: number[], b: number[]): number {
+export function correlation(a: readonly number[], b: readonly number[]): number {
   const n = a.length;
   const ma = a.reduce((s, v) => s + v, 0) / n;
   const mb = b.reduce((s, v) => s + v, 0) / n;
@@ -91,7 +104,32 @@ export function correlation(a: number[], b: number[]): number {
 }
 
 /** First t (1-based) at which alphaBar drops below a threshold, or null. */
-export function firstStepBelow(bars: number[], threshold: number): number | null {
+export function firstStepBelow(bars: readonly number[], threshold: number): number | null {
   const i = bars.findIndex((v) => v < threshold);
   return i < 0 ? null : i + 1;
+}
+
+/** Plain-English summary of the current diffusion step for beginners. */
+export function explainDiffusionStep(
+  step: number,
+  T: number,
+  alphaBar: number,
+  corr: number,
+  schedule: ScheduleKind,
+): string {
+  const a = Math.sqrt(alphaBar);
+  const b = Math.sqrt(1 - alphaBar);
+  const schedLabel = schedule === 'linear' ? 'Linear β' : 'Cosine';
+  if (step === 0) {
+    return `Step 0 of ${T}: clean starting picture x₀ — 100% signal (√ᾱ = 1.000) and 0% static (√(1−ᾱ) = 0.000).`;
+  }
+  const phase =
+    alphaBar > 0.7
+      ? 'the clean shape is still clear'
+      : alphaBar > 0.25
+        ? 'the shape is fading into static'
+        : alphaBar > 0.03
+          ? 'only a faint shadow of the shape survives'
+          : 'almost pure random static remains';
+  return `Step ${step} of ${T} (${schedLabel}): ᾱ = ${alphaBar.toFixed(3)}, so x_t mixes ${(a * 100).toFixed(0)}% of x₀'s height with ${(b * 100).toFixed(0)}% of noise ε; ${phase} (match to x₀ = ${corr.toFixed(2)}).`;
 }

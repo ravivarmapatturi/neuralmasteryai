@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { linearAlphaBars, cosineAlphaBars, diffuse, snrDb, correlation, seededNoise, makeSignal, firstStepBelow } from './diffusionForward';
+import {
+  alphaBarAtStep,
+  buildDiffusionCheckpoints,
+  cosineAlphaBars,
+  correlation,
+  diffuse,
+  explainDiffusionStep,
+  firstStepBelow,
+  linearAlphaBars,
+  makeSignal,
+  seededNoise,
+  snrDb,
+} from './diffusionForward';
 
 describe('diffusion forward process', () => {
   it('linear schedule matches the hand product of (1 - beta)', () => {
@@ -8,6 +20,16 @@ describe('diffusion forward process', () => {
     expect(bars[0]).toBeCloseTo(0.9, 10);
     expect(bars[1]).toBeCloseTo(0.72, 10);
     expect(bars[2]).toBeCloseTo(0.504, 10);
+  });
+
+  it('matches the DDPM T=1000 halfway signal weight (~0.280 at t=500, 0.279 at index 500)', () => {
+    const bars = linearAlphaBars(1000);
+    const ab500 = alphaBarAtStep(bars, 500);
+    expect(ab500).toBeLessThan(0.1);
+    expect(Math.sqrt(ab500)).toBeCloseTo(0.2803, 3);
+    expect(Math.sqrt(bars[500])).toBeCloseTo(0.279, 3);
+    expect(Math.sqrt(1 - ab500)).toBeCloseTo(0.9599, 3);
+    expect(alphaBarAtStep(bars, 0)).toBe(1);
   });
 
   it('both schedules decrease from near 1 to near 0', () => {
@@ -19,18 +41,23 @@ describe('diffusion forward process', () => {
   });
 
   it('cosine keeps more signal than linear halfway through', () => {
-    expect(cosineAlphaBars(1000)[499]).toBeGreaterThan(linearAlphaBars(1000)[499]);
+    const cos500 = cosineAlphaBars(1000)[499];
+    const lin500 = linearAlphaBars(1000)[499];
+    expect(cos500).toBeGreaterThan(lin500);
+    expect(cos500).toBeGreaterThan(0.45);
   });
 
-  it('diffuse applies sqrt(ab) x0 + sqrt(1-ab) eps', () => {
-    const x = diffuse([1, -1], [0.5, 2], 0.64);
-    expect(x[0]).toBeCloseTo(0.8 * 1 + 0.6 * 0.5, 10);
-    expect(x[1]).toBeCloseTo(-0.8 + 0.6 * 2, 10);
+  it('diffuse applies sqrt(ab) x0 + sqrt(1-ab) eps and preserves hand-checked pixel values', () => {
+    const x = diffuse([0.8, -0.5], [0.1, 1.2], 0.64);
+    expect(x[0]).toBeCloseTo(0.8 * 0.8 + 0.6 * 0.1, 10); // 0.70
+    expect(x[1]).toBeCloseTo(0.8 * -0.5 + 0.6 * 1.2, 10); // 0.32
+    expect(diffuse([0.8, -0.5], [0.1, 1.2], 1)).toEqual([0.8, -0.5]);
   });
 
   it('snr is 0 dB when signal and noise variances are equal', () => {
     expect(snrDb(0.5)).toBeCloseTo(0, 10);
     expect(snrDb(10 / 11)).toBeCloseTo(10, 10);
+    expect(snrDb(1)).toBe(Infinity);
   });
 
   it('correlation is 1 for identical and near 0 when fully noised', () => {
@@ -50,8 +77,13 @@ describe('diffusion forward process', () => {
     expect(variance).toBeLessThan(1.1);
   });
 
-  it('finds the first step below a threshold', () => {
+  it('builds evenly spaced checkpoints including 0, T/2, and T, and explains steps clearly', () => {
+    const cps = buildDiffusionCheckpoints(1000, 21);
+    expect(cps[0]).toBe(0);
+    expect(cps[10]).toBe(500);
+    expect(cps[20]).toBe(1000);
     expect(firstStepBelow([0.9, 0.6, 0.4], 0.5)).toBe(3);
     expect(firstStepBelow([0.9], 0.5)).toBeNull();
+    expect(explainDiffusionStep(0, 1000, 1, 1, 'linear')).toContain('100% signal');
   });
 });

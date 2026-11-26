@@ -92,6 +92,62 @@ export function StepCaptionStrip({
   );
 }
 
+/** Compact labeled numeric input matching the notebook font and tabular numerals. */
+export function NumericField({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  step = 1,
+  integer = true,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  integer?: boolean;
+  onChange: (value: number) => void;
+}) {
+  const t = useVizTokens();
+  return (
+    <label style={{ display: 'block', minWidth: 0, fontSize: 15, color: t.textPrimary }}>
+      <span style={{ display: 'block', fontWeight: 700 }}>{label}</span>
+      {hint && <span style={{ display: 'block', fontSize: 15, color: t.textSecondary, marginBottom: 4 }}>{hint}</span>}
+      <input
+        aria-label={label}
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (!Number.isFinite(v)) return;
+          const clamped = Math.max(min, Math.min(max, v));
+          onChange(integer ? Math.round(clamped) : clamped);
+        }}
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          minHeight: 34,
+          padding: '4px 8px',
+          font: 'inherit',
+          fontSize: 15,
+          fontVariantNumeric: 'tabular-nums',
+          border: `1.5px solid ${t.border}`,
+          borderRadius: RADIUS.sm,
+          background: t.background,
+          color: t.textPrimary,
+        }}
+      />
+    </label>
+  );
+}
+
 /** Inline predict-then-run challenge (no nested card border). */
 export function PredictChallenge({
   prompt,
