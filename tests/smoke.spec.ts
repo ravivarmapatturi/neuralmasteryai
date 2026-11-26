@@ -188,10 +188,13 @@ test.describe('Visualization', () => {
     await container.locator('svg').first().scrollIntoViewIfNeeded();
     await expect(container.locator('svg').first()).toBeVisible();
 
-    await container.getByRole('button', { name: 'Gradient Descent Lab' }).click();
-    const before = await container.locator('.nm-viz-content').locator('text=/^Step \\d/').innerText();
-    await container.getByRole('button', { name: 'Step', exact: true }).click();
-    const after = await container.locator('.nm-viz-content').locator('text=/^Step \\d/').innerText();
+    await container.getByRole('button', { name: 'Gradient descent' }).click();
+    const pause = container.getByRole('button', { name: 'Pause' });
+    if (await pause.count()) await pause.first().click();
+    const stepLabel = container.locator('.nm-viz-content').locator('text=/What just happened · step \\d+/');
+    const before = await stepLabel.innerText();
+    await container.getByRole('button', { name: 'Step →' }).click();
+    const after = await stepLabel.innerText();
     expect(after).not.toBe(before);
     expect(errors.errors()).toEqual([]);
   });
