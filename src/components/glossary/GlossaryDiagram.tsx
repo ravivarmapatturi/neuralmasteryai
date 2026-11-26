@@ -50,6 +50,8 @@ export const GLOSSARY_FIGURES: Record<string, Spec> = {
   transformer: f(['Input embeddings + positions', 'Multi-head attention', 'Feed-forward', 'Repeat block × N', 'Output probabilities'], 1),
   'context-window': b(['system', 'history', 'documents', 'question', 'free for reply'], [.1, .35, .3, .05, .2], [4], 'Everything must fit in one fixed token limit.'),
   'next-token-prediction': b(['sat', 'ran', 'ate', 'flew'], [.55, .25, .15, .05], [0], '"The cat ..." gives a probability for each next token.'),
+  'random-seed': m(['seed 42, run 1', 'seed 42, run 2', 'seed 7'], ['draw 1', 'draw 2', 'draw 3'], [['0.37', '0.91', '0.12'], ['0.37', '0.91', '0.12'], ['0.64', '0.05', '0.83']], ['seed 42, run 2'], 'Same seed, same draws. A new seed gives new draws.'),
+  'llm-nondeterminism': b(['Paris, run 1', 'Lyon, run 1', 'Paris, run 2', 'Lyon, run 2'], [12.0001, 12.0, 11.9999, 12.0], [0, 3], 'A tiny GPU rounding change flips the top token.'),
   temperature: c('tokens, most likely first', 'probability', [{ n: 'T = 0.5', p: [[.05, .9], [.3, .15], [.6, .04], [.95, .02]] }, { n: 'T = 2', p: [[.05, .35], [.3, .3], [.6, .25], [.95, .18]] }]),
   hallucination: g([[60, 40, 'Question'], [190, 40, 'Model'], [190, 115, 'Fluent answer'], [330, 115, 'No source']], [[0, 1], [1, 2], [2, 3, '×']], [3], 'Sounding confident is not evidence that it is true.'),
   'loss-function': c('prediction', 'loss', [{ n: 'squared error', p: [[.05, .9], [.25, .4], [.5, .03], [.75, .4], [.95, .9]] }], [.5, .03, 'true value']),

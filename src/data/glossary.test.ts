@@ -5,10 +5,10 @@ import { GLOSSARY_FIGURES } from '../components/glossary/GlossaryDiagram';
 import { glossaryTerms } from './glossary';
 
 describe('glossary data contract', () => {
-  it('contains exactly 101 terms with unique slugs and diagram ids', () => {
-    expect(glossaryTerms).toHaveLength(101);
-    expect(new Set(glossaryTerms.map((entry) => entry.slug)).size).toBe(101);
-    expect(new Set(glossaryTerms.map((entry) => entry.diagram)).size).toBe(101);
+  it('contains exactly 103 terms with unique slugs and diagram ids', () => {
+    expect(glossaryTerms).toHaveLength(103);
+    expect(new Set(glossaryTerms.map((entry) => entry.slug)).size).toBe(103);
+    expect(new Set(glossaryTerms.map((entry) => entry.diagram)).size).toBe(103);
   });
 
   it('has its own authored figure for every term', () => {
