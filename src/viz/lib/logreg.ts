@@ -37,6 +37,12 @@ export interface LogGDStep {
   db: number;
 }
 
+export interface LogisticTraceStep extends LogGDStep {
+  step: number;
+  loss: number;
+  accuracy: number;
+}
+
 export type LossType = 'ce' | 'mse';
 
 export const X_DOMAIN: [number, number] = [0, 11];
@@ -104,4 +110,24 @@ export function statsFor(lossType: LossType, points: LogPoint[], w: number, b: n
 export function gradientStep(lossType: LossType, points: LogPoint[], w: number, b: number, lr: number): LogGDStep {
   const { dw, db } = statsFor(lossType, points, w, b);
   return { w: w - lr * dw, b: b - lr * db, dw, db };
+}
+
+export function runLogisticGradientDescent(
+  lossType: LossType,
+  points: LogPoint[],
+  start: { w: number; b: number },
+  lr: number,
+  steps: number,
+): LogisticTraceStep[] {
+  const initial = statsFor(lossType, points, start.w, start.b);
+  const trace: LogisticTraceStep[] = [{ step: 0, w: start.w, b: start.b, dw: initial.dw, db: initial.db, loss: initial.loss, accuracy: initial.accuracy }];
+  let current = start;
+  for (let step = 1; step <= Math.max(0, Math.round(steps)); step += 1) {
+    const update = gradientStep(lossType, points, current.w, current.b, lr);
+    current = { w: update.w, b: update.b };
+    const stats = statsFor(lossType, points, current.w, current.b);
+    trace.push({ step, ...update, loss: stats.loss, accuracy: stats.accuracy });
+    if (!Number.isFinite(stats.loss) || Math.abs(current.w) > 1e6 || Math.abs(current.b) > 1e6) break;
+  }
+  return trace;
 }

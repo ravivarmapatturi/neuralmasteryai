@@ -1,381 +1,176 @@
-import { useState } from 'react';
-import { useVizTokens, RADIUS, SPACING } from '../../theme/vizTokens';
-import { VisualizationContainer, VisualizationHeader, PillSelect, useAutoCycle } from '../primitives';
-import {
-  averagePrecisionAtK,
-  catalogCoverage,
-  dcgAtK,
-  hitRateAtK,
-  idcgAtK,
-  intraListDiversity,
-  ndcgAtK,
-  precisionAtK,
-  recallAtK,
-  reciprocalRank,
-} from '../lib/rankingMetrics';
+import { useMemo, useState } from 'react';
+import { FONT_FAMILY, RADIUS, useVizTokens } from '../../theme/vizTokens';
+import { evaluateRanking, type GainType, type RankingMetric } from '../lib/rankingMetrics';
+import { usePlaygroundPlayback } from './usePlaygroundPlayback';
+import { PillSelect, StickyNote, StickyRow, VisualizationContainer, VisualizationHeader, VizButton } from '../primitives';
 
-interface RankedDoc {
-  id: string;
-  title: string;
-  category: string;
-  grade: number; // 0 to 3
-}
+interface RankedDoc { id: string; title: string; grade: number }
 
 const INITIAL_DOCS: RankedDoc[] = [
-  { id: 'doc_A', title: 'Doc A: BM25 & Dense Retrieval Guide', category: 'Search', grade: 3 },
-  { id: 'doc_D', title: 'Doc D: Unrelated Database Sharding Blog', category: 'Database', grade: 0 },
-  { id: 'doc_B', title: 'Doc B: Learning-to-Rank Architectures', category: 'Ranking', grade: 2 },
-  { id: 'doc_C', title: 'Doc C: Basic Information Retrieval Notes', category: 'Search', grade: 1 },
-  { id: 'doc_E', title: 'Doc E: Network Socket Tuning Tips', category: 'Systems', grade: 0 },
+  { id: 'A', title: 'Exact retrieval guide', grade: 3 },
+  { id: 'D', title: 'Unrelated database post', grade: 0 },
+  { id: 'B', title: 'Learning-to-rank guide', grade: 2 },
+  { id: 'C', title: 'Basic retrieval notes', grade: 1 },
+  { id: 'E', title: 'Network tuning tips', grade: 0 },
 ];
 
-const TOTAL_RELEVANT_IN_CORPUS = 3; // docs A, B, C
+const METRICS: { id: RankingMetric; label: string; latex: string; color: 'yellow' | 'pink' | 'orange' | 'green' | 'blue'; meaning: string }[] = [
+  { id: 'precision', label: 'Precision@k', latex: String.raw`P@k=\frac{\sum_{i=1}^{k}r_i}{k}`, color: 'yellow', meaning: 'What share of the first k results is relevant?' },
+  { id: 'recall', label: 'Recall@k', latex: String.raw`R@k=\frac{\sum_{i=1}^{k}r_i}{R_{\mathrm{total}}}`, color: 'pink', meaning: 'What share of every known relevant result did we retrieve?' },
+  { id: 'mrr', label: 'Reciprocal rank', latex: String.raw`RR=\frac{1}{\operatorname{rank}_{\mathrm{first\ hit}}}`, color: 'orange', meaning: 'How early does the first useful result appear?' },
+  { id: 'ap', label: 'Average precision@k', latex: String.raw`AP@k=\frac{\sum_{i=1}^{k}P@i\,r_i}{R_{\mathrm{total}}}`, color: 'green', meaning: 'Reward every relevant result for appearing early.' },
+  { id: 'ndcg', label: 'Normalized DCG@k', latex: String.raw`NDCG@k=\frac{\sum_{i=1}^{k}\frac{2^{g_i}-1}{\log_2(i+1)}}{IDCG@k}`, color: 'blue', meaning: 'Reward higher relevance grades more, then discount later ranks.' },
+];
 
-export default function RankingMetricsExplorer() {
+const metricValue = (metric: RankingMetric, result: ReturnType<typeof evaluateRanking>) => result[metric];
+
+export default function RankingMetricsExplorer({ compact = false }: { compact?: boolean }) {
   const t = useVizTokens();
-  const [docs, setDocs] = useState<RankedDoc[]>(INITIAL_DOCS);
-  const cutoffCycle = useAutoCycle(5, 2200, 2);
-  const cutoffK = cutoffCycle.value + 1;
-  const [gainType, setGainType] = useState<'exponential' | 'linear'>('exponential');
+  const [docs, setDocs] = useState(INITIAL_DOCS);
+  const [cutoff, setCutoff] = useState(3);
+  const [totalRelevant, setTotalRelevant] = useState(3);
+  const [gainType, setGainType] = useState<GainType>('exponential');
+  const [metric, setMetric] = useState<RankingMetric>('ndcg');
+  const [prediction, setPrediction] = useState('same');
+  const [predictionResult, setPredictionResult] = useState<boolean | null>(null);
+  const grades = docs.map((doc) => doc.grade);
+  const knownRelevantInList = grades.filter((grade) => grade > 0).length;
+  const result = useMemo(() => evaluateRanking(grades, cutoff, totalRelevant, gainType), [grades, cutoff, totalRelevant, gainType]);
+  const playback = usePlaygroundPlayback(Math.max(1, cutoff), 1400);
+  const activeRank = Math.min(playback.step + 1, cutoff);
+  const activeDoc = docs[activeRank - 1];
+  const activeContribution = result.dcgContributions[activeRank - 1] ?? 0;
+  const relevantColor = t.accentPrimary;
+  const irrelevantColor = t.textMuted;
+  const activeColor = t.accentSecondary;
 
-  // Binary relevance: grade >= 1 is relevant
-  const grades = docs.map((d) => d.grade);
-  const binaryRel = docs.map((d) => (d.grade >= 1 ? 1 : 0));
-
-  // Compute live metrics
-  const pAtK = precisionAtK(binaryRel, cutoffK);
-  const rAtK = recallAtK(binaryRel, cutoffK, TOTAL_RELEVANT_IN_CORPUS);
-  const hrAtK = hitRateAtK(binaryRel, cutoffK);
-  const mrr = reciprocalRank(binaryRel);
-  const apAtK = averagePrecisionAtK(binaryRel, cutoffK, TOTAL_RELEVANT_IN_CORPUS);
-  const dcg = dcgAtK(grades, cutoffK, gainType);
-  const idcg = idcgAtK(grades, cutoffK, gainType);
-  const ndcg = ndcgAtK(grades, cutoffK, gainType);
-
-  // Recommendation proxies
-  const topCategories = docs.slice(0, cutoffK).map((d) => d.category);
-  const diversity = intraListDiversity(topCategories);
-  const coverage = catalogCoverage(docs.slice(0, cutoffK).map((d) => d.id), 20); // illustrative 20-item catalog
-
-  // Move document up or down
-  const moveDoc = (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= docs.length) return;
-    const updated = [...docs];
-    const temp = updated[index];
-    updated[index] = updated[targetIndex];
-    updated[targetIndex] = temp;
-    setDocs(updated);
+  const updateDocs = (next: RankedDoc[]) => { setDocs(next); playback.setStep(0); setPredictionResult(null); };
+  const move = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= docs.length) return;
+    const next = [...docs];
+    [next[index], next[target]] = [next[target], next[index]];
+    updateDocs(next);
   };
-
-  // Presets
-  const applyPreset = (preset: 'order1' | 'order2' | 'ideal') => {
-    if (preset === 'order1') {
-      // [A, D, B, C, E]
-      setDocs([INITIAL_DOCS[0], INITIAL_DOCS[1], INITIAL_DOCS[2], INITIAL_DOCS[3], INITIAL_DOCS[4]]);
-    } else if (preset === 'order2') {
-      // [D, A, B, C, E] - Demotes A behind D
-      setDocs([INITIAL_DOCS[1], INITIAL_DOCS[0], INITIAL_DOCS[2], INITIAL_DOCS[3], INITIAL_DOCS[4]]);
-    } else if (preset === 'ideal') {
-      // [A, B, C, D, E] - Graded order 3, 2, 1, 0, 0
-      setDocs([INITIAL_DOCS[0], INITIAL_DOCS[2], INITIAL_DOCS[3], INITIAL_DOCS[1], INITIAL_DOCS[4]]);
-    }
+  const applyPreset = (id: 'one' | 'two' | 'ideal') => {
+    const byId = new Map(INITIAL_DOCS.map((doc) => [doc.id, doc]));
+    const order = id === 'one' ? ['A', 'D', 'B', 'C', 'E'] : id === 'two' ? ['D', 'A', 'B', 'C', 'E'] : ['A', 'B', 'C', 'D', 'E'];
+    updateDocs(order.map((docId) => ({ ...byId.get(docId)! })));
   };
+  const worked = metric === 'precision'
+    ? `${result.relevantInTopK} relevant ÷ k ${cutoff} = ${result.precision.toFixed(4)}`
+    : metric === 'recall'
+      ? `${result.relevantInTopK} found ÷ ${totalRelevant} known relevant = ${result.recall.toFixed(4)}`
+      : metric === 'mrr'
+        ? result.firstRelevantRank ? `1 ÷ first relevant rank ${result.firstRelevantRank} = ${result.mrr.toFixed(4)}` : 'No relevant result, so RR = 0.'
+        : metric === 'ap'
+          ? `Precision at each hit, summed and divided by ${totalRelevant} = ${result.ap.toFixed(4)}`
+          : `${result.dcg.toFixed(4)} DCG ÷ ${result.idcg.toFixed(4)} ideal DCG = ${result.ndcg.toFixed(4)}`;
+  const currentStep = activeDoc
+    ? `Rank ${activeRank}: ${activeDoc.id} has grade g = ${activeDoc.grade}. ${activeDoc.grade > 0 ? 'It is relevant.' : 'It is not relevant.'} Its DCG contribution is ${activeContribution.toFixed(3)}.`
+    : 'Choose a non-zero cutoff to score the list.';
 
   return (
     <VisualizationContainer
       title="Interactive Ranking Evaluation Metrics Calculator"
-      footer={
-        `Precision@k, Recall@k, and Hit Rate@k evaluate unranked sets within the top-k cutoff. ` +
-        `MRR, MAP, and NDCG penalize delaying relevant results. Try switching between Preset 1 [A, D, B] and Preset 2 [D, A, B]: ` +
-        `P@3 stays 0.67 and R@3 stays 0.67, while MRR drops from 1.00 to 0.50 and NDCG@3 drops from 0.90 to 0.63.`
-      }
+      footer={compact ? undefined : 'Grades 1–3 count as relevant for binary metrics. DCG uses the chosen gain convention; all values are recalculated from the visible order, grades, cutoff, and total relevant count.'}
     >
-      <VisualizationHeader
-        eyebrow="Metric Comparison Playground"
-        title="Rank-Aware vs. Set-Based Evaluation"
-        description="Reorder candidate items to see how set-based metrics (Precision/Recall) stay frozen while rank-aware metrics (MRR/MAP/NDCG) drop when relevance is delayed."
-      />
-
-      {/* Preset and Cutoff Controls */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 10,
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: SPACING.md,
-          background: t.surfaceAlt,
-          padding: '10px 14px',
-          borderRadius: RADIUS.md,
-          border: `1px solid ${t.border}`,
-        }}
-      >
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: t.textSecondary }}>Presets:</span>
-          <button
-            onClick={() => applyPreset('order1')}
-            style={{
-              padding: '4px 8px',
-              fontSize: 11,
-              borderRadius: RADIUS.sm,
-              border: `1px solid ${t.border}`,
-              background: t.surface,
-              cursor: 'pointer',
-              color: t.textPrimary,
-              fontWeight: 600,
-            }}
-          >
-            Preset 1: [A, D, B, C, E]
-          </button>
-          <button
-            onClick={() => applyPreset('order2')}
-            style={{
-              padding: '4px 8px',
-              fontSize: 11,
-              borderRadius: RADIUS.sm,
-              border: `1px solid ${t.accentWarn}`,
-              background: `${t.accentWarn}15`,
-              cursor: 'pointer',
-              color: t.accentWarn,
-              fontWeight: 600,
-            }}
-          >
-            Preset 2: [D, A, B, C, E] (Demoted)
-          </button>
-          <button
-            onClick={() => applyPreset('ideal')}
-            style={{
-              padding: '4px 8px',
-              fontSize: 11,
-              borderRadius: RADIUS.sm,
-              border: `1px solid ${t.accentTeal}`,
-              background: `${t.accentTeal}15`,
-              cursor: 'pointer',
-              color: t.accentTeal,
-              fontWeight: 600,
-            }}
-          >
-            Ideal: [A, B, C, D, E]
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <PillSelect<number>
-            label="Cutoff k"
-            value={cutoffK}
-            onChange={(v) => cutoffCycle.pick(Number(v) - 1)}
-            options={[
-              { value: 1, label: 'k=1' },
-              { value: 2, label: 'k=2' },
-              { value: 3, label: 'k=3' },
-              { value: 4, label: 'k=4' },
-              { value: 5, label: 'k=5' },
-            ]}
+      {!compact && (
+        <>
+          <VisualizationHeader
+            eyebrow="Live playground"
+            title="Measure whether useful results appear early enough"
+            description="A search system can return the right items in the wrong order. Reorder and regrade this list to see which metrics only count relevant results and which metrics care where they appear."
           />
-          <PillSelect<'exponential' | 'linear'>
-            label="DCG Gain"
-            value={gainType}
-            onChange={(v) => setGainType(v as 'exponential' | 'linear')}
-            options={[
-              { value: 'exponential', label: '2^g - 1' },
-              { value: 'linear', label: 'Linear (g)' },
-            ]}
-          />
-        </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+            <VizButton variant="secondary" onClick={() => applyPreset('one')}>Preset 1: [A, D, B, C, E]</VizButton>
+            <VizButton variant="secondary" onClick={() => applyPreset('two')}>Preset 2: [D, A, B, C, E]</VizButton>
+            <VizButton variant="secondary" onClick={() => applyPreset('ideal')}>Ideal: [A, B, C, D, E]</VizButton>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end', marginBottom: 8 }}>
+            <PillSelect<number> label="Cutoff k (results we inspect)" value={cutoff} onChange={(value) => { setCutoff(Number(value)); playback.setStep(0); }} options={[1, 2, 3, 4, 5].map((value) => ({ value, label: `First ${value}` }))} />
+            <PillSelect<GainType> label="DCG gain (how grades are valued)" value={gainType} onChange={(value) => { setGainType(value as GainType); playback.setStep(0); }} options={[{ value: 'exponential', label: 'Exponential 2ᵍ−1' }, { value: 'linear', label: 'Linear g' }]} />
+            <label style={{ fontSize: 15 }}><span style={{ display: 'block', marginBottom: 4, fontWeight: 700 }}>Known relevant results Rtotal</span><input aria-label="Known relevant results" type="number" min={Math.max(1, knownRelevantInList)} max={20} value={totalRelevant} onChange={(event) => setTotalRelevant(Math.max(1, knownRelevantInList, Math.min(20, Math.round(Number(event.target.value) || 1))))} style={{ width: '100%', minHeight: 38, boxSizing: 'border-box', padding: '5px 8px', border: `1.5px solid ${t.border}`, borderRadius: RADIUS.sm, background: t.background, color: t.textPrimary, font: 'inherit', fontVariantNumeric: 'tabular-nums' }} /></label>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, marginBottom: 8 }}>
+            {docs.map((doc, index) => (
+              <label key={doc.id} style={{ minWidth: 0, fontSize: 15 }}>
+                <span style={{ display: 'block', marginBottom: 3, fontWeight: 700 }}>Grade g for {doc.id}</span>
+                <input aria-label={`Relevance grade for ${doc.id}`} type="number" min={0} max={3} value={doc.grade} onChange={(event) => { const grade = Math.max(0, Math.min(3, Math.round(Number(event.target.value) || 0))); const next = docs.map((item, itemIndex) => itemIndex === index ? { ...item, grade } : item); setTotalRelevant((current) => Math.max(current, next.filter((item) => item.grade > 0).length)); updateDocs(next); }} style={{ width: '100%', minHeight: 36, boxSizing: 'border-box', padding: '4px 7px', border: `1.5px solid ${t.border}`, borderRadius: RADIUS.sm, background: t.background, color: t.textPrimary, font: 'inherit', fontVariantNumeric: 'tabular-nums' }} />
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+
+      <svg width="100%" viewBox="0 0 760 330" role="img" aria-label={`Ranked list with grades ${grades.join(', ')} and ${metric} value ${metricValue(metric, result).toFixed(4)}`} style={{ display: 'block', fontFamily: FONT_FAMILY }}>
+        <defs><clipPath id="ranking-list-clip"><rect x="20" y="20" width="720" height="286" /></clipPath></defs>
+        <g clipPath="url(#ranking-list-clip)">
+          <text x={30} y={28} fontSize={15} fontWeight={700} fill={t.textSecondary}>rank (position)</text>
+          <text x={112} y={28} fontSize={15} fontWeight={700} fill={t.textSecondary}>result</text>
+          <text x={520} y={28} fontSize={15} fontWeight={700} fill={t.textSecondary}>relevance grade g</text>
+          <text x={710} y={28} textAnchor="end" fontSize={15} fontWeight={700} fill={t.textSecondary}>DCG gain</text>
+          {docs.map((doc, index) => {
+            const rank = index + 1;
+            const y = 68 + index * 50;
+            const active = rank === activeRank;
+            const inside = rank <= cutoff;
+            const contribution = result.dcgContributions[index] ?? 0;
+            const color = doc.grade > 0 ? relevantColor : irrelevantColor;
+            return (
+              <g key={doc.id} opacity={inside ? 1 : 0.42}>
+                {active && <rect x={24} y={y - 28} width={708} height={38} rx={5} fill={activeColor} fillOpacity={0.12} />}
+                <text x={54} y={y} textAnchor="middle" fontSize={16} fontWeight={700} fill={active ? activeColor : t.textPrimary}>{rank}</text>
+                <circle cx={92} cy={y - 5} r={5} fill={color} />
+                <text x={112} y={y} fontSize={15} fontWeight={active ? 700 : 400} fill={t.textPrimary}>{doc.id}: {doc.title}</text>
+                <rect x={520} y={y - 18} width={Math.max(4, doc.grade * 44)} height={18} rx={4} fill={color} fillOpacity={0.75} />
+                <text x={510} y={y - 3} textAnchor="end" fontSize={15} fontWeight={700} fill={color}>{doc.grade}</text>
+                <text x={710} y={y} textAnchor="end" fontSize={15} fontWeight={700} fill={inside ? color : t.textMuted}>{inside ? contribution.toFixed(3) : 'outside k'}</text>
+                {index < docs.length - 1 && <line x1={30} y1={y + 16} x2={724} y2={y + 16} stroke={t.border} strokeWidth={1} />}
+              </g>
+            );
+          })}
+          <path d={`M34 40 H24 V${40 + cutoff * 50} H34`} fill="none" stroke={activeColor} strokeWidth={2.5} />
+          <text x={38} y={48 + cutoff * 50} fontSize={14} fontWeight={700} fill={activeColor}>top k = {cutoff}</text>
+        </g>
+      </svg>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px', fontSize: 15 }} aria-label="Ranking colours">
+        <span style={{ color: relevantColor }}>● Relevant (g ≥ 1)</span><span style={{ color: irrelevantColor }}>● Not relevant (g = 0)</span><span style={{ color: activeColor }}>■ Rank being scored</span>
       </div>
 
-      {/* Metrics Grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-          gap: 8,
-          marginBottom: SPACING.md,
-        }}
-      >
-        <div style={{ background: t.surfaceAlt, padding: '10px 12px', borderRadius: RADIUS.md, border: `1px solid ${t.border}` }}>
-          <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 2 }}>Precision@{cutoffK}</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: t.textPrimary, fontVariantNumeric: 'tabular-nums' }}>
-            {pAtK.toFixed(4)}
+      {compact ? (
+        <StickyRow>
+          {METRICS.filter((note) => note.id === metric).map((note) => <StickyNote key={note.id} title={note.label} latex={note.id === 'ndcg' && gainType === 'linear' ? String.raw`NDCG@k=\frac{\sum_{i=1}^{k}\frac{g_i}{\log_2(i+1)}}{IDCG@k}` : note.latex} color={note.color} tilt={-1}><p>{worked}</p></StickyNote>)}
+          <StickyNote title={`Rank ${activeRank} of ${cutoff}`} color="blue" tilt={1} live><p>{currentStep}</p></StickyNote>
+        </StickyRow>
+      ) : (
+        <>
+          <StickyRow>
+            {METRICS.map((note, index) => (
+              <StickyNote key={note.id} title={note.label} latex={note.id === 'ndcg' && gainType === 'linear' ? String.raw`NDCG@k=\frac{\sum_{i=1}^{k}\frac{g_i}{\log_2(i+1)}}{IDCG@k}` : note.latex} color={note.color} tilt={index % 2 ? 1 : -1} active={metric === note.id} onSelect={() => setMetric(note.id)}><p>{note.meaning} Here ri is 1 for a relevant result; gi is its grade.</p></StickyNote>
+            ))}
+          </StickyRow>
+          <StickyRow>
+            <StickyNote title={`Worked numbers · ${METRICS.find((note) => note.id === metric)?.label}`} color="green" tilt={1}><p style={{ fontVariantNumeric: 'tabular-nums' }}><strong>{worked}</strong></p><p>Current value = {metricValue(metric, result).toFixed(4)}.</p></StickyNote>
+            <StickyNote title={`What just happened · rank ${activeRank}`} color="blue" tilt={-1} live><p>{currentStep}</p></StickyNote>
+          </StickyRow>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+            <VizButton onClick={playback.toggle}>{playback.playing ? 'Pause' : 'Play'}</VizButton>
+            <VizButton variant="secondary" onClick={playback.next}>Step →</VizButton>
+            <VizButton variant="secondary" onClick={playback.reset}>Reset trace</VizButton>
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 15 }}>
+              {docs.map((doc, index) => <span key={doc.id}><button type="button" aria-label={`Move ${doc.id} up`} onClick={() => move(index, -1)} disabled={index === 0} style={{ font: 'inherit', minWidth: 34, minHeight: 34, border: `1px solid ${t.border}`, borderRadius: RADIUS.sm, background: 'transparent', color: t.textPrimary }}>↑</button><button type="button" aria-label={`Move ${doc.id} down`} onClick={() => move(index, 1)} disabled={index === docs.length - 1} style={{ font: 'inherit', minWidth: 34, minHeight: 34, border: `1px solid ${t.border}`, borderRadius: RADIUS.sm, background: 'transparent', color: t.textPrimary }}>↓</button> {doc.id}</span>)}
+            </span>
           </div>
-          <div style={{ fontSize: 10, color: t.textMuted }}>{cutoffK === 3 && pAtK === 2/3 ? '(2 / 3)' : 'rel / k'}</div>
-        </div>
-
-        <div style={{ background: t.surfaceAlt, padding: '10px 12px', borderRadius: RADIUS.md, border: `1px solid ${t.border}` }}>
-          <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 2 }}>Recall@{cutoffK}</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: t.textPrimary, fontVariantNumeric: 'tabular-nums' }}>
-            {rAtK.toFixed(4)}
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${t.border}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: 15 }}>
+            <strong style={{ color: t.accentWarn }}>Predict first:</strong><span>If A moves from rank 1 to rank 2 but the same two relevant items stay in the top 3, what happens to Precision@3?</span>
+            <select aria-label="Ranking prediction" value={prediction} onChange={(event) => { setPrediction(event.target.value); setPredictionResult(null); }} style={{ minHeight: 36, font: 'inherit', border: `1.5px solid ${t.border}`, borderRadius: RADIUS.sm, background: t.background, color: t.textPrimary }}><option value="same">It stays 2/3</option><option value="down">It drops</option><option value="up">It rises</option></select>
+            <VizButton variant="secondary" onClick={() => { applyPreset('two'); setPredictionResult(prediction === 'same'); }}>Run demotion</VizButton>
+            {predictionResult !== null && <span role="status" style={{ color: predictionResult ? t.accentPrimary : t.accentDanger, fontWeight: 700 }}>{predictionResult ? 'Correct: Precision ignores order, while RR, AP, and NDCG fall.' : 'Precision only counts two relevant results among the first three, so it stays 2/3.'}</span>}
           </div>
-          <div style={{ fontSize: 10, color: t.textMuted }}>{cutoffK === 3 && rAtK === 2/3 ? '(2 / 3 total)' : 'rel / total_rel'}</div>
-        </div>
-
-        <div style={{ background: t.surfaceAlt, padding: '10px 12px', borderRadius: RADIUS.md, border: `1px solid ${t.border}` }}>
-          <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 2 }}>Hit Rate@{cutoffK}</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: t.textPrimary, fontVariantNumeric: 'tabular-nums' }}>
-            {hrAtK.toFixed(2)}
-          </div>
-          <div style={{ fontSize: 10, color: t.textMuted }}>Any hit in top-k</div>
-        </div>
-
-        <div style={{ background: `${t.accentPrimary}10`, padding: '10px 12px', borderRadius: RADIUS.md, border: `1px solid ${t.accentPrimary}40` }}>
-          <div style={{ fontSize: 11, color: t.accentPrimary, fontWeight: 600, marginBottom: 2 }}>MRR (1 / First Hit)</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: t.accentPrimary, fontVariantNumeric: 'tabular-nums' }}>
-            {mrr.toFixed(4)}
-          </div>
-          <div style={{ fontSize: 10, color: t.textMuted }}>Rank of 1st hit</div>
-        </div>
-
-        <div style={{ background: `${t.accentPrimary}10`, padding: '10px 12px', borderRadius: RADIUS.md, border: `1px solid ${t.accentPrimary}40` }}>
-          <div style={{ fontSize: 11, color: t.accentPrimary, fontWeight: 600, marginBottom: 2 }}>AP@{cutoffK} (MAP)</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: t.accentPrimary, fontVariantNumeric: 'tabular-nums' }}>
-            {apAtK.toFixed(4)}
-          </div>
-          <div style={{ fontSize: 10, color: t.textMuted }}>Avg precision @ hits</div>
-        </div>
-
-        <div style={{ background: `${t.accentTeal}10`, padding: '10px 12px', borderRadius: RADIUS.md, border: `1px solid ${t.accentTeal}40` }}>
-          <div style={{ fontSize: 11, color: t.accentTeal, fontWeight: 600, marginBottom: 2 }}>NDCG@{cutoffK}</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: t.accentTeal, fontVariantNumeric: 'tabular-nums' }}>
-            {ndcg.toFixed(4)}
-          </div>
-          <div style={{ fontSize: 10, color: t.textMuted }}>DCG: {dcg.toFixed(2)} / {idcg.toFixed(2)}</div>
-        </div>
-      </div>
-
-      {/* Interactive Reordering Table */}
-      <div
-        style={{
-          background: t.surface,
-          border: `1px solid ${t.border}`,
-          borderRadius: RADIUS.md,
-          overflowX: 'auto',
-          marginBottom: SPACING.md,
-        }}
-      >
-        <div style={{ padding: '8px 12px', background: t.surfaceAlt, borderBottom: `1px solid ${t.border}`, fontSize: 12, fontWeight: 700, color: t.textPrimary }}>
-          Current Ranked Output (Total Known Relevant in Corpus: {TOTAL_RELEVANT_IN_CORPUS}):
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${t.border}`, textAlign: 'left', color: t.textSecondary }}>
-              <th style={{ padding: '6px 10px' }}>Rank</th>
-              <th style={{ padding: '6px 10px' }}>Item Title</th>
-              <th style={{ padding: '6px 10px' }}>Category</th>
-              <th style={{ padding: '6px 10px' }}>Grade</th>
-              <th style={{ padding: '6px 10px' }}>Binary Rel</th>
-              <th style={{ padding: '6px 10px', textAlign: 'center' }}>Reorder</th>
-            </tr>
-          </thead>
-          <tbody>
-            {docs.map((doc, idx) => {
-              const rank = idx + 1;
-              const isInsideK = rank <= cutoffK;
-              const isRelevant = doc.grade >= 1;
-              const gradeBadgeColor = doc.grade === 3 ? t.accentTeal : doc.grade >= 1 ? t.accentPrimary : t.textMuted;
-
-              return (
-                <tr
-                  key={doc.id}
-                  style={{
-                    borderBottom: `1px solid ${t.border}`,
-                    background: isInsideK ? `${t.accentPrimary}06` : 'transparent',
-                    opacity: isInsideK ? 1.0 : 0.65,
-                  }}
-                >
-                  <td style={{ padding: '8px 10px', fontWeight: 700, color: isInsideK ? t.accentPrimary : t.textMuted }}>
-                    #{rank} {isInsideK && <span style={{ fontSize: 10, color: t.accentPrimary }}>(top-{cutoffK})</span>}
-                  </td>
-                  <td style={{ padding: '8px 10px', fontWeight: 600, color: t.textPrimary }}>
-                    {doc.title}
-                  </td>
-                  <td style={{ padding: '8px 10px', color: t.textSecondary }}>
-                    {doc.category}
-                  </td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <span
-                      style={{
-                        padding: '2px 8px',
-                        borderRadius: RADIUS.sm,
-                        background: `${gradeBadgeColor}20`,
-                        color: gradeBadgeColor,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {doc.grade} ({doc.grade === 3 ? 'High' : doc.grade === 2 ? 'Med' : doc.grade === 1 ? 'Low' : 'None'})
-                    </span>
-                  </td>
-                  <td style={{ padding: '8px 10px', color: isRelevant ? t.accentPrimary : t.textMuted, fontWeight: 600 }}>
-                    {isRelevant ? '1 (Relevant)' : '0 (Non-rel)'}
-                  </td>
-                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                    <div style={{ display: 'inline-flex', gap: 4 }}>
-                      <button
-                        onClick={() => moveDoc(idx, 'up')}
-                        disabled={idx === 0}
-                        aria-label={`Move ${doc.title} up`}
-                        style={{
-                          padding: '2px 6px',
-                          fontSize: 11,
-                          borderRadius: RADIUS.sm,
-                          border: `1px solid ${t.border}`,
-                          background: t.surfaceAlt,
-                          cursor: idx === 0 ? 'not-allowed' : 'pointer',
-                          opacity: idx === 0 ? 0.3 : 1,
-                        }}
-                      >
-                        ▲
-                      </button>
-                      <button
-                        onClick={() => moveDoc(idx, 'down')}
-                        disabled={idx === docs.length - 1}
-                        aria-label={`Move ${doc.title} down`}
-                        style={{
-                          padding: '2px 6px',
-                          fontSize: 11,
-                          borderRadius: RADIUS.sm,
-                          border: `1px solid ${t.border}`,
-                          background: t.surfaceAlt,
-                          cursor: idx === docs.length - 1 ? 'not-allowed' : 'pointer',
-                          opacity: idx === docs.length - 1 ? 0.3 : 1,
-                        }}
-                      >
-                        ▼
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Recommendation Proxies Footer */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 16,
-          fontSize: 11,
-          color: t.textSecondary,
-          background: t.surfaceAlt,
-          padding: '8px 12px',
-          borderRadius: RADIUS.sm,
-          border: `1px solid ${t.border}`,
-        }}
-      >
-        <span>
-          <strong style={{ color: t.textPrimary }}>Recommendation Proxies (Top-{cutoffK}):</strong>
-        </span>
-        <span>
-          Intra-List Diversity: <strong style={{ color: t.textPrimary }}>{(diversity * 100).toFixed(0)}%</strong> ({new Set(topCategories).size}/{cutoffK} unique categories)
-        </span>
-        <span>
-          Catalog Coverage Proxy: <strong style={{ color: t.textPrimary }}>{(coverage * 100).toFixed(0)}%</strong> ({new Set(docs.slice(0, cutoffK).map(d => d.id)).size}/20 catalog items)
-        </span>
-      </div>
+        </>
+      )}
     </VisualizationContainer>
   );
 }

@@ -1,251 +1,154 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { scaleLinear } from 'd3';
-import { useVizTokens, SPACING, type VizTokens } from '../theme/vizTokens';
+import { useMemo, useState } from 'react';
+import { FONT_FAMILY, RADIUS, useVizTokens } from '../theme/vizTokens';
 import {
-  VisualizationContainer,
-  VisualizationHeader,
-  VisualizationCanvas,
-  Slider,
-  PillSelect,
-  VizButton,
-  ControlRow,
-} from './primitives';
-import LossLandscapeHeatmap from './patterns/LossLandscapeHeatmap';
-import {
-  X_DOMAIN,
-  Y_DOMAIN,
-  W_DOMAIN,
   B_DOMAIN,
   OUTLIER_POINT,
-  generateData,
+  W_DOMAIN,
+  X_DOMAIN,
+  Y_DOMAIN,
   computeStats,
-  gradientStep,
-  type Point,
-  type GDStep,
+  generateData,
+  runLinearGradientDescent,
 } from './lib/linreg';
+import { usePlaygroundPlayback } from './diagrams/usePlaygroundPlayback';
+import { PillSelect, Slider, StickyNote, StickyRow, VisualizationContainer, VisualizationHeader, VizButton } from './primitives';
 
 type Mode = 'fit' | 'gd';
+const STEPS = 70;
+const PLOT = { left: 48, top: 28, width: 430, height: 270 } as const;
+const LOSS = { left: 540, top: 28, width: 188, height: 270 } as const;
 
-const MODE_OPTIONS: { value: Mode; label: string }[] = [
-  { value: 'fit', label: 'Fit It Yourself' },
-  { value: 'gd', label: 'Gradient Descent Lab' },
-];
-
-/** Scatter + fitted line + residuals, shared between both modes. */
-function DataSpacePanel({ points, w, b, t }: { points: Point[]; w: number; b: number; t: VizTokens }) {
-  return (
-    <VisualizationCanvas aspect={16 / 10} minHeight={260} maxHeight={340}>
-      {({ width, height }) => {
-        const margin = 30;
-        const xScale = scaleLinear().domain(X_DOMAIN).range([margin, width - margin]);
-        const yScale = scaleLinear().domain(Y_DOMAIN).range([height - margin, margin]);
-        const lineX0 = X_DOMAIN[0];
-        const lineX1 = X_DOMAIN[1];
-
-        return (
-          <svg width={width} height={height} style={{ display: 'block' }}>
-            <rect x={0} y={0} width={width} height={height} fill={t.background} />
-            {points.map((p, i) => {
-              const pred = w * p.x + b;
-              const isOutlier = p === OUTLIER_POINT;
-              return (
-                <line
-                  key={`r${i}`}
-                  x1={xScale(p.x)}
-                  y1={yScale(p.y)}
-                  x2={xScale(p.x)}
-                  y2={yScale(pred)}
-                  stroke={isOutlier ? t.accentDanger : t.accentWarn}
-                  strokeWidth={1.5}
-                  opacity={0.6}
-                  style={{ transition: 'y1 150ms ease, y2 150ms ease' }}
-                />
-              );
-            })}
-            <line
-              x1={xScale(lineX0)}
-              y1={yScale(w * lineX0 + b)}
-              x2={xScale(lineX1)}
-              y2={yScale(w * lineX1 + b)}
-              stroke={t.accentSecondary}
-              strokeWidth={2.5}
-              style={{ transition: 'y1 150ms ease, y2 150ms ease' }}
-            />
-            {points.map((p, i) => (
-              <circle
-                key={`p${i}`}
-                cx={xScale(p.x)}
-                cy={yScale(p.y)}
-                r={p === OUTLIER_POINT ? 6 : 4.5}
-                fill={p === OUTLIER_POINT ? t.accentDanger : t.accentPrimary}
-                stroke={t.background}
-                strokeWidth={1.5}
-              />
-            ))}
-          </svg>
-        );
-      }}
-    </VisualizationCanvas>
-  );
+function numberStyle(t: ReturnType<typeof useVizTokens>): React.CSSProperties {
+  return { width: '100%', minHeight: 36, boxSizing: 'border-box', padding: '5px 7px', border: `1.5px solid ${t.border}`, borderRadius: RADIUS.sm, background: t.background, color: t.textPrimary, fontFamily: FONT_FAMILY, fontSize: 15, fontVariantNumeric: 'tabular-nums' };
 }
 
-export default function LinearRegressionStudio() {
+export default function LinearRegressionStudio({ compact = false }: { compact?: boolean }) {
   const t = useVizTokens();
-  const [mode, setMode] = useState<Mode>('fit');
+  const [mode, setMode] = useState<Mode>('gd');
   const [seed, setSeed] = useState(3);
   const [noise, setNoise] = useState(6);
   const [outlierOn, setOutlierOn] = useState(false);
+  const [manualW, setManualW] = useState(3);
+  const [manualB, setManualB] = useState(45);
+  const [startW, setStartW] = useState(0);
+  const [startB, setStartB] = useState(0);
+  const [learningRate, setLearningRate] = useState(0.012);
+  const [prediction, setPrediction] = useState('rises');
+  const [predictionResult, setPredictionResult] = useState<boolean | null>(null);
 
   const basePoints = useMemo(() => generateData(16, noise, seed), [noise, seed]);
-  const points = useMemo(() => (outlierOn ? [...basePoints, OUTLIER_POINT] : basePoints), [basePoints, outlierOn]);
+  const points = useMemo(() => outlierOn ? [...basePoints, OUTLIER_POINT] : basePoints, [basePoints, outlierOn]);
+  const trace = useMemo(() => runLinearGradientDescent(points, { w: startW, b: startB }, learningRate, STEPS), [points, startW, startB, learningRate]);
+  const playback = usePlaygroundPlayback(mode === 'gd' ? trace.length : 1, 130);
+  const training = trace[Math.min(playback.step, trace.length - 1)];
+  const manualStats = useMemo(() => computeStats(points, manualW, manualB), [points, manualW, manualB]);
+  const current = mode === 'gd'
+    ? training
+    : { step: 0, w: manualW, b: manualB, dw: manualStats.dw, db: manualStats.db, mse: manualStats.mse };
+  const divergent = !Number.isFinite(current.mse) || current.mse > 1e8;
 
-  const [w, setW] = useState(3);
-  const [b, setB] = useState(45);
-  const fitStats = useMemo(() => computeStats(points, w, b), [points, w, b]);
-
-  const [lr, setLr] = useState(0.012);
-  const [path, setPath] = useState<GDStep[]>([{ w: 0, b: 0, dw: 0, db: 0 }]);
-  const [playing, setPlaying] = useState(false);
-  const [diverged, setDiverged] = useState(false);
-  const stateRef = useRef({ w: 0, b: 0 });
-
-  const resetGD = () => {
-    setPlaying(false);
-    setDiverged(false);
-    stateRef.current = { w: 0, b: 0 };
-    setPath([{ w: 0, b: 0, dw: 0, db: 0 }]);
-  };
-
-  useEffect(() => {
-    resetGD();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [points]);
-
-  const stepGD = (times = 1) => {
-    let cur = stateRef.current;
-    let last: GDStep | null = null;
-    for (let i = 0; i < times; i++) {
-      const next = gradientStep(points, cur.w, cur.b, lr);
-      if (!isFinite(next.w) || !isFinite(next.b) || Math.abs(next.w) > 1e6 || Math.abs(next.b) > 1e6) {
-        setDiverged(true);
-        setPlaying(false);
-        return;
-      }
-      cur = { w: next.w, b: next.b };
-      last = next;
-    }
-    stateRef.current = cur;
-    setPath((p) => (p.length > 600 || !last ? p : [...p, last]));
-  };
-
-  useEffect(() => {
-    if (!playing) return undefined;
-    const id = setInterval(() => stepGD(4), 80);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, lr, points]);
-
-  const gdLast = path[path.length - 1];
-  const gdStats = computeStats(points, gdLast.w, gdLast.b);
+  const xMap = (x: number) => PLOT.left + ((x - X_DOMAIN[0]) / (X_DOMAIN[1] - X_DOMAIN[0])) * PLOT.width;
+  const yMap = (y: number) => PLOT.top + PLOT.height - ((y - Y_DOMAIN[0]) / (Y_DOMAIN[1] - Y_DOMAIN[0])) * PLOT.height;
+  const finiteLosses = trace.map((step) => step.mse).filter(Number.isFinite).map((value) => Math.min(value, 8000));
+  const maxLoss = Math.max(1, ...finiteLosses);
+  const lossX = (step: number) => LOSS.left + (step / Math.max(1, trace.length - 1)) * LOSS.width;
+  const lossY = (loss: number) => LOSS.top + LOSS.height - (Math.min(loss, maxLoss) / maxLoss) * LOSS.height;
+  const lossPoints = trace.slice(0, mode === 'gd' ? playback.step + 1 : 1).map((step) => `${lossX(step.step)},${lossY(step.mse)}`).join(' ');
+  const first = points[0];
+  const firstPrediction = current.w * first.x + current.b;
+  const firstResidual = first.y - firstPrediction;
+  const resetTrace = () => { playback.setStep(0); setPredictionResult(null); };
 
   return (
-    <VisualizationContainer footer="A real dataset (noisy study-hours-vs-exam-score), real MSE, and real batch gradient descent -- running live as you drag, play, and step.">
-      <VisualizationHeader eyebrow="Interactive" title="Linear Regression Studio" />
-      <ControlRow>
-        <PillSelect<Mode> label="Mode" value={mode} onChange={setMode} options={MODE_OPTIONS} />
-        <div style={{ minWidth: 160 }}>
-          <Slider label="Noise" value={noise} onChange={setNoise} min={0} max={18} step={1} />
-        </div>
-        <PillSelect<string>
-          label="Outlier"
-          value={outlierOn ? 'on' : 'off'}
-          onChange={(v) => setOutlierOn(v === 'on')}
-          options={[
-            { value: 'off', label: 'Off' },
-            { value: 'on', label: 'On' },
-          ]}
-        />
-        <VizButton variant="secondary" onClick={() => setSeed((s) => s + 1)}>
-          New Dataset
-        </VizButton>
-      </ControlRow>
-
-      {mode === 'fit' && (
+    <VisualizationContainer title="Linear regression studio" footer={compact ? undefined : 'The points are deterministic from the selected seed and noise. The line, residuals, MSE, gradients, and gradient-descent path are computed from those exact points.'}>
+      {!compact && (
         <>
-          <ControlRow>
-            <div style={{ minWidth: 220 }}>
-              <Slider label="w (slope)" value={w} onChange={setW} min={W_DOMAIN[0]} max={W_DOMAIN[1]} step={0.1} format={(v) => v.toFixed(1)} />
-            </div>
-            <div style={{ minWidth: 220 }}>
-              <Slider label="b (intercept)" value={b} onChange={setB} min={B_DOMAIN[0]} max={B_DOMAIN[1]} step={0.5} format={(v) => v.toFixed(1)} />
-            </div>
-          </ControlRow>
-          <DataSpacePanel points={points} w={w} b={b} t={t} />
-          <div style={{ display: 'flex', gap: SPACING.md, fontSize: 14, marginTop: 8 }}>
-            <span style={{ fontWeight: 700, color: t.textPrimary }}>MSE {fitStats.mse.toFixed(2)}</span>
-            <span style={{ color: t.textSecondary }}>ŷ = {w.toFixed(1)}x + {b.toFixed(1)}</span>
-            {outlierOn && <span style={{ color: t.accentDanger }}>outlier included -- watch MSE jump</span>}
+          <VisualizationHeader
+            eyebrow="Live playground"
+            title="Fit one line that makes many prediction mistakes as small as possible"
+            description="Linear regression predicts a number with a straight line. The vertical gaps are residuals: the mistakes the model must reduce."
+          />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'end' }}>
+            <PillSelect<Mode> label="Mode (who moves the line)" value={mode} onChange={(value) => { setMode(value as Mode); resetTrace(); }} options={[{ value: 'fit', label: 'Fit it yourself' }, { value: 'gd', label: 'Gradient descent' }]} />
+            <div style={{ flex: '1 1 170px' }}><Slider label="Noise (point scatter)" value={noise} onChange={(value) => { setNoise(value); resetTrace(); }} min={0} max={18} step={1} /></div>
+            <PillSelect<string> label="Outlier (one unusual point)" value={outlierOn ? 'on' : 'off'} onChange={(value) => { setOutlierOn(value === 'on'); resetTrace(); }} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
+            <VizButton variant="secondary" onClick={() => { setSeed((value) => value + 1); resetTrace(); }}>New dataset</VizButton>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, alignItems: 'end', marginBottom: 8 }}>
+            {mode === 'fit' ? (
+              <>
+                <label style={{ fontSize: 15 }}><span style={{ display: 'block', marginBottom: 3, fontWeight: 700 }}>Slope w (rise per hour)</span><input aria-label="Slope w" type="number" min={W_DOMAIN[0]} max={W_DOMAIN[1]} step={0.1} value={manualW} onChange={(event) => setManualW(Math.max(W_DOMAIN[0], Math.min(W_DOMAIN[1], Number(event.target.value) || 0)))} style={numberStyle(t)} /></label>
+                <label style={{ fontSize: 15 }}><span style={{ display: 'block', marginBottom: 3, fontWeight: 700 }}>Intercept b (score at 0 hours)</span><input aria-label="Intercept b" type="number" min={B_DOMAIN[0]} max={B_DOMAIN[1]} step={0.5} value={manualB} onChange={(event) => setManualB(Math.max(B_DOMAIN[0], Math.min(B_DOMAIN[1], Number(event.target.value) || 0)))} style={numberStyle(t)} /></label>
+              </>
+            ) : (
+              <>
+                <label style={{ fontSize: 15 }}><span style={{ display: 'block', marginBottom: 3, fontWeight: 700 }}>Starting slope w₀</span><input aria-label="Starting slope" type="number" min={W_DOMAIN[0]} max={W_DOMAIN[1]} step={0.1} value={startW} onChange={(event) => { setStartW(Math.max(W_DOMAIN[0], Math.min(W_DOMAIN[1], Number(event.target.value) || 0))); resetTrace(); }} style={numberStyle(t)} /></label>
+                <label style={{ fontSize: 15 }}><span style={{ display: 'block', marginBottom: 3, fontWeight: 700 }}>Starting intercept b₀</span><input aria-label="Starting intercept" type="number" min={B_DOMAIN[0]} max={B_DOMAIN[1]} step={0.5} value={startB} onChange={(event) => { setStartB(Math.max(B_DOMAIN[0], Math.min(B_DOMAIN[1], Number(event.target.value) || 0))); resetTrace(); }} style={numberStyle(t)} /></label>
+                <div style={{ minWidth: 160 }}><Slider label="Learning rate η (step size)" value={learningRate} onChange={(value) => { setLearningRate(value); resetTrace(); }} min={0.0005} max={0.03} step={0.0005} format={(value) => value.toFixed(4)} /></div>
+              </>
+            )}
           </div>
         </>
       )}
 
-      {mode === 'gd' && (
+      <svg width="100%" viewBox="0 0 760 340" role="img" aria-label={`Study hours and scores with fitted line y hat equals ${current.w.toFixed(2)} x plus ${current.b.toFixed(2)}, MSE ${current.mse.toFixed(2)}`} style={{ display: 'block', fontFamily: FONT_FAMILY }}>
+        <defs>
+          <clipPath id="linear-data-clip"><rect x={PLOT.left} y={PLOT.top} width={PLOT.width} height={PLOT.height} /></clipPath>
+          <clipPath id="linear-loss-clip"><rect x={LOSS.left} y={LOSS.top} width={LOSS.width} height={LOSS.height} /></clipPath>
+        </defs>
+        <text x={PLOT.left} y={18} fontSize={16} fontWeight={700} fill={t.textPrimary}>Data and fitted line</text>
+        <rect x={PLOT.left} y={PLOT.top} width={PLOT.width} height={PLOT.height} fill={t.background} stroke={t.border} />
+        <g clipPath="url(#linear-data-clip)">
+          {points.map((point, index) => {
+            const predictionY = current.w * point.x + current.b;
+            const outlier = point === OUTLIER_POINT;
+            return <line key={`residual-${index}`} x1={xMap(point.x)} y1={yMap(point.y)} x2={xMap(point.x)} y2={yMap(predictionY)} stroke={outlier ? t.accentDanger : t.accentWarn} strokeWidth={1.5} />;
+          })}
+          <line x1={xMap(X_DOMAIN[0])} y1={yMap(current.w * X_DOMAIN[0] + current.b)} x2={xMap(X_DOMAIN[1])} y2={yMap(current.w * X_DOMAIN[1] + current.b)} stroke={t.accentSecondary} strokeWidth={3} />
+          {points.map((point, index) => <circle key={`point-${index}`} cx={xMap(point.x)} cy={yMap(point.y)} r={point === OUTLIER_POINT ? 6 : 5} fill={point === OUTLIER_POINT ? t.accentDanger : t.accentPrimary} stroke={t.background} strokeWidth={1.5} />)}
+        </g>
+        <line x1={PLOT.left} y1={PLOT.top + PLOT.height} x2={PLOT.left + PLOT.width} y2={PLOT.top + PLOT.height} stroke={t.border} strokeWidth={1.5} />
+        <line x1={PLOT.left} y1={PLOT.top} x2={PLOT.left} y2={PLOT.top + PLOT.height} stroke={t.border} strokeWidth={1.5} />
+        <text x={PLOT.left + PLOT.width / 2} y={330} textAnchor="middle" fontSize={15} fill={t.textSecondary}>study hours x →</text>
+        <text x={8} y={PLOT.top + 14} fontSize={15} fill={t.textSecondary}>exam score y ↑</text>
+
+        <text x={LOSS.left} y={18} fontSize={16} fontWeight={700} fill={t.textPrimary}>MSE after each step</text>
+        <rect x={LOSS.left} y={LOSS.top} width={LOSS.width} height={LOSS.height} fill={t.background} stroke={t.border} />
+        <g clipPath="url(#linear-loss-clip)">
+          {lossPoints && <polyline points={lossPoints} fill="none" stroke={t.accentPurple} strokeWidth={2.8} strokeLinejoin="round" />}
+          <circle cx={lossX(current.step)} cy={lossY(current.mse)} r={5} fill={t.accentPurple} />
+        </g>
+        <text x={LOSS.left - 8} y={LOSS.top + 8} textAnchor="end" fontSize={14} fill={t.textSecondary}>{maxLoss.toFixed(0)}</text>
+        <text x={LOSS.left - 8} y={LOSS.top + LOSS.height} textAnchor="end" fontSize={14} fill={t.textSecondary}>0</text>
+        <text x={LOSS.left + LOSS.width / 2} y={330} textAnchor="middle" fontSize={15} fill={t.textSecondary}>training step →</text>
+      </svg>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px', fontSize: 15 }} aria-label="Plot colours">
+        <span style={{ color: t.accentPrimary }}>● Observed data</span><span style={{ color: t.accentSecondary }}>━ Prediction line ŷ</span><span style={{ color: t.accentWarn }}>│ Residual y−ŷ</span><span style={{ color: t.accentPurple }}>━ Mean squared error</span>{outlierOn && <span style={{ color: t.accentDanger }}>● Outlier</span>}
+      </div>
+
+      {compact ? (
+        <StickyRow>
+          <StickyNote title="Prediction line" latex={String.raw`\hat y=wx+b`} color="yellow" tilt={-1}><p>Here w = {current.w.toFixed(2)}, b = {current.b.toFixed(2)}, and MSE = {current.mse.toFixed(2)}.</p></StickyNote>
+          <StickyNote title={`Step ${current.step}`} color="blue" tilt={1} live><p>{divergent ? 'The step size is too large, so the line is diverging.' : `The gradient is (${current.dw.toFixed(2)}, ${current.db.toFixed(2)}); the next step moves opposite it.`}</p></StickyNote>
+        </StickyRow>
+      ) : (
         <>
-          <ControlRow>
-            <div style={{ minWidth: 220 }}>
-              <Slider label="Learning rate" value={lr} onChange={setLr} min={0.0005} max={0.03} step={0.0005} format={(v) => v.toFixed(4)} />
-            </div>
-            <VizButton onClick={() => setPlaying((p) => !p)} disabled={diverged}>
-              {playing ? 'Pause' : 'Play'}
-            </VizButton>
-            <VizButton variant="secondary" onClick={() => stepGD(1)} disabled={diverged}>
-              Step
-            </VizButton>
-            <VizButton variant="secondary" onClick={resetGD}>
-              Reset
-            </VizButton>
-          </ControlRow>
-
-          {diverged && (
-            <div style={{ color: t.accentDanger, fontSize: 13, marginBottom: 8, fontWeight: 600 }}>
-              Diverged -- the learning rate is too large and the steps overshot the minimum. Reset and try a smaller value.
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: SPACING.md, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 300px', minWidth: 260 }}>
-              <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 4 }}>Data space</div>
-              <DataSpacePanel points={points} w={diverged ? 0 : gdLast.w} b={diverged ? 0 : gdLast.b} t={t} />
-            </div>
-            <div style={{ flex: '1 1 300px', minWidth: 260 }}>
-              <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 4 }}>Loss landscape</div>
-              <LossLandscapeHeatmap
-                wDomain={W_DOMAIN}
-                bDomain={B_DOMAIN}
-                costFn={(wv, bv) => computeStats(points, wv, bv).mse}
-                path={path}
-                t={t}
-                caption={`MSE surface over real (w, b) -- x-axis w [${W_DOMAIN[0]}, ${W_DOMAIN[1]}], y-axis b [${B_DOMAIN[0]}, ${B_DOMAIN[1]}], green = low cost, red = high cost.`}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: SPACING.md, fontSize: 14, margin: '8px 0' }}>
-            <span>Step {path.length - 1}</span>
-            <span style={{ fontWeight: 700, color: t.textPrimary }}>MSE {isFinite(gdStats.mse) ? gdStats.mse.toFixed(2) : '—'}</span>
-            <span style={{ color: t.textSecondary }}>w = {gdLast.w.toFixed(3)}, b = {gdLast.b.toFixed(3)}</span>
-          </div>
-
-          <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 4 }}>Step log -- watch the algorithm think</div>
-          <div style={{ maxHeight: 140, overflowY: 'auto', fontFamily: 'monospace', fontSize: 11.5 }}>
-            {path.slice(-30).map((s, i) => {
-              const stepNum = path.length - Math.min(30, path.length) + i;
-              return (
-                <div key={stepNum} style={{ color: t.textSecondary, padding: '2px 0', borderBottom: `1px solid ${t.border}` }}>
-                  step {stepNum}: w={s.w.toFixed(3)} b={s.b.toFixed(3)} dw={s.dw.toFixed(2)} db={s.db.toFixed(2)}
-                </div>
-              );
-            })}
+          <StickyRow>
+            <StickyNote title="Prediction line" latex={String.raw`\hat y=wx+b`} color="yellow" tilt={-1}><p>ŷ (“y-hat”) is the predicted score; x is study hours; w is slope; b is the starting score.</p></StickyNote>
+            <StickyNote title="Mean squared error" latex={String.raw`MSE=\frac{1}{n}\sum_{i=1}^{n}(y_i-\hat y_i)^2`} color="pink" tilt={1}><p>n is the number of students. Squaring makes a large miss count much more than a small miss.</p></StickyNote>
+            <StickyNote title="Gradient descent update" latex={String.raw`w\leftarrow w-\eta\frac{\partial MSE}{\partial w},\quad b\leftarrow b-\eta\frac{\partial MSE}{\partial b}`} color="orange" tilt={-1}><p>η (“eta”) is the learning rate: how far the line moves each step.</p></StickyNote>
+          </StickyRow>
+          <StickyRow>
+            <StickyNote title="Worked numbers" color="green" tilt={1}><p style={{ fontVariantNumeric: 'tabular-nums' }}>For the first point, x = {first.x.toFixed(2)}, y = {first.y.toFixed(2)}, ŷ = {firstPrediction.toFixed(2)}, so residual y−ŷ = {firstResidual.toFixed(2)}. Across all {points.length} points, MSE = {current.mse.toFixed(2)}.</p></StickyNote>
+            <StickyNote title={`What just happened · step ${current.step}`} color="blue" tilt={-1} live><p>{mode === 'fit' ? `You set w = ${current.w.toFixed(2)} and b = ${current.b.toFixed(2)}; every residual and the MSE recomputed.` : divergent ? 'The update overshot so far that the loss exploded. Lower η and reset.' : `∂MSE/∂w = ${current.dw.toFixed(2)} and ∂MSE/∂b = ${current.db.toFixed(2)}; subtracting η times those slopes moved the line to w = ${current.w.toFixed(3)}, b = ${current.b.toFixed(3)}.`}</p></StickyNote>
+          </StickyRow>
+          {mode === 'gd' && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}><VizButton onClick={playback.toggle}>{playback.playing ? 'Pause' : 'Play'}</VizButton><VizButton variant="secondary" onClick={playback.next}>Step →</VizButton><VizButton variant="secondary" onClick={playback.reset}>Reset</VizButton></div>}
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${t.border}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: 15 }}>
+            <strong style={{ color: t.accentWarn }}>Predict first:</strong><span>What happens to MSE when we add one large outlier?</span>
+            <select aria-label="Outlier prediction" value={prediction} onChange={(event) => { setPrediction(event.target.value); setPredictionResult(null); }} style={{ minHeight: 36, font: 'inherit', border: `1.5px solid ${t.border}`, borderRadius: RADIUS.sm, background: t.background, color: t.textPrimary }}><option value="rises">It rises sharply</option><option value="falls">It falls</option><option value="same">It stays the same</option></select>
+            <VizButton variant="secondary" onClick={() => { setOutlierOn(true); resetTrace(); setPredictionResult(prediction === 'rises'); }}>Run with outlier</VizButton>
+            {predictionResult !== null && <span role="status" style={{ color: predictionResult ? t.accentPrimary : t.accentDanger, fontWeight: 700 }}>{predictionResult ? 'Correct: the large residual is squared, so it contributes heavily.' : 'The outlier creates one large residual; squaring it makes MSE rise.'}</span>}
           </div>
         </>
       )}

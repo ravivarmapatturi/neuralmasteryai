@@ -31,6 +31,11 @@ export interface GDStep {
   db: number;
 }
 
+export interface LinearTraceStep extends GDStep {
+  step: number;
+  mse: number;
+}
+
 export const X_DOMAIN: [number, number] = [0, 11];
 export const Y_DOMAIN: [number, number] = [0, 110];
 export const W_DOMAIN: [number, number] = [-2, 16];
@@ -72,4 +77,23 @@ export function computeStats(points: Point[], w: number, b: number): Stats {
 export function gradientStep(points: Point[], w: number, b: number, lr: number): GDStep {
   const { dw, db } = computeStats(points, w, b);
   return { w: w - lr * dw, b: b - lr * db, dw, db };
+}
+
+export function runLinearGradientDescent(
+  points: Point[],
+  start: { w: number; b: number },
+  lr: number,
+  steps: number,
+): LinearTraceStep[] {
+  const initial = computeStats(points, start.w, start.b);
+  const trace: LinearTraceStep[] = [{ step: 0, w: start.w, b: start.b, dw: initial.dw, db: initial.db, mse: initial.mse }];
+  let current = start;
+  for (let step = 1; step <= Math.max(0, Math.round(steps)); step += 1) {
+    const update = gradientStep(points, current.w, current.b, lr);
+    current = { w: update.w, b: update.b };
+    const stats = computeStats(points, current.w, current.b);
+    trace.push({ step, ...update, mse: stats.mse });
+    if (!Number.isFinite(stats.mse) || Math.abs(current.w) > 1e6 || Math.abs(current.b) > 1e6) break;
+  }
+  return trace;
 }

@@ -127,6 +127,53 @@ export function categoryDiversityProxy(categories: string[]): number {
 /** Backward-compatible alias for categoryDiversityProxy. */
 export const intraListDiversity = categoryDiversityProxy;
 
+export type RankingMetric = 'precision' | 'recall' | 'mrr' | 'ap' | 'ndcg';
+export type GainType = 'exponential' | 'linear';
+
+export interface RankingEvaluation {
+  precision: number;
+  recall: number;
+  hitRate: number;
+  mrr: number;
+  ap: number;
+  dcg: number;
+  idcg: number;
+  ndcg: number;
+  relevantInTopK: number;
+  firstRelevantRank: number | null;
+  dcgContributions: number[];
+}
+
+/** One consistent snapshot used by the explorer, so the list, sticky-note
+ * arithmetic, and headline value always come from the same inputs. */
+export function evaluateRanking(
+  grades: readonly number[],
+  k: number,
+  totalRelevantInCorpus: number,
+  gainType: GainType = 'exponential',
+): RankingEvaluation {
+  const safeK = Math.max(0, Math.min(Math.round(k), grades.length));
+  const binary = grades.map((grade) => (grade > 0 ? 1 : 0));
+  const dcgContributions = grades.slice(0, safeK).map((grade, index) => {
+    const gain = gainType === 'exponential' ? 2 ** grade - 1 : grade;
+    return gain / Math.log2(index + 2);
+  });
+  const firstRelevant = binary.findIndex((value) => value > 0);
+  return {
+    precision: precisionAtK(binary, safeK),
+    recall: recallAtK(binary, safeK, totalRelevantInCorpus),
+    hitRate: hitRateAtK(binary, safeK),
+    mrr: reciprocalRank(binary),
+    ap: averagePrecisionAtK(binary, safeK, totalRelevantInCorpus),
+    dcg: dcgAtK([...grades], safeK, gainType),
+    idcg: idcgAtK([...grades], safeK, gainType),
+    ndcg: ndcgAtK([...grades], safeK, gainType),
+    relevantInTopK: binary.slice(0, safeK).reduce((sum, value) => sum + value, 0),
+    firstRelevantRank: firstRelevant < 0 ? null : firstRelevant + 1,
+    dcgContributions,
+  };
+}
+
 /** Unvisited-Category Ratio proxy: fraction of recommended items from categories
  * not present in the user's historical profile.
  *

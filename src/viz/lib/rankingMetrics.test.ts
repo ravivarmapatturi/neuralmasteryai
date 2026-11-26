@@ -13,6 +13,7 @@ import {
   recallAtK,
   reciprocalRank,
   unvisitedCategoryRatio,
+  evaluateRanking,
 } from './rankingMetrics';
 
 describe('rankingMetrics', () => {
@@ -76,6 +77,15 @@ describe('rankingMetrics', () => {
 
       // NDCG@3 for R2 = 5.9165 / 9.39279 approx 0.6299
       expect(ndcgAtK(r2Grades, 3, 'exponential')).toBeCloseTo(0.6299, 4);
+    });
+
+    it('keeps the worked snapshot and per-rank DCG contributions consistent', () => {
+      const result = evaluateRanking(r1Grades, 3, totalRelevant, 'exponential');
+      expect(result.relevantInTopK).toBe(2);
+      expect(result.firstRelevantRank).toBe(1);
+      expect(result.dcgContributions).toEqual([7, 0, 1.5]);
+      expect(result.dcg).toBe(8.5);
+      expect(result.ndcg).toBeCloseTo(0.9049, 4);
     });
 
     it('DCG@3 and NDCG@3 with linear gain convention', () => {
