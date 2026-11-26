@@ -59,7 +59,7 @@ export const GLOSSARY_FIGURES: Record<string, Spec> = {
   overfitting: c('training steps', 'loss', [{ n: 'training', p: [[.05, .9], [.35, .4], [.65, .2], [.95, .06]] }, { n: 'validation', p: [[.05, .92], [.35, .45], [.55, .36], [.95, .75]] }], [.55, .36, 'stop here']),
   regularization: c('input', 'output', [{ n: 'unregularized', p: [[.05, .2], [.2, .8], [.35, .15], [.5, .85], [.65, .2], [.8, .9], [.95, .3]] }, { n: 'regularized', p: [[.05, .3], [.95, .7]] }]),
   'fine-tuning': f(['Pretrained model', 'Add your examples', 'Train at a low learning rate', 'Evaluate on held-out data'], 2),
-  'contrastive-learning': g([[90, 70, 'anchor'], [150, 105, 'positive'], [300, 40, 'negative'], [310, 115, 'negative']], [[0, 1, 'pull'], [0, 2, 'push'], [0, 3, 'push']], [0, 1], 'Pull matching pairs together; push the rest apart.'),
+  'contrastive-learning': g([[90, 70, 'anchor'], [150, 105, 'positive'], [300, 40, 'negative'], [310, 115, 'negative']], [[0, 1], [0, 2, 'push'], [0, 3, 'push']], [0, 1], 'Pull matching pairs together; push the rest apart.'),
   lora: g([[80, 75, 'Frozen weights'], [260, 40, 'A: small'], [260, 110, 'B: small']], [[1, 0, 'train'], [2, 0, 'train']], [1, 2], 'Train two small matrices; freeze the original weights.'),
   rlhf: f(['Model writes answers', 'People rank them', 'Train a reward model', 'Update the model policy'], 1, 'repeat'),
   distillation: g([[70, 60, 'Large teacher'], [290, 60, 'Small student']], [[0, 1, 'soft labels']], [1], 'The student learns from the teacher’s full probabilities.'),
