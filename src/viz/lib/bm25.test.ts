@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  analyzeBm25Explorer,
   BM25_DEFAULT_B,
   BM25_DEFAULT_K1,
   bm25Idf,
@@ -8,6 +9,7 @@ import {
   bm25Score,
   bm25TermFrequencySaturation,
   bm25TermScore,
+  explainBm25Checkpoint,
 } from './bm25';
 
 describe('bm25TermFrequencySaturation', () => {
@@ -197,5 +199,57 @@ describe('bm25Score on worked 4-document toy corpus', () => {
     expect(s2).toBeCloseTo(1.4079, 4);
     expect(s3).toBeCloseTo(0.3567, 4);
     expect(s4).toBe(0.0);
+  });
+});
+
+describe('analyzeBm25Explorer & explainBm25Checkpoint', () => {
+  const baseParams = {
+    tf: 3,
+    docLength: 100,
+    avgDocLength: 100,
+    df: 100,
+    N: 1000,
+    k1: 1.2,
+    b: 0.75,
+  };
+
+  it('computes hand-checked fixture values, ceiling, and diminishing marginal gains', () => {
+    const analysis = analyzeBm25Explorer(baseParams);
+    expect(analysis.idf).toBeCloseTo(2.298602, 5);
+    expect(analysis.lengthFactorB).toBeCloseTo(1.0, 6);
+    expect(analysis.tfFactor).toBeCloseTo(11 / 7, 6);
+    expect(analysis.score).toBeCloseTo(3.612081, 5);
+    expect(analysis.tfCeiling).toBeCloseTo(2.2, 6);
+    expect(analysis.scoreCeiling).toBeCloseTo(5.056913, 5);
+
+    // Checkpoints: tf = [1, 3, 10, 20, 30]
+    expect(analysis.checkpoints.map((c) => c.tf)).toEqual([1, 3, 10, 20, 30]);
+    expect(analysis.checkpoints[0].score).toBeCloseTo(analysis.idf, 6);
+    expect(analysis.checkpoints[1].score).toBeCloseTo(3.612081, 5);
+    expect(analysis.checkpoints[4].score).toBeCloseTo(4.862417, 5);
+    expect(analysis.checkpoints[4].unboundedScore).toBeCloseTo(30 * analysis.idf, 5);
+
+    // Marginal gain per extra hit shrinks steeply: (1->3) ~0.657 vs (20->30) ~0.009
+    expect(analysis.checkpoints[1].marginalGainPerWord!).toBeCloseTo(0.65674, 4);
+    expect(analysis.checkpoints[4].marginalGainPerWord!).toBeCloseTo(0.00917, 4);
+  });
+
+  it('shows length penalty shifting active score below average-length baseline when |D| = 500', () => {
+    const analysis = analyzeBm25Explorer({ ...baseParams, docLength: 500 });
+    expect(analysis.lengthFactorB).toBeCloseTo(4.0, 6);
+    expect(analysis.score).toBeCloseTo(1.944967, 5);
+    expect(analysis.avgLenScore).toBeCloseTo(3.612081, 5);
+    expect(analysis.score).toBeLessThan(analysis.avgLenScore);
+  });
+
+  it('produces plain-English checkpoint explanations matching computed numbers', () => {
+    const analysis = analyzeBm25Explorer(baseParams);
+    const firstMsg = explainBm25Checkpoint(0, analysis, baseParams);
+    const lastMsg = explainBm25Checkpoint(4, analysis, baseParams);
+    expect(firstMsg).toContain('At tf = 1');
+    expect(firstMsg).toContain('2.299');
+    expect(lastMsg).toContain('20 to 30');
+    expect(lastMsg).toContain('4.862');
+    expect(lastMsg).toContain('5.057');
   });
 });
