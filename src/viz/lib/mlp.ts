@@ -4,8 +4,8 @@
 // and small enough to read end to end.
 //
 // Architecture: 2 inputs -> N hidden layers (configurable width/depth,
-// ReLU/tanh activation) -> 1 sigmoid output, trained with full-batch
-// gradient descent on binary cross-entropy loss.
+// ReLU/tanh/linear activation) -> 1 sigmoid output, trained with full-batch
+// gradient descent on binary cross-entropy loss (+ optional L2 regularization).
 
 function mulberry32(seed: number) {
   let a = seed;
@@ -18,7 +18,7 @@ function mulberry32(seed: number) {
   };
 }
 
-export type HiddenActivation = 'relu' | 'tanh';
+export type HiddenActivation = 'relu' | 'tanh' | 'linear';
 
 const ACTIVATIONS: Record<HiddenActivation, { f: (z: number) => number; df: (z: number) => number }> = {
   relu: {
@@ -29,10 +29,15 @@ const ACTIVATIONS: Record<HiddenActivation, { f: (z: number) => number; df: (z: 
     f: (z) => Math.tanh(z),
     df: (z) => 1 - Math.tanh(z) ** 2,
   },
+  linear: {
+    f: (z) => z,
+    df: () => 1,
+  },
 };
 
-function sigmoid(z: number): number {
-  return 1 / (1 + Math.exp(-z));
+export function sigmoid(z: number): number {
+  const clamped = Math.max(-30, Math.min(30, z));
+  return 1 / (1 + Math.exp(-clamped));
 }
 
 export class MLP {
@@ -56,7 +61,7 @@ export class MLP {
     for (let l = 0; l < layerSizes.length - 1; l++) {
       const fanIn = layerSizes[l];
       const fanOut = layerSizes[l + 1];
-      const scale = Math.sqrt(2 / fanIn); // He initialization
+      const scale = hiddenActivation === 'relu' ? Math.sqrt(2 / fanIn) : Math.sqrt(1 / fanIn);
       const W = Array.from({ length: fanOut }, () => Array.from({ length: fanIn }, () => gaussian() * scale));
       this.weights.push(W);
       this.biases.push(new Array(fanOut).fill(0));
@@ -85,8 +90,33 @@ export class MLP {
     return this.forward(x).activations[this.weights.length][0];
   }
 
-  /** One full-batch gradient-descent step over (X, y). Returns mean BCE loss. */
-  step(X: number[][], y: number[], lr: number): number {
+  evaluate(X: number[][], y: number[], l2 = 0): { loss: number; accuracy: number } {
+    const n = Math.max(1, X.length);
+    const eps = 1e-7;
+    let totalLoss = 0;
+    let correct = 0;
+    for (let i = 0; i < X.length; i++) {
+      const p = this.predict(X[i]);
+      const target = y[i];
+      totalLoss += -(target * Math.log(p + eps) + (1 - target) * Math.log(1 - p + eps));
+      if ((p >= 0.5 ? 1 : 0) === target) correct++;
+    }
+    let l2Sum = 0;
+    if (l2 > 0) {
+      for (const W of this.weights) {
+        for (const row of W) {
+          for (const w of row) l2Sum += w * w;
+        }
+      }
+    }
+    return {
+      loss: totalLoss / n + 0.5 * l2 * l2Sum,
+      accuracy: correct / n,
+    };
+  }
+
+  /** One full-batch gradient-descent step over (X, y). Returns mean BCE (+ L2) loss. */
+  step(X: number[][], y: number[], lr: number, l2 = 0): number {
     const nLayers = this.weights.length;
     const gradW = this.weights.map((W) => W.map((row) => row.map(() => 0)));
     const gradB = this.biases.map((b) => b.map(() => 0));
@@ -126,15 +156,18 @@ export class MLP {
       }
     }
 
+    let l2Sum = 0;
     for (let l = 0; l < nLayers; l++) {
       for (let j = 0; j < this.weights[l].length; j++) {
         this.biases[l][j] -= (lr * gradB[l][j]) / n;
         for (let k = 0; k < this.weights[l][j].length; k++) {
-          this.weights[l][j][k] -= (lr * gradW[l][j][k]) / n;
+          const w = this.weights[l][j][k];
+          l2Sum += w * w;
+          this.weights[l][j][k] -= lr * (gradW[l][j][k] / n + l2 * w);
         }
       }
     }
 
-    return totalLoss / n;
+    return totalLoss / n + 0.5 * l2 * l2Sum;
   }
 }

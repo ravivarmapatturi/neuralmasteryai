@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chunkCorpus, CORPUS, rerank, retrieve, type Chunk } from './rag'
+import { chunkCorpus, CORPUS, rerank, retrieve, simulateRagPipeline, type Chunk } from './rag'
 
 describe('chunkCorpus', () => {
   it('splits every CORPUS entry into word-count chunks of the requested size', () => {
@@ -28,6 +28,12 @@ describe('chunkCorpus', () => {
       const docIdx = Number(c.id.split('-')[0])
       expect(CORPUS[docIdx]).toContain(c.text)
     }
+  })
+
+  it('overlap increases chunk count and repeats boundary words across adjacent chunks', () => {
+    const noOverlap = chunkCorpus(16, 0)
+    const withOverlap = chunkCorpus(16, 4)
+    expect(withOverlap.length).toBeGreaterThan(noOverlap.length)
   })
 })
 
@@ -72,9 +78,6 @@ describe('rerank', () => {
       2,
     )
     const reranked = rerank('gradient descent', results)
-    // "exact" contains the literal 2-word phrase "gradient descent"; "scattered" has
-    // the same bag-of-words overlap but not as a contiguous phrase -- it should not
-    // out-rank "exact" after reranking even if their base retrieval scores were close.
     expect(reranked[0].id).toBe('exact')
     expect(reranked[0].rerankScore).toBeGreaterThan(reranked[0].score)
   })
@@ -95,5 +98,46 @@ describe('rerank', () => {
     ], 1)
     const reranked = rerank('convolutional neural networks filters', results)
     expect(reranked[0].rerankScore).toBeGreaterThanOrEqual(reranked[0].score)
+  })
+})
+
+describe('simulateRagPipeline hand-checked numbers', () => {
+  it('computes exact cosine dot/(|q||c|) and phrase bonus for "gradient descent" at chunkSize=16, overlap=0', () => {
+    const sim = simulateRagPipeline({
+      query: 'gradient descent',
+      chunkSize: 16,
+      overlap: 0,
+      topK: 3,
+      rerankerOn: true,
+    })
+    expect(sim.chunks.length).toBe(24)
+    const top = sim.ranked[0]
+    expect(top.id).toBe('1-0')
+    // Doc 1 first 16 words:
+    // "Gradient descent updates parameters by stepping in the direction opposite the gradient of the loss function."
+    // Tokenize (>2 chars): the(3), gradient(2), and 8 single words -> |c|^2 = 9 + 4 + 8 = 21 -> |c| = sqrt(21)
+    // |q|^2 = 1 + 1 = 2 -> |q| = sqrt(2)
+    // dot = 1*2 + 1*1 = 3 -> cosine = 3 / sqrt(42) = 0.462910...
+    expect(top.dot).toBe(3)
+    expect(top.queryNorm).toBeCloseTo(Math.SQRT2, 6)
+    expect(top.chunkNorm).toBeCloseTo(Math.sqrt(21), 6)
+    expect(top.baseScore).toBeCloseTo(3 / Math.sqrt(42), 6)
+    expect(top.phraseBonus).toBeCloseTo(0.15, 6)
+    expect(top.finalScore).toBeCloseTo(3 / Math.sqrt(42) + 0.15, 6)
+    expect(sim.grounded).toBe(true)
+    expect(sim.stages).toHaveLength(5)
+  })
+
+  it('marks ungrounded queries clearly when corpus has 0 overlap', () => {
+    const sim = simulateRagPipeline({
+      query: 'capital france paris',
+      chunkSize: 16,
+      overlap: 0,
+      topK: 3,
+      rerankerOn: true,
+    })
+    expect(sim.grounded).toBe(false)
+    expect(sim.ranked[0].finalScore).toBe(0)
+    expect(sim.missedTerms).toEqual(['capital', 'france', 'paris'])
   })
 })

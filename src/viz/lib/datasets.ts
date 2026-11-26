@@ -1,8 +1,7 @@
 // Small, dependency-free toy dataset generators shared by the Decision
-// Boundary Playground and Neural Network Playground -- the same four
-// classic 2D classification shapes every neural-network-playground tool
-// uses (XOR, circles, moons, blobs), each returning
-// { X: [[x, y], ...], y: [0 | 1, ...] } scaled to roughly [-1, 1].
+// Boundary Playground and Neural Network Playground -- classic 2D
+// classification shapes (XOR, circles, moons, blobs, spiral), each
+// returning { X: [[x, y], ...], y: [0 | 1, ...] } scaled to roughly [-1, 1].
 
 function mulberry32(seed: number) {
   let a = seed;
@@ -89,9 +88,26 @@ export function makeBlobs(n = 200, seed = 1): Dataset2D {
   return { X, y };
 }
 
+export function makeSpiral(n = 200, seed = 1): Dataset2D {
+  const rand = mulberry32(seed);
+  const X: [number, number][] = [];
+  const y: (0 | 1)[] = [];
+  const half = Math.floor(n / 2);
+  for (let i = 0; i < n; i++) {
+    const label: 0 | 1 = i % 2 === 0 ? 0 : 1;
+    const idx = Math.floor(i / 2);
+    const r = (idx / Math.max(1, half)) * 0.92;
+    const theta = (idx / Math.max(1, half)) * 2.75 * Math.PI + (label === 1 ? Math.PI : 0);
+    X.push([r * Math.cos(theta) + gaussian(rand) * 0.04, r * Math.sin(theta) + gaussian(rand) * 0.04]);
+    y.push(label);
+  }
+  return { X, y };
+}
+
 export const DATASETS = {
   xor: { label: 'XOR', generate: makeXOR },
   circles: { label: 'Circles', generate: makeCircles },
   moons: { label: 'Moons', generate: makeMoons },
   blobs: { label: 'Blobs', generate: makeBlobs },
+  spiral: { label: 'Spiral', generate: makeSpiral },
 };
