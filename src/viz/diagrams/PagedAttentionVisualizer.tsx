@@ -1,234 +1,536 @@
-import { useVizTokens } from '../../theme/vizTokens';
-import { VisualizationContainer, PillSelect, VizButton, useAutoCycle } from '../primitives';
+import { useId, useMemo, useState } from 'react';
+import { FONT_FAMILY, RADIUS, useVizTokens } from '../../theme/vizTokens';
+import {
+  PillSelect,
+  Slider,
+  StickyNote,
+  StickyRow,
+  useVizVisible,
+  VisualizationContainer,
+  VisualizationHeader,
+  VizButton,
+} from '../primitives';
+import {
+  analyzePagedAttention,
+  DEFAULT_BASE_TOKENS,
+  tokensAtStep,
+  TOTAL_STEPS,
+  type AllocationMode,
+} from '../lib/pagedAttention';
+import { PredictChallenge } from './playgroundPrimitives';
+import { useResponsiveHostWidth, useStepPlayback } from './useStepPlayback';
 
-type Mode = 'contiguous' | 'paged';
+type FormulaTab = 'paged' | 'contiguous' | 'blocks';
 
-interface Request {
-  id: string;
-  name: string;
-  tokensGenerated: number;
-  maxTokens: number;
-  color: string;
-  // For contiguous: index in buffer
-  contiguousSlot: number;
-  // For paged: list of physical page IDs (each page = 16 tokens)
-  physicalBlocks: number[];
-}
+const FORMULA_LATEX: Record<FormulaTab, string> = {
+  paged: String.raw`\text{Tail waste} \le (B - 1)\text{ per req}`,
+  contiguous: String.raw`\text{Waste} = \sum_i (L_{\max} - L_i)`,
+  blocks: String.raw`\text{Pages}_i = \lceil L_i / B \rceil`,
+};
 
-export default function PagedAttentionVisualizer() {
+const PREDICT_OPTIONS = [
+  'No — A and B locked all 32 blocks (512 slots), blocking C with 79% idle VRAM',
+  'Yes — Req C automatically borrows the 406 unused slots inside A and B',
+  'Yes — contiguous reservations shrink down to actual length immediately',
+] as const;
+
+function PagedAttentionPlayground({
+  compact = false,
+  outerVisible = true,
+}: {
+  compact?: boolean;
+  outerVisible?: boolean;
+}) {
   const t = useVizTokens();
-  const modeValues: Mode[] = ['paged', 'contiguous'];
-  const modeCycle = useAutoCycle(modeValues.length, 5200, 0);
-  const tokenCycle = useAutoCycle(5, 1800, 0);
-  const mode = modeValues[modeCycle.value];
-  const tokenStep = tokenCycle.value;
+  const clipLeftId = useId();
+  const clipRightId = useId();
+  const { hostRef, isCompactPhone } = useResponsiveHostWidth(760);
 
-  // Total GPU KV Cache Pool = 32 blocks (16 tokens per block = 512 tokens capacity)
-  const TOTAL_BLOCKS = 32;
-  const TOKENS_PER_BLOCK = 16;
-  const TOTAL_TOKEN_CAPACITY = TOTAL_BLOCKS * TOKENS_PER_BLOCK;
+  const [mode, setMode] = useState<AllocationMode>('paged');
+  const [blockSize, setBlockSize] = useState<number>(16);
+  const [maxSeqLen, setMaxSeqLen] = useState<number>(256);
+  const [baseTokens, setBaseTokens] = useState<[number, number, number]>([...DEFAULT_BASE_TOKENS]);
+  const [activeFormula, setActiveFormula] = useState<FormulaTab>('paged');
+  const [prediction, setPrediction] = useState<number | null>(null);
 
-  // Requests currently active
-  const baseRequests: Request[] = [
-    {
-      id: 'req_a',
-      name: 'Req A ("Translate code")',
-      tokensGenerated: 48 + tokenStep * 8,
-      maxTokens: 256,
-      color: t.accentPurple,
-      contiguousSlot: 0,
-      physicalBlocks: [0, 4, 11, 15, 23].slice(0, Math.ceil((48 + tokenStep * 8) / TOKENS_PER_BLOCK)),
-    },
-    {
-      id: 'req_b',
-      name: 'Req B ("Summarize paper")',
-      tokensGenerated: 32 + tokenStep * 4,
-      maxTokens: 256,
-      color: t.accentTeal,
-      contiguousSlot: 1,
-      physicalBlocks: [2, 7, 18, 26].slice(0, Math.ceil((32 + tokenStep * 4) / TOKENS_PER_BLOCK)),
-    },
-    {
-      id: 'req_c',
-      name: 'Req C ("Write PyTorch test")',
-      tokensGenerated: 64 + tokenStep * 12,
-      maxTokens: 256,
-      color: t.accentPrimary,
-      contiguousSlot: 2, // In contiguous mode, slot 2 would overcommit 3x256=768 > 512, failing to fit!
-      physicalBlocks: [1, 5, 8, 12, 19, 27].slice(0, Math.ceil((64 + tokenStep * 12) / TOKENS_PER_BLOCK)),
-    },
-  ];
+  const playback = useStepPlayback(TOTAL_STEPS, 2000, 0, outerVisible);
+  const liveTokens = useMemo(() => tokensAtStep(baseTokens, playback.step), [baseTokens, playback.step]);
 
-  const handleStep = () => {
-    tokenCycle.pick((tokenStep + 1) % 5);
+  const analysis = useMemo(
+    () =>
+      analyzePagedAttention({
+        mode,
+        blockSize,
+        maxSeqLen,
+        totalBlocks: 32,
+        requestTokens: liveTokens,
+      }),
+    [mode, blockSize, maxSeqLen, liveTokens],
+  );
+
+  const reqColors: Record<'A' | 'B' | 'C', string> = {
+    A: t.accentPurple,
+    B: t.accentTeal,
+    C: t.accentPrimary,
+  };
+  const wasteColor = t.accentDanger;
+  const activeColor = t.accentSecondary;
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    boxSizing: 'border-box',
+    minHeight: 34,
+    padding: '4px 8px',
+    font: 'inherit',
+    fontSize: 15,
+    fontVariantNumeric: 'tabular-nums',
+    border: `1.5px solid ${t.border}`,
+    borderRadius: RADIUS.sm,
+    background: t.background,
+    color: t.textPrimary,
   };
 
-  const handleReset = () => {
-    tokenCycle.pick(0);
+  const selectMode = (nextMode: AllocationMode) => {
+    setMode(nextMode);
+    setActiveFormula(nextMode);
   };
 
-  // Contiguous Mode Math:
-  // Each request pre-allocates 256 tokens = 16 blocks regardless of actual length!
-  // Request A takes blocks 0..15. Request B takes blocks 16..31.
-  // Request C CANNOT BE SCHEDULED (OOM) because only 2 slots exist!
-  const contiguousAllocatedTokens = mode === 'contiguous' ? 2 * 256 : 0;
-  const contiguousUsedTokens = mode === 'contiguous' ? baseRequests[0].tokensGenerated + baseRequests[1].tokensGenerated : 0;
-  const contiguousWastePercent = mode === 'contiguous' ? Math.round(((contiguousAllocatedTokens - contiguousUsedTokens) / contiguousAllocatedTokens) * 100) : 0;
+  const updateReqToken = (idx: 0 | 1 | 2, val: number) => {
+    const clamped = Math.max(1, Math.min(200, Math.round(val)));
+    setBaseTokens((prev) => {
+      const next: [number, number, number] = [...prev] as [number, number, number];
+      next[idx] = clamped;
+      return next;
+    });
+    playback.setStep(0);
+  };
 
-  // Paged Mode Math:
-  // Dynamically allocate 1 block (16 tokens) on demand.
-  const pagedUsedBlocks = baseRequests.reduce((acc, r) => acc + Math.ceil(r.tokensGenerated / TOKENS_PER_BLOCK), 0);
-  const pagedUsedTokens = baseRequests.reduce((acc, r) => acc + r.tokensGenerated, 0);
-  const pagedAllocatedTokens = pagedUsedBlocks * TOKENS_PER_BLOCK;
-  const pagedWastePercent = Math.round(((pagedAllocatedTokens - pagedUsedTokens) / pagedAllocatedTokens) * 100);
+  // Kwon et al. (2023) Fig. 2 convention: Logical KV blocks + Block Table -> Physical memory pool
+  const renderLogicalPanel = (offsetX: number, panelW: number) => {
+    const plotX = offsetX + 10;
+    const plotY = 34;
+    const plotW = panelW - 20;
+    const plotH = 226;
 
-  return (
-    <VisualizationContainer footer="PagedAttention (vLLM, Kwon et al.) brings virtual memory paging to LLM serving. In traditional contiguous allocation, 60% to 80% of VRAM is wasted on over-reservation and external fragmentation. PagedAttention eliminates external fragmentation completely, enabling 2x to 4x higher serving throughput.">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: t.accentPrimary }}>
-            vLLM & High-Throughput Serving Architecture
-          </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: t.textPrimary }}>
-            PagedAttention vs Contiguous KV Cache Allocation
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <VizButton onClick={handleStep}>+ Generate Next Tokens</VizButton>
-          <VizButton variant="secondary" onClick={handleReset}>Reset</VizButton>
-        </div>
-      </div>
+    return (
+      <g>
+        <text x={offsetX + panelW / 2} y={20} textAnchor="middle" fontSize={15} fontWeight={700} fill={t.textPrimary}>
+          1. Logical pages &amp; block table ({analysis.mode === 'paged' ? 'vLLM' : 'fixed'})
+        </text>
+        <defs>
+          <clipPath id={`${clipLeftId}-${offsetX}`}>
+            <rect x={plotX} y={plotY} width={plotW} height={plotH} />
+          </clipPath>
+        </defs>
+        <rect x={plotX} y={plotY} width={plotW} height={plotH} fill={t.background} stroke={t.border} strokeWidth={1} rx={4} />
 
-      <div style={{ marginBottom: 16 }}>
-        <PillSelect<Mode>
-          label="Memory Allocation Strategy"
-          value={mode}
-          onChange={(value) => modeCycle.pick(modeValues.indexOf(value as Mode))}
-          options={[
-            { value: 'paged', label: '1. PagedAttention (vLLM Virtual Memory)' },
-            { value: 'contiguous', label: '2. Naive Contiguous Allocation (Pre-allocated max_seq_len)' },
-          ]}
-        />
-      </div>
-
-      {/* Comparison Metrics Header */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
-        <div style={{ background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 8, padding: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase' }}>Active Concurrent Requests</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: mode === 'paged' ? t.accentPrimary : t.accentDanger, marginTop: 2 }}>
-            {mode === 'paged' ? '3 of 3 Serving' : '2 of 3 (Req C Queued/OOM)'}
-          </div>
-          <div style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
-            {mode === 'paged' ? 'Near-zero memory fragmentation' : 'Cannot fit Req C (needs 256 contiguous tokens)'}
-          </div>
-        </div>
-
-        <div style={{ background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 8, padding: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase' }}>Memory Waste / Fragmentation</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: mode === 'paged' ? t.accentPrimary : t.accentDanger, marginTop: 2 }}>
-            {mode === 'paged' ? `${pagedWastePercent}% (Internal tail only)` : `${contiguousWastePercent}% (Unused Reservation)`}
-          </div>
-          <div style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
-            {mode === 'paged' ? 'Only partial last block is unused' : 'Pre-reserved max_seq_len sits idle'}
-          </div>
-        </div>
-
-        <div style={{ background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 8, padding: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase' }}>Serving Throughput Gain</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: mode === 'paged' ? t.accentTeal : t.textMuted, marginTop: 2 }}>
-            {mode === 'paged' ? '2.4x - 3.8x Speedup' : '1.0x (Baseline)'}
-          </div>
-          <div style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
-            Batches more requests into the same VRAM
-          </div>
-        </div>
-      </div>
-
-      {/* Visual Memory Grid */}
-      <div style={{ background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 8, padding: 16, marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: t.textPrimary }}>
-            Physical GPU KV Cache Memory ({TOTAL_BLOCKS} Blocks = {TOTAL_TOKEN_CAPACITY} Tokens)
-          </span>
-          <span style={{ fontSize: 11, color: t.textMuted }}>Each cell = 1 Physical Block (16 Tokens)</span>
-        </div>
-
-        {/* 32 Physical Blocks Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, marginBottom: 16 }}>
-          {Array.from({ length: TOTAL_BLOCKS }).map((_, idx) => {
-            let blockOwner: Request | undefined;
-            let isWastedContiguous = false;
-
-            if (mode === 'paged') {
-              blockOwner = baseRequests.find((r) => r.physicalBlocks.includes(idx));
-            } else {
-              // Contiguous slots: 0..15 belongs to Req A, 16..31 belongs to Req B
-              if (idx < 16) {
-                blockOwner = baseRequests[0];
-                if (idx >= Math.ceil(baseRequests[0].tokensGenerated / TOKENS_PER_BLOCK)) {
-                  isWastedContiguous = true;
-                }
-              } else {
-                blockOwner = baseRequests[1];
-                if (idx - 16 >= Math.ceil(baseRequests[1].tokensGenerated / TOKENS_PER_BLOCK)) {
-                  isWastedContiguous = true;
-                }
-              }
-            }
-
-            const isAllocated = !!blockOwner;
-            const bg = isWastedContiguous
-              ? `${t.accentDanger}33`
-              : isAllocated
-              ? blockOwner.color
-              : t.background;
-            const borderColor = isWastedContiguous ? t.accentDanger : isAllocated ? blockOwner.color : t.border;
+        <g clipPath={`url(#${clipLeftId}-${offsetX})`}>
+          {analysis.requests.map((req, rIdx) => {
+            const ry = plotY + 12 + rIdx * 70;
+            const col = reqColors[req.id];
+            const neededBlocks = Math.ceil(req.usedTokens / analysis.blockSize);
+            const shownMap = req.physicalBlocks.slice(0, 4);
+            const extraCount = req.physicalBlocks.length - shownMap.length;
 
             return (
-              <div
-                key={idx}
-                style={{
-                  height: 38,
-                  borderRadius: 4,
-                  background: bg,
-                  border: `1px solid ${borderColor}`,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 10,
-                  fontFamily: 'monospace',
-                  color: isWastedContiguous ? t.accentDanger : isAllocated ? t.background : t.textMuted,
-                  fontWeight: 600,
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                <span>B#{idx}</span>
-                <span style={{ fontSize: 9 }}>
-                  {isWastedContiguous ? 'WASTED' : isAllocated ? blockOwner.id.replace('req_', '').toUpperCase() : 'FREE'}
-                </span>
-              </div>
+              <g key={req.id}>
+                <text x={plotX + 10} y={ry + 16} fontSize={14} fontWeight={700} fill={req.admitted ? col : wasteColor}>
+                  {req.label}: {req.usedTokens} tok ({neededBlocks} pg{neededBlocks === 1 ? '' : 's'})
+                </text>
+                <text x={plotX + plotW - 10} y={ry + 16} textAnchor="end" fontSize={14} fontWeight={700} fill={req.admitted ? t.textSecondary : wasteColor}>
+                  {req.admitted
+                    ? analysis.mode === 'paged'
+                      ? `${req.wastedSlots} tail idle`
+                      : `locks ${req.allocatedSlots} slots`
+                    : 'Blocked (OOM!)'}
+                </text>
+
+                {!req.admitted ? (
+                  <g>
+                    <rect x={plotX + 10} y={ry + 24} width={plotW - 20} height={28} rx={4} fill={`${wasteColor}18`} stroke={wasteColor} strokeWidth={1.5} strokeDasharray="4 3" />
+                    <text x={plotX + plotW / 2} y={ry + 43} textAnchor="middle" fontSize={14} fontWeight={700} fill={wasteColor}>
+                      Needs {analysis.contiguousBlocksPerReq} blocks — 0 left!
+                    </text>
+                  </g>
+                ) : analysis.mode === 'paged' ? (
+                  <g>
+                    {shownMap.map((pid, lIdx) => {
+                      const chipW = Math.floor((plotW - 20 - 4 * 4) / (extraCount > 0 ? 5 : 4));
+                      const cx = plotX + 10 + lIdx * (chipW + 4);
+                      return (
+                        <g key={`${req.id}-m-${lIdx}`}>
+                          <rect x={cx} y={ry + 24} width={chipW} height={28} rx={4} fill={`${col}18`} stroke={col} strokeWidth={1.3} />
+                          <text x={cx + chipW / 2} y={ry + 43} textAnchor="middle" fontSize={14} fontWeight={700} fill={col}>
+                            L{lIdx}→P{pid}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    {extraCount > 0 && (
+                      <text x={plotX + plotW - 14} y={ry + 43} textAnchor="end" fontSize={14} fontWeight={700} fill={col}>
+                        +{extraCount}
+                      </text>
+                    )}
+                  </g>
+                ) : (
+                  <g>
+                    {(() => {
+                      const barW = plotW - 20;
+                      const usedW = Math.max(8, (req.usedTokens / req.allocatedSlots) * barW);
+                      return (
+                        <>
+                          <rect x={plotX + 10} y={ry + 24} width={barW} height={28} rx={4} fill={`${wasteColor}20`} stroke={wasteColor} strokeWidth={1.4} />
+                          <rect x={plotX + 10} y={ry + 24} width={usedW} height={28} rx={4} fill={col} fillOpacity={0.85} />
+                          <text x={plotX + 18} y={ry + 43} fontSize={14} fontWeight={700} fill={t.background}>
+                            {req.usedTokens} used
+                          </text>
+                          <text x={plotX + barW} y={ry + 43} textAnchor="end" fontSize={14} fontWeight={700} fill={wasteColor}>
+                            {req.wastedSlots} empty
+                          </text>
+                        </>
+                      );
+                    })()}
+                  </g>
+                )}
+              </g>
             );
           })}
-        </div>
+        </g>
 
-        {/* Legend */}
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', borderTop: `1px solid ${t.border}`, paddingTop: 10 }}>
-          {baseRequests.map((r) => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-              <span style={{ width: 12, height: 12, borderRadius: 2, background: r.color }} />
-              <strong style={{ color: t.textPrimary }}>{r.name}:</strong>
-              <span style={{ color: t.textSecondary }}>{r.tokensGenerated} tokens</span>
+        <text x={plotX + plotW / 2} y={plotY + plotH + 20} textAnchor="middle" fontSize={14} fill={t.textSecondary}>
+          {analysis.mode === 'paged' ? 'L = logical page · P = physical GPU frame' : `Each slot locks ${analysis.maxSeqLen} tokens upfront`}
+        </text>
+      </g>
+    );
+  };
+
+  const renderPhysicalPoolPanel = (offsetX: number, panelW: number) => {
+    const plotX = offsetX + 10;
+    const plotY = 34;
+    const plotW = panelW - 20;
+    const plotH = 226;
+
+    const cols = 8;
+    const gap = 4;
+    const gridPadX = 10;
+    const cellW = Math.floor((plotW - gridPadX * 2 - (cols - 1) * gap) / cols);
+    const cellH = 34;
+    const gridStartX = plotX + gridPadX;
+    const gridStartY = plotY + 12;
+
+    const summaryBarW = plotW - 20;
+    const usedRatio = analysis.usedTokensAdmitted / analysis.totalPoolTokens;
+    const wasteRatio = analysis.wastedSlotsAdmitted / analysis.totalPoolTokens;
+
+    return (
+      <g>
+        <text x={offsetX + panelW / 2} y={20} textAnchor="middle" fontSize={15} fontWeight={700} fill={t.textPrimary}>
+          2. Physical GPU pool ({analysis.totalBlocks} × {analysis.blockSize} = {analysis.totalPoolTokens})
+        </text>
+        <defs>
+          <clipPath id={`${clipRightId}-${offsetX}`}>
+            <rect x={plotX} y={plotY} width={plotW} height={plotH} />
+          </clipPath>
+        </defs>
+        <rect x={plotX} y={plotY} width={plotW} height={plotH} fill={t.background} stroke={t.border} strokeWidth={1} rx={4} />
+
+        <g clipPath={`url(#${clipRightId}-${offsetX})`}>
+          {analysis.cells.map((cell, idx) => {
+            const c = idx % cols;
+            const r = Math.floor(idx / cols);
+            const x = gridStartX + c * (cellW + gap);
+            const y = gridStartY + r * (cellH + gap);
+
+            const ownerCol = cell.ownerId ? reqColors[cell.ownerId] : t.border;
+            const isReservedIdle = cell.state === 'reserved-idle';
+            const isFree = cell.state === 'free';
+            const fill = isFree
+              ? t.surfaceAlt
+              : isReservedIdle
+                ? `${wasteColor}24`
+                : ownerCol;
+            const stroke = isFree ? t.border : isReservedIdle ? wasteColor : ownerCol;
+            const textColor = isFree ? t.textMuted : isReservedIdle ? wasteColor : t.background;
+            const cellLabel = isFree ? `${idx}` : isReservedIdle ? `${cell.ownerId}×` : `${cell.ownerId}${idx}`;
+
+            return (
+              <g key={idx}>
+                <rect
+                  x={x}
+                  y={y}
+                  width={cellW}
+                  height={cellH}
+                  rx={4}
+                  fill={fill}
+                  fillOpacity={cell.state === 'tail-waste' ? 0.72 : 1}
+                  stroke={stroke}
+                  strokeWidth={isReservedIdle ? 1.4 : 1}
+                  strokeDasharray={isReservedIdle ? '3 2' : undefined}
+                />
+                <text x={x + cellW / 2} y={y + 22} textAnchor="middle" fontSize={14} fontWeight={700} fill={textColor}>
+                  {cellLabel}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Bottom summary meter inside pool panel */}
+          <text x={plotX + 10} y={plotY + 184} fontSize={14} fontWeight={700} fill={t.textPrimary}>
+            Pool waste: {analysis.wastePct.toFixed(1)}% ({analysis.wastedSlotsAdmitted} idle slots)
+          </text>
+          <text x={plotX + plotW - 10} y={plotY + 184} textAnchor="end" fontSize={14} fontWeight={700} fill={analysis.freeBlocksTotal > 0 ? activeColor : wasteColor}>
+            {analysis.freeBlocksTotal} free
+          </text>
+          <rect x={plotX + 10} y={plotY + 193} width={summaryBarW} height={14} rx={3} fill={t.surfaceAlt} />
+          <rect x={plotX + 10} y={plotY + 193} width={Math.max(2, usedRatio * summaryBarW)} height={14} rx={3} fill={activeColor} />
+          <rect
+            x={plotX + 10 + usedRatio * summaryBarW}
+            y={plotY + 193}
+            width={Math.max(0, wasteRatio * summaryBarW)}
+            height={14}
+            fill={wasteColor}
+            fillOpacity={0.75}
+          />
+        </g>
+
+        <text x={plotX + plotW / 2} y={plotY + plotH + 20} textAnchor="middle" fontSize={14} fill={t.textSecondary}>
+          {analysis.admittedCount}/3 serving ({analysis.usedTokensAdmitted}/{analysis.allocatedSlotsTotal} slots used)
+        </text>
+      </g>
+    );
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {!compact && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ flex: '1 1 320px', minWidth: 0, marginBottom: -8 }}>
+              <VisualizationHeader
+                eyebrow="Live playground"
+                title="Why virtual memory pages pack far more LLM requests into GPU memory"
+                description="Each active answer stores past Keys & Values in GPU memory. Reserving each request's maximum possible length upfront locks huge empty slabs; PagedAttention splits memory into small pages allocated only as tokens arrive."
+              />
             </div>
-          ))}
-          {mode === 'contiguous' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-              <span style={{ width: 12, height: 12, borderRadius: 2, background: `${t.accentDanger}33`, border: `1px solid ${t.accentDanger}` }} />
-              <strong style={{ color: t.accentDanger }}>Over-Reserved Idle Space</strong>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', paddingTop: 2 }}>
+              <VizButton onClick={playback.toggle}>{playback.playing ? 'Pause' : 'Play'}</VizButton>
+              <VizButton variant="secondary" onClick={playback.next}>Step →</VizButton>
+              <VizButton variant="secondary" onClick={playback.reset}>Reset</VizButton>
             </div>
-          )}
-        </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ marginBottom: -8 }}>
+              <PillSelect<AllocationMode>
+                label="Memory rule (how GPU blocks are allocated)"
+                value={mode}
+                onChange={(val) => {
+                  const nextMode = typeof val === 'function' ? val(mode) : val;
+                  selectMode(nextMode);
+                }}
+                options={[
+                  { value: 'paged', label: 'PagedAttention (on-demand pages)' },
+                  { value: 'contiguous', label: 'Contiguous (reserve max_seq_len)' },
+                ]}
+              />
+            </div>
+            <div style={{ marginBottom: -8 }}>
+              <PillSelect<number>
+                label="Page size B (tokens per physical block)"
+                value={blockSize}
+                onChange={(val) => setBlockSize(typeof val === 'function' ? val(blockSize) : val)}
+                options={[
+                  { value: 8, label: 'B = 8' },
+                  { value: 16, label: 'B = 16 (vLLM std)' },
+                  { value: 32, label: 'B = 32' },
+                ]}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 155px), 1fr))', gap: 12, alignItems: 'end' }}>
+            <div>
+              <Slider
+                label="Max length L_max (contiguous slab)"
+                value={maxSeqLen}
+                onChange={(v) => setMaxSeqLen(v)}
+                min={64}
+                max={256}
+                step={16}
+                format={(v) => `${v} tok`}
+              />
+              <input
+                aria-label="Exact max sequence length"
+                type="number"
+                min={64}
+                max={256}
+                step={16}
+                value={maxSeqLen}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (Number.isFinite(v)) setMaxSeqLen(Math.max(64, Math.min(256, Math.round(v))));
+                }}
+                style={inputStyle}
+              />
+            </div>
+
+            {(['A', 'B', 'C'] as const).map((id, idx) => (
+              <label key={id} style={{ display: 'block', fontSize: 15, color: t.textPrimary }}>
+                <span style={{ display: 'block', marginBottom: 4, fontWeight: 700, color: reqColors[id] }}>
+                  Req {id} start tokens
+                </span>
+                <input
+                  aria-label={`Request ${id} tokens`}
+                  type="number"
+                  min={1}
+                  max={200}
+                  step={4}
+                  value={baseTokens[idx]}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) updateReqToken(idx as 0 | 1 | 2, v);
+                  }}
+                  style={{ ...inputStyle, borderColor: reqColors[id] }}
+                />
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', fontSize: 15 }} aria-label="Memory block colours">
+        <span>
+          <span style={{ display: 'inline-block', width: 12, height: 12, background: reqColors.A, verticalAlign: 'middle', marginRight: 6 }} />
+          Req A ({analysis.requests[0].usedTokens} tok)
+        </span>
+        <span>
+          <span style={{ display: 'inline-block', width: 12, height: 12, background: reqColors.B, verticalAlign: 'middle', marginRight: 6 }} />
+          Req B ({analysis.requests[1].usedTokens} tok)
+        </span>
+        <span>
+          <span style={{ display: 'inline-block', width: 12, height: 12, background: reqColors.C, verticalAlign: 'middle', marginRight: 6 }} />
+          Req C ({analysis.requests[2].usedTokens} tok)
+        </span>
+        <span>
+          <span style={{ display: 'inline-block', width: 12, height: 12, background: `${wasteColor}40`, border: `1.5px dashed ${wasteColor}`, verticalAlign: 'middle', marginRight: 6 }} />
+          Idle / wasted slots
+        </span>
       </div>
+
+      <div ref={hostRef} style={{ width: '100%' }}>
+        {!isCompactPhone ? (
+          <svg
+            width="100%"
+            viewBox="0 0 760 298"
+            role="img"
+            aria-label={`${analysis.mode} allocation: ${analysis.admittedCount} of 3 requests fit, ${analysis.wastePct.toFixed(1)}% waste`}
+            style={{ display: 'block', fontFamily: FONT_FAMILY }}
+          >
+            {renderLogicalPanel(0, 396)}
+            {renderPhysicalPoolPanel(406, 354)}
+          </svg>
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <svg width="100%" viewBox="0 0 370 298" role="img" aria-label="Logical blocks and page table" style={{ display: 'block', fontFamily: FONT_FAMILY }}>
+              {renderLogicalPanel(0, 370)}
+            </svg>
+            <svg width="100%" viewBox="0 0 370 298" role="img" aria-label="Physical GPU KV block pool" style={{ display: 'block', fontFamily: FONT_FAMILY }}>
+              {renderPhysicalPoolPanel(0, 370)}
+            </svg>
+          </div>
+        )}
+      </div>
+
+      {compact ? (
+        <StickyRow>
+          <StickyNote title="PagedAttention tail bound" latex={FORMULA_LATEX.paged} color="yellow" tilt={-1}>
+            <p className="nm-sticky__mono" style={{ textAlign: 'center' }}>
+              Serving: <strong>{analysis.admittedCount}/3</strong> · Waste: <strong>{analysis.wastePct.toFixed(1)}%</strong> ({analysis.wastedSlotsAdmitted} slots)
+            </p>
+          </StickyNote>
+          <StickyNote title={`Step ${playback.step + 1} of ${TOTAL_STEPS}`} color="blue" tilt={1} live>
+            <p>{analysis.explain}</p>
+          </StickyNote>
+        </StickyRow>
+      ) : (
+        <>
+          <StickyRow>
+            <StickyNote
+              title="1. Paged tail waste"
+              latex={FORMULA_LATEX.paged}
+              color="yellow"
+              tilt={-1}
+              active={activeFormula === 'paged'}
+              onSelect={() => selectMode('paged')}
+            >
+              <p style={{ textAlign: 'center' }}>B = page size. Only each request's last page can have empty tail slots.</p>
+            </StickyNote>
+            <StickyNote
+              title="2. Contiguous reservation waste"
+              latex={FORMULA_LATEX.contiguous}
+              color="pink"
+              tilt={1}
+              active={activeFormula === 'contiguous'}
+              onSelect={() => selectMode('contiguous')}
+            >
+              <p style={{ textAlign: 'center' }}>L_max = reserved limit, L_i = used tokens; empty slots block others.</p>
+            </StickyNote>
+            <StickyNote
+              title="3. Pages per sequence"
+              latex={FORMULA_LATEX.blocks}
+              color="orange"
+              tilt={-1}
+              active={activeFormula === 'blocks'}
+              onSelect={() => setActiveFormula('blocks')}
+            >
+              <p style={{ textAlign: 'center' }}>L_i = tokens used, B = page size. Pages sit anywhere via a block table.</p>
+            </StickyNote>
+          </StickyRow>
+
+          <StickyRow>
+            <StickyNote title={`Worked numbers · ${analysis.mode === 'paged' ? 'PagedAttention' : 'Contiguous'}`} color="green" tilt={1}>
+              <p className="nm-sticky__mono">
+                Active: <strong>{analysis.admittedCount}/3</strong> · Blocks used: <strong>{analysis.allocatedBlocksTotal}/{analysis.totalBlocks}</strong> ({analysis.freeBlocksTotal} free)
+              </p>
+              <p className="nm-sticky__mono" style={{ marginTop: 4 }}>
+                Used: <strong>{analysis.usedTokensAdmitted}</strong> / Allocated: <strong>{analysis.allocatedSlotsTotal}</strong> slots → Waste: <strong>{analysis.wastedSlotsAdmitted} ({analysis.wastePct.toFixed(1)}%)</strong>
+              </p>
+            </StickyNote>
+            <StickyNote title={`Step ${playback.step + 1} of ${TOTAL_STEPS} · What just happened`} color="blue" tilt={-1} live>
+              <p>{analysis.explain}</p>
+            </StickyNote>
+          </StickyRow>
+
+          <PredictChallenge
+            prompt="A 32-block GPU pool (B = 16, 512 total slots) uses Contiguous mode with max length L_max = 256. Req A (60 tok) and Req B (46 tok) start. Can Req C (78 tok) start too?"
+            options={PREDICT_OPTIONS}
+            correctIndex={0}
+            selected={prediction}
+            onSelect={setPrediction}
+            explanation="At L_max = 256, A and B each lock 16 blocks (32 total = 100% of the pool), leaving 0 blocks for Req C even though 406 of 512 slots (79.3%) are empty."
+            actionLabel="Run Contiguous 256-limit now"
+            onAction={() => {
+              selectMode('contiguous');
+              setBlockSize(16);
+              setMaxSeqLen(256);
+              setBaseTokens([...DEFAULT_BASE_TOKENS]);
+              playback.setStep(0);
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function PagedAttentionVisualizer({ compact = false }: { compact?: boolean } = {}) {
+  const outerVisible = useVizVisible();
+  return (
+    <VisualizationContainer
+      title="PagedAttention KV memory playground"
+      footer="Exact block-table and physical VRAM page simulation following Kwon et al. (2023): non-contiguous fixed-size pages eliminate external fragmentation and reservation waste."
+    >
+      <PagedAttentionPlayground compact={compact} outerVisible={outerVisible} />
     </VisualizationContainer>
   );
 }
